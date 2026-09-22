@@ -17,7 +17,8 @@ function ReviewBadge({ pr }: { pr: OpenPR }) {
 function AutoMergeControl({ pr, repo, onError }: { pr: OpenPR; repo?: RepoInfo; onError: (msg: string) => void }) {
   const [busy, setBusy] = useState(false);
   const [menu, setMenu] = useState(false);
-  const methods = repo?.mergeMethods.length ? repo.mergeMethods : (["SQUASH"] as MergeMethod[]);
+  // Nur die Methoden, die das Repo tatsächlich erlaubt – kein stiller Fallback.
+  const methods = repo?.mergeMethods ?? [];
   const allowed = repo?.autoMergeAllowed ?? false;
   const canMerge = repo?.viewerCanMerge ?? false;
 
@@ -34,16 +35,18 @@ function AutoMergeControl({ pr, repo, onError }: { pr: OpenPR; repo?: RepoInfo; 
   };
 
   const on = !!pr.autoMerge;
-  const disabled = busy || (!on && (!allowed || !canMerge || pr.isDraft));
+  const disabled = busy || (!on && (!allowed || !methods.length || !canMerge || pr.isDraft));
   const title = on
     ? `Auto-Merge aktiv (${METHOD_LABEL[pr.autoMerge!.method]}${pr.autoMerge!.enabledBy ? `, von ${pr.autoMerge!.enabledBy}` : ""}) – klicken zum Deaktivieren`
     : !allowed
       ? "Auto-Merge ist in diesem Repo nicht erlaubt (Settings → Allow auto-merge)"
-      : !canMerge
-        ? "Keine Schreibrechte"
-        : pr.isDraft
-          ? "Draft-PRs können kein Auto-Merge"
-          : "Auto-Merge aktivieren";
+      : !methods.length
+        ? "Keine Merge-Methode in diesem Repo erlaubt"
+        : !canMerge
+          ? "Keine Schreibrechte"
+          : pr.isDraft
+            ? "Draft-PRs können kein Auto-Merge"
+            : `Auto-Merge aktivieren (${methods.map((m) => METHOD_LABEL[m]).join(" / ")})`;
 
   return (
     <div className="relative">
@@ -54,8 +57,7 @@ function AutoMergeControl({ pr, repo, onError }: { pr: OpenPR; repo?: RepoInfo; 
         onClick={(e) => {
           e.stopPropagation();
           if (on) void run(false);
-          else if (methods.length > 1) setMenu((m) => !m);
-          else void run(true, methods[0]);
+          else setMenu((m) => !m);
         }}
         className={cx(
           "inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium transition",
@@ -73,6 +75,7 @@ function AutoMergeControl({ pr, repo, onError }: { pr: OpenPR; repo?: RepoInfo; 
         <>
           <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setMenu(false); }} />
           <div className="absolute right-0 top-8 z-20 min-w-36 overflow-hidden rounded-lg border border-line bg-panel shadow-xl">
+            <div className="px-3 pt-2 pb-1 text-[11px] uppercase tracking-wide text-muted">Merge-Methode</div>
             {methods.map((m) => (
               <button
                 key={m}

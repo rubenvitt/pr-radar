@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildPipeline, rollupState } from "./normalize";
+import { buildPipeline, normalizeRepo, rollupState, type RawRepo } from "./normalize";
 import { parseRepo } from "./config";
 import { buildDashboardQuery } from "./queries";
 
@@ -46,5 +46,15 @@ describe("buildDashboardQuery", () => {
     const q = buildDashboardQuery(["a/b", "c/d"]);
     expect(q).toContain('r0: repository(owner: "a", name: "b")');
     expect(q).toContain('r1: repository(owner: "c", name: "d")');
+  });
+});
+
+describe("normalizeRepo", () => {
+  const raw = (flags: Partial<RawRepo>) =>
+    ({ nameWithOwner: "a/b", url: "u", autoMergeAllowed: true, squashMergeAllowed: false, mergeCommitAllowed: false, rebaseMergeAllowed: false, ...flags }) as RawRepo;
+  it("liefert nur die im Repo erlaubten Merge-Methoden", () => {
+    expect(normalizeRepo(raw({ squashMergeAllowed: true })).mergeMethods).toEqual(["SQUASH"]);
+    expect(normalizeRepo(raw({ mergeCommitAllowed: true, rebaseMergeAllowed: true })).mergeMethods).toEqual(["MERGE", "REBASE"]);
+    expect(normalizeRepo(raw({})).mergeMethods).toEqual([]);
   });
 });

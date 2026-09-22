@@ -81,8 +81,16 @@ app.delete("/api/repos/:owner/:name", async (c) => {
 app.post("/api/prs/:id/auto-merge", async (c) => {
   const id = c.req.param("id");
   const { enable, method } = await c.req.json<{ enable: boolean; method?: MergeMethod }>();
+  if (enable) {
+    // Nur Methoden zulassen, die das Repo des PRs erlaubt.
+    const repoName = poller.snapshot?.open.find((p) => p.id === id)?.repo;
+    const allowed = poller.snapshot?.repos.find((r) => r.fullName === repoName)?.mergeMethods ?? [];
+    if (!method || !allowed.includes(method)) {
+      return c.json({ error: `Merge-Methode ${method ?? "–"} ist in diesem Repo nicht erlaubt` }, 422);
+    }
+  }
   const res = enable
-    ? await graphql(ENABLE_AUTO_MERGE, { id, method: method ?? "SQUASH" })
+    ? await graphql(ENABLE_AUTO_MERGE, { id, method })
     : await graphql(DISABLE_AUTO_MERGE, { id });
   if (res.errors.length) return c.json({ error: res.errors.map((e) => e.message).join("; ") }, 422);
   await poller.refresh();
