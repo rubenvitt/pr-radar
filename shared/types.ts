@@ -103,7 +103,10 @@ export interface PollStatus {
   intervalSeconds: number;
   error: string | null;
   rateLimit: { remaining: number; limit: number; resetAt: string } | null;
-  tokenSource: "env" | "gh-cli" | null;
+  /** Woher der Token für diese Daten kam – "client" = im Browser hinterlegt. */
+  tokenSource: "env" | "gh-cli" | "client" | null;
+  /** Hat der Server selbst einen Token? Wenn nicht, muss der Browser einen mitschicken. */
+  serverToken: boolean;
 }
 
 export type ServerEvent =

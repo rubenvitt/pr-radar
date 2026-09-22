@@ -71,3 +71,5 @@ export const DISABLE_AUTO_MERGE = `
       pullRequest { id }
     }
   }`;
+
+export const VIEWER = `query { viewer { login } }`;

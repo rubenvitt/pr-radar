@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Bell, BellOff, GitMerge, GitPullRequest, Inbox, Layers, RefreshCw, Search, Settings2, Tag, X, Zap } from "lucide-react";
+import { Bell, BellOff, GitMerge, GitPullRequest, Inbox, KeyRound, Layers, RefreshCw, Search, Settings2, Tag, X, Zap } from "lucide-react";
 import type { OpenPR, PipelineState, RepoInfo, Snapshot } from "../../shared/types";
 import { api } from "./lib/api";
 import { diffSnapshots, showNotification } from "./lib/notify";
 import { usePref } from "./lib/prefs";
 import { ago } from "./lib/time";
+import { useGithubToken } from "./lib/token";
 import { useLive, useTick } from "./lib/useLive";
 import { MergedView } from "./components/MergedView";
 import { PRRow } from "./components/PRRow";
@@ -35,6 +36,7 @@ function Stat({ label, value, active, onClick, icon, tone }: { label: string; va
 
 export function App() {
   const { snapshot, status, connection } = useLive();
+  const [token] = useGithubToken();
   useTick(20_000);
 
   const [tab, setTab] = usePref<Tab>("tab", "open");
@@ -96,6 +98,9 @@ export function App() {
   const merged = (snapshot?.merged ?? []).filter((m) => inRepo(m.repo) && matches(`${m.title} ${m.repo} #${m.number} ${m.author?.login}`));
   const releases = (snapshot?.releases ?? []).filter((r) => inRepo(r.repo) && matches(`${r.name} ${r.tagName} ${r.repo}`));
 
+  // Gehostete Variante ohne Server-Token: Der Browser muss einen mitbringen.
+  const needsToken = !token && status?.serverToken === false;
+
   const failing = count("failed");
   useEffect(() => {
     document.title = failing ? `(${failing}) PR Radar` : "PR Radar";
@@ -144,8 +149,20 @@ export function App() {
         </div>
       </header>
 
-      {status?.error && (
-        <div className="mb-4 rounded-xl border border-fail/30 bg-fail/8 px-4 py-3 text-sm text-fail">{status.error}</div>
+      {needsToken ? (
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-accent/40 bg-accent/8 px-4 py-3 text-sm">
+          <KeyRound size={16} className="text-accent" />
+          <span className="min-w-0 flex-1">
+            Dieser Server hat keinen GitHub-Token. Hinterlege deinen persönlichen Token – er bleibt in diesem Browser.
+          </span>
+          <button onClick={() => setSettings(true)} className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-white">
+            Token hinterlegen
+          </button>
+        </div>
+      ) : (
+        status?.error && (
+          <div className="mb-4 rounded-xl border border-fail/30 bg-fail/8 px-4 py-3 text-sm text-fail">{status.error}</div>
+        )
       )}
 
       {/* Kennzahlen */}
@@ -210,7 +227,14 @@ export function App() {
       )}
 
       {/* Inhalt */}
-      {!snapshot ? (
+      {needsToken ? (
+        <Empty icon={<KeyRound size={28} />} title="GitHub-Token nötig">
+          Ohne Token kann der Server keine Repos laden.
+          <button onClick={() => setSettings(true)} className="mt-3 block rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-white">
+            Token hinterlegen
+          </button>
+        </Empty>
+      ) : !snapshot ? (
         <Empty icon={<RefreshCw size={26} className="spin-slow" />} title="Lade Daten von GitHub …" />
       ) : repos.length === 0 ? (
         <Empty icon={<GitPullRequest size={28} />} title="Noch keine Repositories">

@@ -30,11 +30,27 @@ Produktion lokal: `pnpm build && pnpm start` → http://127.0.0.1:4317
 
 ## Token
 
-Reihenfolge: `GITHUB_TOKEN` / `GH_TOKEN` → GitHub CLI (`gh auth token`).
+Reihenfolge: Token aus dem Browser (Header `X-GitHub-Token`) → `GITHUB_TOKEN` / `GH_TOKEN` → GitHub CLI (`gh auth token`).
 
 Für einen Fine-grained PAT auf die gewünschten Repos:
 Metadata (read), Contents (read), Pull requests (**write** für Auto-Merge), Commit statuses (read), Actions/Checks (read).
 Für Org-Repos (z. B. Kunden-Orgs) muss die Org fine-grained Tokens zulassen – sonst klassischen PAT mit `repo` oder die `gh`-CLI nutzen.
+
+### Token im Browser (gehostete Variante)
+
+Läuft PR Radar auf einem Server ohne eigenen Token – oder soll jede Person ihre eigenen Repo-Rechte
+und ihr eigenes API-Kontingent nutzen – kann der Token unter ⚙︎ → *Token* hinterlegt werden:
+
+- Er liegt im `localStorage` des Browsers und wird pro Anfrage als Header `X-GitHub-Token` mitgeschickt.
+  Der Server verwendet ihn nur für diesen Request und speichert ihn weder im Arbeitsspeicher noch auf der Platte.
+- Beim Speichern wird er einmal gegen GitHub geprüft (`viewer { login }`).
+- In diesem Modus pollt der Browser selbst `GET /api/snapshot` (10–30 s) statt SSE zu nutzen,
+  weil `EventSource` keine Header setzen kann und der Token nichts in der URL zu suchen hat.
+- Ein Token im Browser hat Vorrang vor dem Server-Token.
+
+Der Token ist damit für JavaScript auf dieser Seite lesbar – die Instanz also nur mit Auth davor
+(oder im eigenen Netz) betreiben, wie unten beschrieben. Die Repo-Liste bleibt serverseitig
+(`data/config.json`) und ist für alle Nutzer dieser Instanz gleich.
 
 Auto-Merge muss im Repo erlaubt sein (Settings → General → *Allow auto-merge*) und greift nur bei Branch-Protection/Rulesets mit Required Checks oder Reviews.
 
@@ -42,7 +58,8 @@ Auto-Merge muss im Repo erlaubt sein (Settings → General → *Allow auto-merge
 
 ```
 GitHub GraphQL ──(Polling, adaptiv)──▶ Node/Hono-Server ──SSE──▶ React-UI
-                                        │  Token bleibt serverseitig
+                                        │  Token serverseitig …
+                                        │  … oder pro Request aus dem Browser (X-GitHub-Token)
                                         └─ POST /api/prs/:id/auto-merge → GraphQL-Mutation
 ```
 
@@ -53,12 +70,14 @@ GitHub GraphQL ──(Polling, adaptiv)──▶ Node/Hono-Server ──SSE─�
 | `web/` | React 19 + Vite + Tailwind 4 |
 
 API: `GET /api/snapshot`, `GET /api/events` (SSE), `POST /api/refresh`, `GET /api/config`,
-`POST /api/repos`, `DELETE /api/repos/:owner/:name`, `POST /api/prs/:id/auto-merge`.
+`POST /api/repos`, `DELETE /api/repos/:owner/:name`, `POST /api/prs/:id/auto-merge`,
+`POST /api/token/check`. Alle GitHub-Endpunkte akzeptieren optional den Header `X-GitHub-Token`.
 
 ## Betrieb auf einem Server
 
 `docker compose up -d --build`. Die App bindet standardmäßig nur an `127.0.0.1`, weil sie mit deinem Token
-Auto-Merge schalten kann. Wenn sie öffentlich erreichbar wird (Traefik o. ä.), unbedingt
+Auto-Merge schalten kann. Ohne `GITHUB_TOKEN` startet der Server trotzdem – dann bringt jeder Browser
+seinen eigenen Token mit (siehe oben). Wenn sie öffentlich erreichbar wird (Traefik o. ä.), unbedingt
 `BASIC_AUTH_USER`/`BASIC_AUTH_PASSWORD` setzen oder einen Auth-Proxy davorhängen.
 
 ## Ideen / nächste Schritte
