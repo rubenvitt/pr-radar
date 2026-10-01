@@ -7,7 +7,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use super::Workspace;
-use super::parts::{avatar, pipeline_icon, repo_name};
+use super::parts::{avatar, card_segment, pipeline_icon, repo_name};
 use crate::model::{Check, OpenPr, PipelineState, ReviewDecision, Snapshot};
 use crate::time::ago;
 
@@ -345,7 +345,8 @@ fn paint_edges(bounds: Bounds<Pixels>, edges: &[Edge], phase: Option<f32>, windo
 }
 
 /// Kanten zwischen zwei Spalten als Bezier-Kurven; y-Werte in rem ab Oberkante.
-fn edges(links: Vec<(f32, f32, Tone)>, cx: &App) -> AnyElement {
+/// `beat` wechselt mit jedem Poll; dann wandert einmal ein Punkt über laufende Kanten.
+fn edges(links: Vec<(f32, f32, Tone)>, beat: Option<i64>, cx: &App) -> AnyElement {
     let edges: Vec<Edge> = links
         .into_iter()
         .map(|(y1, y2, tone)| Edge {
@@ -360,7 +361,8 @@ fn edges(links: Vec<(f32, f32, Tone)>, cx: &App) -> AnyElement {
         .collect();
     let frame = || div().w_8().h_full().flex_shrink_0();
 
-    if !edges.iter().any(|e| e.running) || !super::motion::enabled(cx) {
+    let beat = beat.filter(|_| edges.iter().any(|e| e.running) && super::motion::enabled(cx));
+    let Some(beat) = beat else {
         return frame()
             .child(
                 canvas(
@@ -370,13 +372,11 @@ fn edges(links: Vec<(f32, f32, Tone)>, cx: &App) -> AnyElement {
                 .size_full(),
             )
             .into_any_element();
-    }
+    };
     frame()
         .with_animation(
-            ElementId::Name("edge-flow".into()),
-            Animation::new(std::time::Duration::from_millis(1400))
-                .repeat()
-                .with_easing(ease_in_out),
+            SharedString::from(format!("edge-flow-{beat}")),
+            Animation::new(std::time::Duration::from_millis(1400)).with_easing(ease_in_out),
             move |el, t| {
                 let edges = edges.clone();
                 el.child(
@@ -397,8 +397,16 @@ impl Workspace {
         pr: &OpenPr,
         snapshot: &Snapshot,
         show_repo: bool,
+        first: bool,
+        last: bool,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
+        let beat = self
+            .radar
+            .read(cx)
+            .status()
+            .last_success
+            .map(|t| t.timestamp_millis());
         let checks = check_nodes(pr);
         let n = checks.len() as f32;
         let checks_h = n * CHECK_H + (n - 1.) * CHECK_GAP;
@@ -498,68 +506,70 @@ impl Workspace {
         .w(rems(11.))
         .flex_shrink_0();
 
-        div()
-            .px_4()
-            .border_b_1()
-            .border_color(cx.theme().border)
-            .when(pr.has_conflict(), |this| {
-                this.bg(cx.theme().danger.opacity(0.05))
-            })
-            .child(
-                h_flex()
-                    .h(rems(h))
-                    .items_center()
-                    .child(pr_node)
-                    .child(edges(
-                        checks
-                            .iter()
-                            .zip(&ys)
-                            .map(|(c, &y)| (mid, y, Tone::of(c.state)))
-                            .collect(),
-                        cx,
-                    ))
-                    .child(check_column)
-                    .child(edges(
-                        checks
-                            .iter()
-                            .zip(&ys)
-                            .map(|(c, &y)| (y, mid, Tone::of(c.state)))
-                            .collect(),
-                        cx,
-                    ))
-                    .child(
-                        node(
-                            review.tone,
-                            review.icon.small(),
-                            review.title,
-                            review.sub,
-                            (true, true),
+        card_segment(first, last, cx).child(
+            div()
+                .px_4()
+                .when(pr.has_conflict(), |this| {
+                    this.bg(cx.theme().danger.opacity(0.05))
+                })
+                .child(
+                    h_flex()
+                        .h(rems(h))
+                        .items_center()
+                        .child(pr_node)
+                        .child(edges(
+                            checks
+                                .iter()
+                                .zip(&ys)
+                                .map(|(c, &y)| (mid, y, Tone::of(c.state)))
+                                .collect(),
+                            beat,
                             cx,
-                        )
-                        .id(SharedString::from(format!("flow-review-{}", pr.id)))
-                        .w(rems(9.))
-                        .flex_shrink_0(),
-                    )
-                    .child(edges(vec![(mid, mid, review.tone)], cx))
-                    .child(merge_node)
-                    .child(edges(vec![(mid, mid, merge_tone)], cx))
-                    .child(
-                        node(
-                            Tone::of(base_state),
-                            Icon::new(Lucide::GitBranch).small(),
-                            div().font_family(mono).child(pr.base_ref.clone()),
-                            if on_default {
-                                format!("Pipeline {}", base_state.label())
-                            } else {
-                                "Ziel-Branch".into()
-                            },
-                            (true, false),
+                        ))
+                        .child(check_column)
+                        .child(edges(
+                            checks
+                                .iter()
+                                .zip(&ys)
+                                .map(|(c, &y)| (y, mid, Tone::of(c.state)))
+                                .collect(),
+                            beat,
                             cx,
+                        ))
+                        .child(
+                            node(
+                                review.tone,
+                                review.icon.small(),
+                                review.title,
+                                review.sub,
+                                (true, true),
+                                cx,
+                            )
+                            .id(SharedString::from(format!("flow-review-{}", pr.id)))
+                            .w(rems(9.))
+                            .flex_shrink_0(),
                         )
-                        .id(SharedString::from(format!("flow-base-{}", pr.id)))
-                        .w_32()
-                        .flex_shrink_0(),
-                    ),
-            )
+                        .child(edges(vec![(mid, mid, review.tone)], beat, cx))
+                        .child(merge_node)
+                        .child(edges(vec![(mid, mid, merge_tone)], beat, cx))
+                        .child(
+                            node(
+                                Tone::of(base_state),
+                                Icon::new(Lucide::GitBranch).small(),
+                                div().font_family(mono).child(pr.base_ref.clone()),
+                                if on_default {
+                                    format!("Pipeline {}", base_state.label())
+                                } else {
+                                    "Ziel-Branch".into()
+                                },
+                                (true, false),
+                                cx,
+                            )
+                            .id(SharedString::from(format!("flow-base-{}", pr.id)))
+                            .w_32()
+                            .flex_shrink_0(),
+                        ),
+                ),
+        )
     }
 }

@@ -3,8 +3,7 @@
 use gpui_kit::assets::IconName as Lucide;
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::{
-    ActiveTheme as _, Icon, Sizable as _, avatar::Avatar, h_flex, spinner::Spinner, tag::Tag,
-    v_flex,
+    ActiveTheme as _, Icon, Sizable as _, avatar::Avatar, h_flex, tag::Tag, v_flex,
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
@@ -25,7 +24,11 @@ pub fn state_color(state: PipelineState, cx: &App) -> Hsla {
 pub fn pipeline_icon(state: PipelineState, cx: &App) -> AnyElement {
     let color = state_color(state, cx);
     match state {
-        PipelineState::Running => Spinner::new().color(color).small().into_any_element(),
+        // Bewusst statisch: Dauer-Spinner pro Zeile zwingen GPUI zu einem Neuaufbau je Frame.
+        PipelineState::Running => Icon::new(Lucide::Hourglass)
+            .small()
+            .text_color(color)
+            .into_any_element(),
         PipelineState::Passed => Icon::new(Lucide::CircleCheck)
             .small()
             .text_color(color)
@@ -108,4 +111,19 @@ pub fn meta_row(cx: &App) -> Div {
         .text_xs()
         .text_color(cx.theme().muted_foreground)
         .min_w_0()
+}
+
+/// Ausschnitt einer Karte: In der virtualisierten Liste ist jede Zeile ein eigener Eintrag,
+/// die Zeilen einer Gruppe ergeben zusammen eine Karte mit runden Ecken.
+pub fn card_segment(first: bool, last: bool, cx: &App) -> Div {
+    let r = cx.theme().radius_lg;
+    v_flex()
+        .bg(cx.theme().group_box)
+        .border_color(cx.theme().border)
+        .border_l_1()
+        .border_r_1()
+        .border_b_1()
+        .overflow_hidden()
+        .when(first, |d| d.border_t_1().rounded_tl(r).rounded_tr(r))
+        .when(last, |d| d.rounded_bl(r).rounded_br(r))
 }

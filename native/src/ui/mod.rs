@@ -1,5 +1,6 @@
 //! Hauptfenster: Titelleiste, Seitenleiste (Ansichten, Filter, Repos) und Inhaltsbereich.
 
+mod content;
 mod flow;
 mod motion;
 mod parts;
@@ -19,9 +20,7 @@ use gpui_kit::component::{
     h_flex,
     input::{Input, InputEvent, InputState},
     notification::Notification,
-    scroll::ScrollableElement as _,
     sidebar::{Sidebar, SidebarFooter, SidebarGroup, SidebarMenu, SidebarMenuItem},
-    spinner::Spinner,
     v_flex,
 };
 use gpui_kit::prelude::FluentBuilder as _;
@@ -31,7 +30,7 @@ use crate::config::{Prefs, Quick, Tab, View};
 use crate::model::{OpenPr, PipelineState, Snapshot, TransitionKind};
 use crate::radar::{PollState, Radar, RadarEvent};
 use crate::time::ago;
-use parts::{empty_state, pipeline_icon, repo_name, state_color};
+use parts::state_color;
 use settings::RepoSettings;
 
 actions!(
@@ -103,6 +102,11 @@ pub struct Workspace {
     /// Kürzlich geänderte PRs → Durchlauf-Nummer des Aufleuchtens
     flashes: HashMap<String, u64>,
     flash_epoch: u64,
+    /// Vom Nutzer ausgelöstes Neuladen läuft (nur dann dreht der Spinner)
+    manual_refresh: bool,
+    /// Virtualisierte Inhaltsliste
+    list: ListState,
+    list_model: content::ListModel,
     settings: Entity<RepoSettings>,
     _subscriptions: Vec<Subscription>,
     _ticker: Task<()>,
@@ -217,7 +221,10 @@ impl Workspace {
                     _ => {}
                 },
             ),
-            cx.observe_in(&radar, window, |_, radar, window, cx| {
+            cx.observe_in(&radar, window, |this, radar, window, cx| {
+                if radar.read(cx).status().state != PollState::Polling {
+                    this.manual_refresh = false;
+                }
                 let failed = radar
                     .read(cx)
                     .snapshot()
@@ -258,6 +265,9 @@ impl Workspace {
             toggled_releases: HashSet::new(),
             flashes: HashMap::new(),
             flash_epoch: 0,
+            manual_refresh: false,
+            list: ListState::new(0, ListAlignment::Top, px(600.)),
+            list_model: content::ListModel::default(),
             settings,
             _subscriptions: subscriptions,
             _ticker: ticker,
@@ -339,6 +349,7 @@ impl Workspace {
     }
 
     fn refresh(&mut self, _: &Refresh, _: &mut Window, cx: &mut Context<Self>) {
+        self.manual_refresh = true;
         self.radar.update(cx, |r, cx| r.refresh(cx));
     }
 
@@ -375,6 +386,7 @@ impl Workspace {
         if !self.expanded.remove(id) {
             self.expanded.insert(id.to_string());
         }
+        self.remeasure_key(&format!("pr:{id}"));
         cx.notify();
     }
 
@@ -421,10 +433,13 @@ impl Workspace {
                         .border_color(cx.theme().border)
                         .text_xs()
                         .text_color(cx.theme().muted_foreground)
-                        .child(motion::pulse(
-                            "live-dot",
-                            div().size_1p5().rounded_full().bg(dot),
-                            status.state != PollState::Error,
+                        .child(motion::heartbeat(
+                            div().rounded_full().bg(dot),
+                            dot,
+                            status
+                                .last_success
+                                .filter(|_| status.state != PollState::Error)
+                                .map(|t| t.timestamp_millis()),
                             cx,
                         ))
                         .child(label)
@@ -439,7 +454,8 @@ impl Workspace {
                         .ghost()
                         .small()
                         .icon(IconName::RefreshCw)
-                        .loading(status.state == PollState::Polling)
+                        // Hintergrund-Polls drehen keinen Spinner – jeder Animationsframe baut das Fenster neu auf.
+                        .loading(self.manual_refresh && status.state == PollState::Polling)
                         .tooltip_with_action("Aktualisieren", &Refresh, Some(CONTEXT))
                         .on_click(
                             cx.listener(|this, _, window, cx| this.refresh(&Refresh, window, cx)),
@@ -694,140 +710,6 @@ impl Workspace {
                 )
             })
     }
-
-    /* ---------- Inhalt ---------- */
-
-    fn render_content(&self, d: Option<&Derived>, cx: &mut Context<Self>) -> AnyElement {
-        let radar = self.radar.read(cx);
-        if radar.repos().is_empty() {
-            return empty_state(Lucide::GitPullRequest, "Noch keine Repositories", None, cx)
-                .child(
-                    Button::new("add-repos")
-                        .label("Repositories hinzufügen…")
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.open_settings(&OpenSettings, window, cx)
-                        })),
-                )
-                .into_any_element();
-        }
-        let Some(d) = d else {
-            let error = radar.status().error.clone();
-            return match error {
-                Some(e) => empty_state(
-                    Lucide::CircleX,
-                    "GitHub nicht erreichbar",
-                    Some(e.into()),
-                    cx,
-                )
-                .into_any_element(),
-                None => v_flex()
-                    .flex_1()
-                    .items_center()
-                    .justify_center()
-                    .gap_3()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(Spinner::new().large())
-                    .child("Lade Daten von GitHub …")
-                    .into_any_element(),
-            };
-        };
-
-        match d.prefs.tab {
-            Tab::Open => self.render_open(d, cx),
-            Tab::Merged => self.render_merged(d, cx),
-            Tab::Releases => self.render_releases(d, cx),
-        }
-    }
-
-    fn render_open(&self, d: &Derived, cx: &mut Context<Self>) -> AnyElement {
-        if d.open_list.is_empty() {
-            return empty_state(
-                IconName::Inbox,
-                "Nichts offen",
-                Some("Keine Pull Requests für diesen Filter.".into()),
-                cx,
-            )
-            .into_any_element();
-        }
-        let flow = d.prefs.view == View::Flow;
-        if !d.prefs.grouped {
-            let prs: Vec<&OpenPr> = d.open_list.iter().map(|&i| &d.snapshot.open[i]).collect();
-            return self
-                .render_pr_card(&prs, &d.snapshot, true, flow, cx)
-                .into_any_element();
-        }
-
-        let mut groups: Vec<(String, Vec<&OpenPr>)> = Vec::new();
-        for &i in &d.open_list {
-            let pr = &d.snapshot.open[i];
-            match groups.iter_mut().find(|(r, _)| *r == pr.repo) {
-                Some((_, list)) => list.push(pr),
-                None => groups.push((pr.repo.clone(), vec![pr])),
-            }
-        }
-        v_flex()
-            .gap_6()
-            .children(groups.into_iter().map(|(repo, prs)| {
-                v_flex()
-                    .gap_2()
-                    .child(self.render_repo_header(&repo, prs.len(), &d.snapshot, cx))
-                    .child(self.render_pr_card(&prs, &d.snapshot, false, flow, cx))
-            }))
-            .into_any_element()
-    }
-
-    fn render_repo_header(
-        &self,
-        repo: &str,
-        count: usize,
-        snapshot: &Snapshot,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement {
-        let info = snapshot.repo(repo);
-        let url = info
-            .map(|i| i.url.clone())
-            .unwrap_or_else(|| format!("https://github.com/{repo}"));
-        h_flex()
-            .gap_2()
-            .px_1()
-            .child(
-                h_flex()
-                    .id(SharedString::from(format!("repo-{repo}")))
-                    .text_sm()
-                    .font_semibold()
-                    .cursor_pointer()
-                    .child(repo_name(repo, cx))
-                    .on_click(move |_, _, cx| cx.open_url(&url)),
-            )
-            .child(
-                div()
-                    .text_xs()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(count.to_string()),
-            )
-            .child(div().flex_1())
-            .when_some(
-                info.and_then(|i| {
-                    i.default_branch
-                        .clone()
-                        .map(|b| (b, i.default_branch_pipeline))
-                }),
-                |this, (branch, state)| {
-                    this.child(
-                        h_flex()
-                            .gap_1p5()
-                            .text_xs()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(pipeline_icon(state, cx))
-                            .child(
-                                div()
-                                    .font_family(cx.theme().mono_font_family.clone())
-                                    .child(branch),
-                            ),
-                    )
-                },
-            )
-    }
 }
 
 impl Render for Workspace {
@@ -845,6 +727,7 @@ impl Render for Workspace {
             .clone()
             .filter(|_| derived.is_some());
         let animate = motion::enabled(cx);
+        let content = self.render_content(derived.as_ref(), cx);
 
         v_flex()
             .size_full()
@@ -874,38 +757,22 @@ impl Render for Workspace {
                             .flex_1()
                             .min_w_0()
                             .child(self.render_toolbar(&prefs, cx))
-                            .child(
-                                v_flex()
-                                    .id("content")
-                                    .flex_1()
-                                    .min_h_0()
-                                    .px_4()
-                                    .py_4()
-                                    .gap_4()
-                                    .when_some(error, |this, e| {
-                                        this.child(
-                                            gpui_kit::component::alert::Alert::error(
-                                                "sync-error",
-                                                e,
-                                            )
+                            .when_some(error, |this, e| {
+                                this.child(
+                                    div().px_4().pt_4().child(
+                                        gpui_kit::component::alert::Alert::error("sync-error", e)
                                             .title("Aktualisierung fehlgeschlagen"),
-                                        )
-                                    })
-                                    .child(
-                                        // Lesbare Zeilenlänge auch in sehr breiten Fenstern.
-                                        div().w_full().max_w(rems(84.)).mx_auto().child(
-                                            motion::enter(
-                                                SharedString::from(format!(
-                                                    "content-{:?}-{:?}",
-                                                    prefs.tab, prefs.view
-                                                )),
-                                                self.render_content(derived.as_ref(), cx),
-                                                animate,
-                                            ),
-                                        ),
-                                    )
-                                    .overflow_y_scrollbar(),
-                            ),
+                                    ),
+                                )
+                            })
+                            .child(div().flex_1().min_h_0().child(motion::enter(
+                                SharedString::from(format!(
+                                    "content-{:?}-{:?}",
+                                    prefs.tab, prefs.view
+                                )),
+                                content,
+                                animate,
+                            ))),
                     ),
             )
     }

@@ -17,7 +17,7 @@ pub fn enabled(cx: &App) -> bool {
 
 /// Inhalt weich einblenden und leicht nach oben gleiten lassen (Tab-/Ansichtswechsel, Aufklappen).
 pub fn enter(id: impl Into<ElementId>, child: impl IntoElement, animate: bool) -> AnyElement {
-    let el = v_flex().child(child);
+    let el = v_flex().size_full().child(child);
     if !animate {
         return el.into_any_element();
     }
@@ -29,19 +29,36 @@ pub fn enter(id: impl Into<ElementId>, child: impl IntoElement, animate: bool) -
     .into_any_element()
 }
 
-/// Ruhiges Pulsieren, z. B. für den Live-Punkt.
-pub fn pulse(id: &'static str, el: Div, active: bool, cx: &App) -> AnyElement {
-    if !active || !enabled(cx) {
-        return el.into_any_element();
+/// Herzschlag: ein Ring breitet sich einmal um den Punkt aus, wenn `beat` wechselt
+/// (z. B. bei jedem erfolgreichen Poll). Einmalig statt Endlosschleife – die würde
+/// jeden Frame die ganze Ansicht neu aufbauen.
+pub fn heartbeat(dot: Div, color: Hsla, beat: Option<i64>, cx: &App) -> AnyElement {
+    let base = 0.375; // Punktgröße in rem (size_1p5)
+    let dot = div().relative().size(rems(base)).child(dot.size_full());
+    match beat.filter(|_| enabled(cx)) {
+        None => dot.into_any_element(),
+        Some(beat) => dot
+            .child(
+                div()
+                    .absolute()
+                    .rounded_full()
+                    .border_1()
+                    .border_color(color)
+                    .with_animation(
+                        SharedString::from(format!("heartbeat-{beat}")),
+                        Animation::new(Duration::from_millis(1100)).with_easing(ease_out_quint()),
+                        move |ring, t| {
+                            let size = base + 1.0 * t;
+                            let offset = -(size - base) / 2.;
+                            ring.size(rems(size))
+                                .top(rems(offset))
+                                .left(rems(offset))
+                                .opacity(0.9 * (1. - t))
+                        },
+                    ),
+            )
+            .into_any_element(),
     }
-    el.with_animation(
-        id,
-        Animation::new(Duration::from_millis(1800))
-            .repeat()
-            .with_easing(pulsating_between(0.35, 1.)),
-        |el, t| el.opacity(t),
-    )
-    .into_any_element()
 }
 
 impl Workspace {

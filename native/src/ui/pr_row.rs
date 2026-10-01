@@ -14,7 +14,9 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use super::Workspace;
-use super::parts::{avatar, label_tag, meta_row, pipeline_icon, repo_name, state_color};
+use super::parts::{
+    avatar, card_segment, label_tag, meta_row, pipeline_icon, repo_name, state_color,
+};
 use crate::model::{CheckState, MergeMethod, OpenPr, ReviewDecision, Snapshot};
 use crate::time::ago;
 
@@ -65,53 +67,13 @@ impl MergeAction {
 
 impl Workspace {
     /// Karte mit PR-Zeilen (Liste) oder Flow-Knoten.
-    pub(super) fn render_pr_card(
-        &self,
-        prs: &[&OpenPr],
-        snapshot: &Snapshot,
-        show_repo: bool,
-        flow: bool,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let rows: Vec<AnyElement> = prs
-            .iter()
-            .map(|pr| {
-                if flow {
-                    self.render_flow_row(pr, snapshot, show_repo, cx)
-                        .into_any_element()
-                } else {
-                    self.render_pr_row(pr, snapshot, show_repo, cx)
-                        .into_any_element()
-                }
-            })
-            .collect();
-        let card = v_flex()
-            .rounded(cx.theme().radius_lg)
-            .border_1()
-            .border_color(cx.theme().border)
-            .bg(cx.theme().group_box)
-            .overflow_hidden()
-            .children(rows);
-        if !flow {
-            return card.into_any_element();
-        }
-        // Der Flow braucht Mindestbreite; in schmalen Fenstern scrollt nur er horizontal.
-        div()
-            .id(SharedString::from(format!(
-                "flow-scroll-{}",
-                prs.first().map_or("", |p| p.id.as_str())
-            )))
-            .w_full()
-            .overflow_x_scroll()
-            .child(card.min_w(rems(58.)))
-            .into_any_element()
-    }
-
-    fn render_pr_row(
+    pub(super) fn render_pr_row(
         &self,
         pr: &OpenPr,
         snapshot: &Snapshot,
         show_repo: bool,
+        first: bool,
+        last: bool,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let open = self.expanded.contains(&pr.id);
@@ -222,9 +184,7 @@ impl Workspace {
             _ => None,
         };
 
-        v_flex()
-            .border_b_1()
-            .border_color(cx.theme().border)
+        card_segment(first, last, cx)
             .relative()
             .when(conflict, |this| this.bg(cx.theme().danger.opacity(0.06)))
             .when_some(
