@@ -366,32 +366,51 @@ impl Workspace {
                 .into_any_element(),
             MergeAction::MergeNow(methods) | MergeAction::Enable(methods) if !busy => {
                 let now = matches!(MergeAction::of(pr, snapshot), MergeAction::MergeNow(_));
+                let run = move |radar: &Entity<crate::radar::Radar>,
+                                id: &str,
+                                m: MergeMethod,
+                                cx: &mut App| {
+                    radar.update(cx, |r, cx| {
+                        if now {
+                            r.merge(id, m, cx)
+                        } else {
+                            r.set_auto_merge(id, Some(m), cx)
+                        }
+                    });
+                };
                 let button = Button::new(button_id)
                     .small()
                     .outline()
-                    .dropdown_caret(true)
                     .when(now, |b| b.success().icon(Lucide::GitMerge).label("Mergen"))
-                    .when(!now, |b| b.icon(Lucide::Zap).label("Auto-Merge"))
+                    .when(!now, |b| b.icon(Lucide::Zap).label("Auto-Merge"));
+
+                // Nur eine erlaubte Methode: kein Menü, der Button führt sie direkt aus.
+                if let [m] = methods[..] {
+                    return button
+                        .tooltip(if now {
+                            format!("Jetzt mergen ({})", m.label())
+                        } else {
+                            format!("Auto-Merge aktivieren ({})", m.label())
+                        })
+                        .on_click(move |_, _, cx| run(&radar, &id, m, cx))
+                        .into_any_element();
+                }
+                button
+                    .dropdown_caret(true)
                     .tooltip(if now {
                         "Jetzt mergen …"
                     } else {
                         "Auto-Merge aktivieren …"
-                    });
-                button
+                    })
                     .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
                         let menu = menu.label(if now { "Jetzt mergen" } else { "Merge-Methode" });
                         methods.iter().fold(menu, |menu, &m| {
                             let radar = radar.clone();
                             let id = id.clone();
-                            menu.item(PopupMenuItem::new(m.label()).on_click(move |_, _, cx| {
-                                radar.update(cx, |r, cx| {
-                                    if now {
-                                        r.merge(&id, m, cx)
-                                    } else {
-                                        r.set_auto_merge(&id, Some(m), cx)
-                                    }
-                                });
-                            }))
+                            menu.item(
+                                PopupMenuItem::new(m.label())
+                                    .on_click(move |_, _, cx| run(&radar, &id, m, cx)),
+                            )
                         })
                     })
                     .into_any_element()

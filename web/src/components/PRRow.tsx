@@ -72,6 +72,8 @@ export function MergeControl({ pr, repo, onError }: { pr: OpenPR; repo?: RepoInf
         onClick={(e) => {
           e.stopPropagation();
           if (on) void run(() => api.autoMerge(pr.id, false));
+          // Nur eine erlaubte Methode: kein Menü, direkt ausführen.
+          else if (methods.length === 1) choose(methods[0]);
           else setMenu((m) => !m);
         }}
         className={cx(
