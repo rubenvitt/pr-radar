@@ -1,8 +1,8 @@
 //! `Radar` besitzt Konfiguration, letzten Snapshot und Poll-Status und pollt GitHub adaptiv.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{Result, anyhow, bail};
 use chrono::{DateTime, Utc};
@@ -10,7 +10,19 @@ use gpui_kit::{AppContext as _, Context, EventEmitter, Task};
 
 use crate::config::{Config, Prefs, parse_repo};
 use crate::github::{GitHub, RateLimit, TokenSource};
-use crate::model::{MergeMethod, Snapshot, Transition, diff_snapshots};
+use crate::model::{AutoMerge, MergeMethod, Snapshot, Transition, diff_snapshots};
+
+/// Wie lange ein lokal angenommener Auto-Merge-Zustand gegen ältere GitHub-Antworten gewinnt
+const OPTIMISTIC_TTL: Duration = Duration::from_secs(30);
+
+/// Was nach einer erfolgreichen Mutation passiert, bis GitHub den neuen Stand liefert.
+#[derive(Clone, Copy)]
+enum Settle {
+    /// Auto-Merge an/aus: sofort lokal übernehmen.
+    AutoMerge(Option<MergeMethod>),
+    /// Direkt gemergt: Spinner bis zum nächsten Poll (dann verschwindet der PR).
+    AwaitRefresh,
+}
 
 /// Normales Poll-Intervall
 const NORMAL: Duration = Duration::from_secs(30);
@@ -50,6 +62,10 @@ pub struct Radar {
     status: Status,
     /// PR-IDs, für die gerade eine Mutation läuft
     pending: HashSet<String>,
+    /// Gemergte PRs, die bis zum nächsten Poll noch als „läuft“ gelten
+    awaiting_refresh: HashSet<String>,
+    /// Lokal vorweggenommener Auto-Merge-Zustand je PR, bis GitHub ihn bestätigt
+    optimistic: HashMap<String, (Instant, Option<AutoMerge>)>,
     poll_task: Option<Task<()>>,
 }
 
@@ -70,6 +86,8 @@ impl Radar {
                 token_source: None,
             },
             pending: HashSet::new(),
+            awaiting_refresh: HashSet::new(),
+            optimistic: HashMap::new(),
             poll_task: None,
         };
         this.refresh(cx);
@@ -93,7 +111,7 @@ impl Radar {
     }
 
     pub fn is_pending(&self, pr_id: &str) -> bool {
-        self.pending.contains(pr_id)
+        self.pending.contains(pr_id) || self.awaiting_refresh.contains(pr_id)
     }
 
     pub fn update_prefs(&mut self, cx: &mut Context<Self>, f: impl FnOnce(&mut Prefs)) {
@@ -147,7 +165,10 @@ impl Radar {
                         cx.emit(RadarEvent::Changed(changed));
                     }
                 }
-                self.snapshot = Some(Arc::new(f.snapshot));
+                let mut snapshot = f.snapshot;
+                reconcile_optimistic(&mut self.optimistic, &mut snapshot, Instant::now());
+                self.snapshot = Some(Arc::new(snapshot));
+                self.awaiting_refresh.clear();
                 self.status.rate_limit = f.rate_limit.or(self.status.rate_limit.take());
                 self.status.state = PollState::Idle;
                 self.status.error = None;
@@ -209,7 +230,7 @@ impl Radar {
         }
         let github = self.github.clone();
         let id = pr_id.to_string();
-        self.run_mutation(pr_id, cx, async move {
+        self.run_mutation(pr_id, Settle::AutoMerge(method), cx, async move {
             github.set_auto_merge(&id, method).await
         });
     }
@@ -221,7 +242,37 @@ impl Radar {
         }
         let github = self.github.clone();
         let id = pr_id.to_string();
-        self.run_mutation(pr_id, cx, async move { github.merge(&id, method).await });
+        self.run_mutation(pr_id, Settle::AwaitRefresh, cx, async move {
+            github.merge(&id, method).await
+        });
+    }
+
+    /// Zeigt einen erfolgreich geschalteten Auto-Merge sofort an, statt auf den nächsten Poll zu warten.
+    fn apply_auto_merge(
+        &mut self,
+        pr_id: &str,
+        method: Option<MergeMethod>,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(snapshot) = self.snapshot.as_mut() else {
+            return;
+        };
+        let viewer = snapshot.viewer.clone();
+        let state = method.map(|method| AutoMerge {
+            method,
+            enabled_by: viewer,
+        });
+        if let Some(pr) = Arc::make_mut(snapshot)
+            .open
+            .iter_mut()
+            .find(|p| p.id == pr_id)
+        {
+            pr.auto_merge = state.clone();
+        }
+        self.optimistic
+            .insert(pr_id.to_string(), (Instant::now(), state));
+        cx.emit(RadarEvent::Changed(vec![pr_id.to_string()]));
+        cx.notify();
     }
 
     /// Nur Methoden zulassen, die das Repo des PRs erlaubt.
@@ -248,6 +299,7 @@ impl Radar {
     fn run_mutation(
         &mut self,
         pr_id: &str,
+        settle: Settle,
         cx: &mut Context<Self>,
         work: impl Future<Output = Result<()>> + Send + 'static,
     ) {
@@ -260,8 +312,12 @@ impl Radar {
             let result = cx.background_spawn(work).await;
             this.update(cx, |this, cx| {
                 this.pending.remove(&id);
-                if let Err(e) = result {
-                    cx.emit(RadarEvent::ActionFailed(format!("{e:#}")));
+                match (result, settle) {
+                    (Err(e), _) => cx.emit(RadarEvent::ActionFailed(format!("{e:#}"))),
+                    (Ok(()), Settle::AutoMerge(method)) => this.apply_auto_merge(&id, method, cx),
+                    (Ok(()), Settle::AwaitRefresh) => {
+                        this.awaiting_refresh.insert(id.clone());
+                    }
                 }
                 this.refresh(cx);
             })
@@ -285,4 +341,96 @@ fn changed_prs(prev: &Snapshot, next: &Snapshot) -> Vec<String> {
         })
         .map(|pr| pr.id.clone())
         .collect()
+}
+
+/// GitHub liefert einen neuen Auto-Merge-Zustand manchmal erst verzögert. Bis er ankommt
+/// (max. `OPTIMISTIC_TTL`), gilt der lokal angenommene, damit der Button nicht zurückspringt.
+fn reconcile_optimistic(
+    optimistic: &mut HashMap<String, (Instant, Option<AutoMerge>)>,
+    snapshot: &mut Snapshot,
+    now: Instant,
+) {
+    optimistic.retain(|id, (at, expected)| {
+        let Some(pr) = snapshot.open.iter_mut().find(|p| p.id == *id) else {
+            return false;
+        };
+        if pr.auto_merge.is_some() == expected.is_some() || now.duration_since(*at) > OPTIMISTIC_TTL
+        {
+            return false;
+        }
+        pr.auto_merge = expected.clone();
+        true
+    });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::{Mergeable, OpenPr, Pipeline, PipelineState};
+
+    fn snapshot(auto: Option<AutoMerge>) -> Snapshot {
+        Snapshot {
+            open: vec![OpenPr {
+                id: "1".into(),
+                repo: "a/b".into(),
+                number: 1,
+                title: "t".into(),
+                url: "u".into(),
+                author: None,
+                is_draft: false,
+                updated_at: Utc::now(),
+                head_ref: "h".into(),
+                base_ref: "main".into(),
+                additions: 0,
+                deletions: 0,
+                review_decision: None,
+                mergeable: Mergeable::Mergeable,
+                merge_state_status: "BLOCKED".into(),
+                auto_merge: auto,
+                labels: vec![],
+                review_requests: vec![],
+                pipeline: Pipeline {
+                    state: PipelineState::Running,
+                    total: 0,
+                    passed: 0,
+                    failed: 0,
+                    running: 0,
+                    checks: vec![],
+                },
+                merge_methods: vec![MergeMethod::Merge],
+            }],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn optimistischer_auto_merge_ueberlebt_veraltete_antwort() {
+        let t0 = Instant::now();
+        let on = Some(AutoMerge {
+            method: MergeMethod::Merge,
+            enabled_by: None,
+        });
+        let mut optimistic = HashMap::from([("1".to_string(), (t0, on.clone()))]);
+
+        // GitHub hängt hinterher → lokaler Zustand bleibt sichtbar
+        let mut stale = snapshot(None);
+        reconcile_optimistic(&mut optimistic, &mut stale, t0);
+        assert_eq!(stale.open[0].auto_merge, on);
+        assert!(optimistic.contains_key("1"));
+
+        // GitHub bestätigt → Eintrag erledigt
+        let mut fresh = snapshot(on.clone());
+        reconcile_optimistic(&mut optimistic, &mut fresh, t0);
+        assert!(optimistic.is_empty());
+
+        // Nach Ablauf gewinnt GitHub
+        let mut optimistic = HashMap::from([("1".to_string(), (t0, on))]);
+        let mut stale = snapshot(None);
+        reconcile_optimistic(
+            &mut optimistic,
+            &mut stale,
+            t0 + OPTIMISTIC_TTL + Duration::from_secs(1),
+        );
+        assert_eq!(stale.open[0].auto_merge, None);
+    }
 }

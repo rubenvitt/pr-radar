@@ -357,15 +357,41 @@ impl Workspace {
                 .icon(Lucide::Zap)
                 .label(format!("Auto · {}", method.label()))
                 .loading(busy)
-                .tooltip(format!(
-                    "Auto-Merge aktiv ({}{}) – klicken zum Deaktivieren",
-                    method.label(),
-                    by.map(|b| format!(", von {b}")).unwrap_or_default()
-                ))
-                .on_click(move |_, _, cx| radar.update(cx, |r, cx| r.set_auto_merge(&id, None, cx)))
+                .tooltip(if busy {
+                    "Auto-Merge wird geändert …".to_string()
+                } else {
+                    format!(
+                        "Auto-Merge aktiv ({}{}) – klicken zum Deaktivieren",
+                        method.label(),
+                        by.map(|b| format!(", von {b}")).unwrap_or_default()
+                    )
+                })
+                .when(!busy, |b| {
+                    b.on_click(move |_, _, cx| {
+                        radar.update(cx, |r, cx| r.set_auto_merge(&id, None, cx))
+                    })
+                })
                 .into_any_element(),
-            MergeAction::MergeNow(methods) | MergeAction::Enable(methods) if !busy => {
+            MergeAction::MergeNow(methods) | MergeAction::Enable(methods) => {
                 let now = matches!(MergeAction::of(pr, snapshot), MergeAction::MergeNow(_));
+                let button = Button::new(button_id)
+                    .small()
+                    .outline()
+                    .when(now, |b| b.success().icon(Lucide::GitMerge).label("Mergen"))
+                    .when(!now, |b| b.icon(Lucide::Zap).label("Auto-Merge"));
+
+                // Läuft: gleiche Optik, Spinner statt Symbol, keine weiteren Klicks.
+                if busy {
+                    return button
+                        .loading(true)
+                        .tooltip(if now {
+                            "Wird gemergt …"
+                        } else {
+                            "Auto-Merge wird aktiviert …"
+                        })
+                        .into_any_element();
+                }
+
                 let run = move |radar: &Entity<crate::radar::Radar>,
                                 id: &str,
                                 m: MergeMethod,
@@ -378,11 +404,6 @@ impl Workspace {
                         }
                     });
                 };
-                let button = Button::new(button_id)
-                    .small()
-                    .outline()
-                    .when(now, |b| b.success().icon(Lucide::GitMerge).label("Mergen"))
-                    .when(!now, |b| b.icon(Lucide::Zap).label("Auto-Merge"));
 
                 // Nur eine erlaubte Methode: kein Menü, der Button führt sie direkt aus.
                 if let [m] = methods[..] {
@@ -415,12 +436,6 @@ impl Workspace {
                     })
                     .into_any_element()
             }
-            MergeAction::MergeNow(_) | MergeAction::Enable(_) => Button::new(button_id)
-                .small()
-                .outline()
-                .label("Mergen")
-                .loading(true)
-                .into_any_element(),
             MergeAction::Unavailable(reason) => Button::new(button_id)
                 .small()
                 .outline()
