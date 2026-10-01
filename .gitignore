@@ -4,3 +4,4 @@ dist-server
 data/config.json
 .env
 .DS_Store
+native/target
