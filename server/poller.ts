@@ -6,6 +6,10 @@ import { applyBranchRules, normalizeMerged, normalizeOpen, normalizeRelease, nor
 import { loadConfig } from "./config.js";
 
 const CHUNK = 8; // Repos pro GraphQL-Request
+/** Branch-Regeln ändern sich selten, kosten aber REST-Kontingent. */
+const RULES_TTL_MS = 10 * 60_000;
+
+type BranchRules = Parameters<typeof applyBranchRules>[1];
 
 const NORMAL = Number(process.env.POLL_SECONDS ?? 30);
 const ACTIVE = Number(process.env.POLL_SECONDS_ACTIVE ?? 10);
@@ -24,6 +28,7 @@ export class Poller extends EventEmitter {
   private timer: NodeJS.Timeout | null = null;
   private running: Promise<void> | null = null;
   private lastHash = "";
+  private rulesCache = new Map<string, { at: number; rules: BranchRules }>();
 
   start() {
     void this.poll();
@@ -75,8 +80,13 @@ export class Poller extends EventEmitter {
     const rules = new Map(
       await Promise.all(
         keys.map(async (key) => {
+          const cached = this.rulesCache.get(key);
+          if (cached && Date.now() - cached.at < RULES_TTL_MS) return [key, cached.rules] as const;
           const [repo, branch] = key.split("\u0000");
-          return [key, await rest<Parameters<typeof applyBranchRules>[1]>(`/repos/${repo}/rules/branches/${encodeURIComponent(branch)}`)] as const;
+          const fetched = await rest<BranchRules>(`/repos/${repo}/rules/branches/${encodeURIComponent(branch)}`);
+          if (fetched) this.rulesCache.set(key, { at: Date.now(), rules: fetched });
+          // Abruf gescheitert: letzter bekannter Stand gilt weiter.
+          return [key, fetched ?? cached?.rules ?? null] as const;
         }),
       ),
     );

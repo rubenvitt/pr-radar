@@ -6,6 +6,7 @@ mod queries;
 use std::collections::HashMap;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use anyhow::{Context as _, Result, anyhow, bail};
 use chrono::{DateTime, Utc};
@@ -72,6 +73,42 @@ pub struct Fetched {
 pub struct GitHub {
     http: Arc<dyn HttpClient>,
     token: Mutex<Option<Token>>,
+    rules: Mutex<RulesCache>,
+}
+
+/// Wie lange Branch-Regeln gültig bleiben – sie ändern sich selten, kosten aber REST-Kontingent.
+const RULES_TTL: Duration = Duration::from_secs(600);
+
+/// Branch-Regeln je (Repo, Branch). Bei Abruffehlern gilt der letzte bekannte Stand weiter,
+/// damit nicht still wieder alle Merge-Methoden angeboten werden.
+#[derive(Default)]
+struct RulesCache {
+    entries: HashMap<(String, String), (Instant, Value)>,
+}
+
+impl RulesCache {
+    fn fresh(&self, key: &(String, String), now: Instant) -> Option<Value> {
+        self.entries
+            .get(key)
+            .filter(|(at, _)| now.duration_since(*at) < RULES_TTL)
+            .map(|(_, v)| v.clone())
+    }
+
+    /// Übernimmt ein Abrufergebnis; ohne Ergebnis bleibt der alte Eintrag gültig.
+    fn update(
+        &mut self,
+        key: (String, String),
+        now: Instant,
+        fetched: Option<Value>,
+    ) -> Option<Value> {
+        match fetched {
+            Some(v) => {
+                self.entries.insert(key, (now, v.clone()));
+                Some(v)
+            }
+            None => self.entries.get(&key).map(|(_, v)| v.clone()),
+        }
+    }
 }
 
 impl GitHub {
@@ -79,6 +116,7 @@ impl GitHub {
         Self {
             http,
             token: Mutex::new(None),
+            rules: Mutex::new(RulesCache::default()),
         }
     }
 
@@ -296,6 +334,15 @@ impl GitHub {
 
     /// Effektive Regeln eines Branches (inkl. Org-Rulesets); `None`, wenn nicht abrufbar.
     async fn branch_rules(&self, repo: &str, branch: &str) -> Option<Value> {
+        let key = (repo.to_string(), branch.to_string());
+        if let Some(v) = self.rules.lock().ok()?.fresh(&key, Instant::now()) {
+            return Some(v);
+        }
+        let fetched = self.fetch_branch_rules(repo, branch).await;
+        self.rules.lock().ok()?.update(key, Instant::now(), fetched)
+    }
+
+    async fn fetch_branch_rules(&self, repo: &str, branch: &str) -> Option<Value> {
         let token = self.token().ok()?;
         let req = Request::builder()
             .uri(format!(
@@ -361,4 +408,31 @@ fn encode_path(s: &str) -> String {
             _ => format!("%{b:02X}"),
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn regeln_bleiben_bei_abruffehler_erhalten() {
+        let mut cache = RulesCache::default();
+        let key = ("a/b".to_string(), "main".to_string());
+        let t0 = Instant::now();
+        let rules = json!([{ "type": "pull_request", "parameters": { "allowed_merge_methods": ["merge"] } }]);
+        assert_eq!(
+            cache.update(key.clone(), t0, Some(rules.clone())),
+            Some(rules.clone())
+        );
+        assert_eq!(cache.fresh(&key, t0), Some(rules.clone()));
+        // abgelaufen → neu abrufen; Abruf scheitert → alter Stand gilt weiter
+        let later = t0 + RULES_TTL + Duration::from_secs(1);
+        assert_eq!(cache.fresh(&key, later), None);
+        assert_eq!(cache.update(key.clone(), later, None), Some(rules));
+        // nie erfolgreich geladen → keine Regeln bekannt
+        assert_eq!(
+            cache.update(("x/y".into(), "main".into()), later, None),
+            None
+        );
+    }
 }
