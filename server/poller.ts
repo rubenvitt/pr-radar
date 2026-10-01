@@ -1,8 +1,8 @@
 import { EventEmitter } from "node:events";
 import type { PollStatus, Snapshot } from "../shared/types.js";
-import { graphql, tokenSource } from "./github.js";
+import { graphql, rest, tokenSource } from "./github.js";
 import { buildDashboardQuery } from "./queries.js";
-import { normalizeMerged, normalizeOpen, normalizeRelease, normalizeRepo, type RawRepo } from "./normalize.js";
+import { applyBranchRules, normalizeMerged, normalizeOpen, normalizeRelease, normalizeRepo, type RawRepo } from "./normalize.js";
 import { loadConfig } from "./config.js";
 
 const CHUNK = 8; // Repos pro GraphQL-Request
@@ -69,6 +69,25 @@ export class Poller extends EventEmitter {
     }
   }
 
+  /** Je PR die effektiv erlaubten Merge-Methoden setzen (Repo-Einstellungen ∩ Rulesets des Ziel-Branches). */
+  private async applyRulesets(snapshot: Snapshot) {
+    const keys = [...new Set(snapshot.open.map((p) => `${p.repo}\u0000${p.baseRef}`))];
+    const rules = new Map(
+      await Promise.all(
+        keys.map(async (key) => {
+          const [repo, branch] = key.split("\u0000");
+          return [key, await rest<Parameters<typeof applyBranchRules>[1]>(`/repos/${repo}/rules/branches/${encodeURIComponent(branch)}`)] as const;
+        }),
+      ),
+    );
+    for (const pr of snapshot.open) {
+      const repoMethods = snapshot.repos.find((r) => r.fullName === pr.repo)?.mergeMethods ?? [];
+      const branchRules = rules.get(`${pr.repo}\u0000${pr.baseRef}`);
+      // Regeln nicht lesbar: GitHub lehnt Unerlaubtes beim Mergen ohnehin ab.
+      pr.mergeMethods = branchRules ? applyBranchRules(repoMethods, branchRules) : repoMethods;
+    }
+  }
+
   private async fetchSnapshot(): Promise<Snapshot> {
     const { repos } = await loadConfig();
     const snapshot: Snapshot = {
@@ -121,6 +140,7 @@ export class Poller extends EventEmitter {
       });
     }
 
+    await this.applyRulesets(snapshot);
     snapshot.open.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     snapshot.merged.sort((a, b) => b.mergedAt.localeCompare(a.mergedAt));
     snapshot.releases.sort((a, b) => (b.publishedAt ?? "").localeCompare(a.publishedAt ?? ""));

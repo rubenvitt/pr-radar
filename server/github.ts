@@ -40,6 +40,17 @@ export interface GraphQLResult<T> {
   errors: { message: string; path?: (string | number)[]; type?: string }[];
 }
 
+/** REST-GET gegen die GitHub-API; `null`, wenn nicht abrufbar (z. B. fehlende Rechte). */
+export async function rest<T>(path: string): Promise<T | null> {
+  const { token } = await getToken();
+  const res = await fetch(`https://api.github.com${path}`, {
+    headers: { Authorization: `bearer ${token}`, Accept: "application/vnd.github+json", "User-Agent": "pr-radar" },
+    signal: AbortSignal.timeout(15_000),
+  }).catch(() => null);
+  if (!res?.ok) return null;
+  return (await res.json()) as T;
+}
+
 export async function graphql<T>(query: string, variables: Record<string, unknown> = {}): Promise<GraphQLResult<T>> {
   const { token } = await getToken();
   const res = await fetch(process.env.GITHUB_GRAPHQL_URL ?? "https://api.github.com/graphql", {

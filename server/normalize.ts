@@ -136,7 +136,24 @@ export function normalizeOpen(repo: string, n: any): OpenPR {
       .map((r: any) => r.requestedReviewer?.login ?? (r.requestedReviewer?.slug ? `@${r.requestedReviewer.slug}` : null))
       .filter(Boolean),
     pipeline: buildPipeline(rollup),
+    mergeMethods: [], // wird nach dem Laden der Rulesets gesetzt
   };
+}
+
+/**
+ * Schränkt die Repo-Methoden mit den effektiven Branch-Regeln ein (`GET /repos/{repo}/rules/branches/{branch}`):
+ * `pull_request.allowed_merge_methods` und `required_linear_history` (verbietet Merge-Commits).
+ */
+export function applyBranchRules(repoMethods: MergeMethod[], rules: { type: string; parameters?: { allowed_merge_methods?: string[] } }[]): MergeMethod[] {
+  let methods = [...repoMethods];
+  for (const rule of rules) {
+    if (rule.type === "pull_request" && rule.parameters?.allowed_merge_methods) {
+      const allowed = rule.parameters.allowed_merge_methods.map((m) => m.toUpperCase());
+      methods = methods.filter((m) => allowed.includes(m));
+    }
+    if (rule.type === "required_linear_history") methods = methods.filter((m) => m !== "MERGE");
+  }
+  return methods;
 }
 
 export function normalizeMerged(repo: string, n: any): MergedPR {

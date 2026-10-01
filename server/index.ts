@@ -78,14 +78,13 @@ app.delete("/api/repos/:owner/:name", async (c) => {
   return c.json(await loadConfig());
 });
 
-/** Nur Methoden zulassen, die das Repo des PRs erlaubt. */
+/** Nur Methoden zulassen, die Repo-Einstellungen und Rulesets für diesen PR erlauben. */
 function methodAllowed(id: string, method?: MergeMethod): method is MergeMethod {
-  const repoName = poller.snapshot?.open.find((p) => p.id === id)?.repo;
-  const allowed = poller.snapshot?.repos.find((r) => r.fullName === repoName)?.mergeMethods ?? [];
+  const allowed = poller.snapshot?.open.find((p) => p.id === id)?.mergeMethods ?? [];
   return !!method && allowed.includes(method);
 }
 
-const methodError = (method?: MergeMethod) => ({ error: `Merge-Methode ${method ?? "–"} ist in diesem Repo nicht erlaubt` });
+const methodError = (method?: MergeMethod) => ({ error: `Merge-Methode ${method ?? "–"} ist für diesen PR nicht erlaubt` });
 
 app.post("/api/prs/:id/auto-merge", async (c) => {
   const id = c.req.param("id");

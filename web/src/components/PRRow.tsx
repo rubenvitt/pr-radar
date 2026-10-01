@@ -23,8 +23,8 @@ export const DIRECT_MERGE_STATES = ["CLEAN", "HAS_HOOKS", "UNSTABLE"];
 export function MergeControl({ pr, repo, onError }: { pr: OpenPR; repo?: RepoInfo; onError: (msg: string) => void }) {
   const [busy, setBusy] = useState(false);
   const [menu, setMenu] = useState(false);
-  // Nur die Methoden, die das Repo tatsächlich erlaubt – kein stiller Fallback.
-  const methods = repo?.mergeMethods ?? [];
+  // Nur die Methoden, die Repo-Einstellungen und Rulesets erlauben – kein stiller Fallback.
+  const methods = pr.mergeMethods;
   const allowed = repo?.autoMergeAllowed ?? false;
   const canMerge = repo?.viewerCanMerge ?? false;
 
@@ -53,7 +53,7 @@ export function MergeControl({ pr, repo, onError }: { pr: OpenPR; repo?: RepoInf
       : !allowed
         ? "Auto-Merge ist in diesem Repo nicht erlaubt (Settings → Allow auto-merge)"
         : !methods.length
-          ? "Keine Merge-Methode in diesem Repo erlaubt"
+          ? "Keine Merge-Methode erlaubt (Repo-Einstellungen und Rulesets)"
           : !canMerge
             ? "Keine Schreibrechte"
             : pr.isDraft

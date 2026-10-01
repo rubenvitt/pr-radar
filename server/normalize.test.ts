@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildPipeline, normalizeRepo, rollupState, type RawRepo } from "./normalize";
+import { applyBranchRules, buildPipeline, normalizeRepo, rollupState, type RawRepo } from "./normalize";
 import { parseRepo } from "./config";
 import { buildDashboardQuery } from "./queries";
 
@@ -56,5 +56,18 @@ describe("normalizeRepo", () => {
     expect(normalizeRepo(raw({ squashMergeAllowed: true })).mergeMethods).toEqual(["SQUASH"]);
     expect(normalizeRepo(raw({ mergeCommitAllowed: true, rebaseMergeAllowed: true })).mergeMethods).toEqual(["MERGE", "REBASE"]);
     expect(normalizeRepo(raw({})).mergeMethods).toEqual([]);
+  });
+});
+
+describe("applyBranchRules", () => {
+  const all = ["SQUASH", "MERGE", "REBASE"] as const;
+  it("übernimmt allowed_merge_methods aus Rulesets", () => {
+    expect(applyBranchRules([...all], [{ type: "pull_request", parameters: { allowed_merge_methods: ["merge"] } }])).toEqual(["MERGE"]);
+  });
+  it("lineare Historie verbietet Merge-Commits", () => {
+    expect(applyBranchRules([...all], [{ type: "required_linear_history" }])).toEqual(["SQUASH", "REBASE"]);
+  });
+  it("ohne Regeln bleiben die Repo-Methoden", () => {
+    expect(applyBranchRules([...all], [])).toEqual([...all]);
   });
 });

@@ -49,6 +49,8 @@ export interface OpenPR {
   labels: Label[];
   reviewRequests: string[];
   pipeline: Pipeline;
+  /** Effektiv erlaubte Merge-Methoden: Repo-Einstellungen ∩ Rulesets des Ziel-Branches */
+  mergeMethods: MergeMethod[];
 }
 
 export interface MergedPR {
