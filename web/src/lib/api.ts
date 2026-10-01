@@ -18,4 +18,5 @@ export const api = {
   removeRepo: (full: string) => call<{ repos: string[] }>("DELETE", `/api/repos/${full}`, {}),
   autoMerge: (id: string, enable: boolean, method?: MergeMethod) =>
     call("POST", `/api/prs/${encodeURIComponent(id)}/auto-merge`, { enable, method }),
+  merge: (id: string, method: MergeMethod) => call("POST", `/api/prs/${encodeURIComponent(id)}/merge`, { method }),
 };

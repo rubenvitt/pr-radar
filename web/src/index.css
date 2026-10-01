@@ -67,6 +67,21 @@ body {
   50% { opacity: 0.35; }
 }
 
+/* Flow-Ansicht: gepunktetes Canvas + Kanten */
+.flow-canvas {
+  background-color: var(--bg);
+  background-image: radial-gradient(color-mix(in oklab, var(--muted) 35%, transparent) 1px, transparent 1.3px);
+  background-size: 18px 18px;
+}
+.edge-idle { stroke-dasharray: 4 4; }
+.edge-run { stroke-dasharray: 6 5; }
+@media (prefers-reduced-motion: no-preference) {
+  .edge-run { animation: edge-flow 0.7s linear infinite; }
+}
+@keyframes edge-flow {
+  to { stroke-dashoffset: -11; }
+}
+
 /* Release-Notes (von GitHub gerendertes HTML) */
 .release-body {
   @apply text-sm leading-relaxed text-fg;

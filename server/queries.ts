@@ -71,3 +71,10 @@ export const DISABLE_AUTO_MERGE = `
       pullRequest { id }
     }
   }`;
+
+export const MERGE_PR = `
+  mutation($id: ID!, $method: PullRequestMergeMethod!) {
+    mergePullRequest(input: { pullRequestId: $id, mergeMethod: $method }) {
+      pullRequest { id merged }
+    }
+  }`;

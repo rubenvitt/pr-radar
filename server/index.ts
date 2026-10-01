@@ -8,7 +8,7 @@ import type { MergeMethod, PollStatus, Snapshot } from "../shared/types.js";
 import { loadConfig, parseRepo, saveConfig } from "./config.js";
 import { graphql } from "./github.js";
 import { Poller } from "./poller.js";
-import { DISABLE_AUTO_MERGE, ENABLE_AUTO_MERGE } from "./queries.js";
+import { DISABLE_AUTO_MERGE, ENABLE_AUTO_MERGE, MERGE_PR } from "./queries.js";
 
 const poller = new Poller();
 const app = new Hono();
@@ -78,20 +78,32 @@ app.delete("/api/repos/:owner/:name", async (c) => {
   return c.json(await loadConfig());
 });
 
+/** Nur Methoden zulassen, die das Repo des PRs erlaubt. */
+function methodAllowed(id: string, method?: MergeMethod): method is MergeMethod {
+  const repoName = poller.snapshot?.open.find((p) => p.id === id)?.repo;
+  const allowed = poller.snapshot?.repos.find((r) => r.fullName === repoName)?.mergeMethods ?? [];
+  return !!method && allowed.includes(method);
+}
+
+const methodError = (method?: MergeMethod) => ({ error: `Merge-Methode ${method ?? "–"} ist in diesem Repo nicht erlaubt` });
+
 app.post("/api/prs/:id/auto-merge", async (c) => {
   const id = c.req.param("id");
   const { enable, method } = await c.req.json<{ enable: boolean; method?: MergeMethod }>();
-  if (enable) {
-    // Nur Methoden zulassen, die das Repo des PRs erlaubt.
-    const repoName = poller.snapshot?.open.find((p) => p.id === id)?.repo;
-    const allowed = poller.snapshot?.repos.find((r) => r.fullName === repoName)?.mergeMethods ?? [];
-    if (!method || !allowed.includes(method)) {
-      return c.json({ error: `Merge-Methode ${method ?? "–"} ist in diesem Repo nicht erlaubt` }, 422);
-    }
-  }
+  if (enable && !methodAllowed(id, method)) return c.json(methodError(method), 422);
   const res = enable
     ? await graphql(ENABLE_AUTO_MERGE, { id, method })
     : await graphql(DISABLE_AUTO_MERGE, { id });
+  if (res.errors.length) return c.json({ error: res.errors.map((e) => e.message).join("; ") }, 422);
+  await poller.refresh();
+  return c.json({ ok: true });
+});
+
+app.post("/api/prs/:id/merge", async (c) => {
+  const id = c.req.param("id");
+  const { method } = await c.req.json<{ method?: MergeMethod }>();
+  if (!methodAllowed(id, method)) return c.json(methodError(method), 422);
+  const res = await graphql(MERGE_PR, { id, method });
   if (res.errors.length) return c.json({ error: res.errors.map((e) => e.message).join("; ") }, 422);
   await poller.refresh();
   return c.json({ ok: true });

@@ -1,19 +1,21 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Bell, BellOff, GitMerge, GitPullRequest, Inbox, Layers, RefreshCw, Search, Settings2, Tag, X, Zap } from "lucide-react";
+import { Bell, BellOff, GitMerge, GitPullRequest, Inbox, Layers, List, RefreshCw, Search, Settings2, Tag, TriangleAlert, Workflow, X, Zap } from "lucide-react";
 import type { OpenPR, PipelineState, RepoInfo, Snapshot } from "../../shared/types";
 import { api } from "./lib/api";
 import { diffSnapshots, showNotification } from "./lib/notify";
 import { usePref } from "./lib/prefs";
 import { ago } from "./lib/time";
 import { useLive, useTick } from "./lib/useLive";
+import { FlowView } from "./components/FlowView";
 import { MergedView } from "./components/MergedView";
-import { PRRow } from "./components/PRRow";
+import { hasConflict, PRRow } from "./components/PRRow";
 import { ReleasesView } from "./components/ReleasesView";
 import { RepoSettings } from "./components/RepoSettings";
 import { cx, Empty, PipelineIcon, RepoTag } from "./components/ui";
 
 type Tab = "open" | "merged" | "releases";
-type Quick = "all" | "running" | "failed" | "passed" | "auto" | "review" | "mine";
+type View = "list" | "flow";
+type Quick = "all" | "running" | "failed" | "passed" | "auto" | "conflict" | "review" | "mine";
 
 function Stat({ label, value, active, onClick, icon, tone }: { label: string; value: number; active: boolean; onClick: () => void; icon: ReactNode; tone?: string }) {
   return (
@@ -40,6 +42,7 @@ export function App() {
   const [tab, setTab] = usePref<Tab>("tab", "open");
   const [quick, setQuick] = usePref<Quick>("quick", "all");
   const [grouped, setGrouped] = usePref("grouped", true);
+  const [view, setView] = usePref<View>("view", "list");
   const [repoFilter, setRepoFilter] = usePref<string[]>("repos", []);
   const [notify, setNotify] = usePref("notify", false);
   const [query, setQuery] = useState("");
@@ -61,19 +64,20 @@ export function App() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  // Tastatur: "/" Suche, "r" neu laden, 1-3 Tabs
+  // Tastatur: "/" Suche, "r" neu laden, "v" Ansicht, 1-3 Tabs
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.metaKey || e.ctrlKey) return;
       if (e.key === "/") { e.preventDefault(); searchRef.current?.focus(); }
       if (e.key === "r") void api.refresh();
+      if (e.key === "v") setView((v) => (v === "flow" ? "list" : "flow"));
       if (e.key === "1") setTab("open");
       if (e.key === "2") setTab("merged");
       if (e.key === "3") setTab("releases");
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [setTab]);
+  }, [setTab, setView]);
 
   const viewer = snapshot?.viewer ?? null;
   const repos = snapshot?.repos ?? [];
@@ -89,6 +93,7 @@ export function App() {
     failed: (p) => p.pipeline.state === "failed",
     passed: (p) => p.pipeline.state === "passed",
     auto: (p) => !!p.autoMerge,
+    conflict: hasConflict,
     review: (p) => !!viewer && p.reviewRequests.includes(viewer),
     mine: (p) => !!viewer && p.author?.login === viewer,
   };
@@ -109,6 +114,17 @@ export function App() {
 
   const toggleRepo = (r: string) => setRepoFilter((f) => (f.includes(r) ? f.filter((x) => x !== r) : [...f, r]));
   const polling = status?.state === "polling";
+
+  const prList = (list: OpenPR[], showRepo: boolean) =>
+    view === "flow" ? (
+      <FlowView prs={list} repoMap={repoMap} viewer={viewer} showRepo={showRepo} onError={setToast} />
+    ) : (
+      <div className="overflow-hidden rounded-xl border border-line bg-panel">
+        {list.map((pr) => (
+          <PRRow key={pr.id} pr={pr} repo={repoMap.get(pr.repo)} viewer={viewer} showRepo={showRepo} onError={setToast} />
+        ))}
+      </div>
+    );
 
   return (
     <div className="mx-auto max-w-6xl px-4 pb-16 sm:px-6">
@@ -149,12 +165,13 @@ export function App() {
       )}
 
       {/* Kennzahlen */}
-      <div className="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+      <div className="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
         <Stat label="Offen" value={openBase.length} icon={<GitPullRequest size={18} />} active={tab === "open" && quick === "all"} onClick={() => { setTab("open"); setQuick("all"); }} />
         <Stat label="Pipeline läuft" value={count("running")} icon={<PipelineIcon state="running" />} active={tab === "open" && quick === "running"} onClick={() => { setTab("open"); setQuick("running"); }} />
         <Stat label="Rot" value={count("failed")} icon={<PipelineIcon state="failed" />} active={tab === "open" && quick === "failed"} onClick={() => { setTab("open"); setQuick("failed"); }} />
         <Stat label="Grün" value={count("passed")} icon={<PipelineIcon state="passed" />} active={tab === "open" && quick === "passed"} onClick={() => { setTab("open"); setQuick("passed"); }} />
         <Stat label="Auto-Merge" value={openBase.filter(quickFilter.auto).length} icon={<Zap size={18} />} tone="text-accent" active={tab === "open" && quick === "auto"} onClick={() => { setTab("open"); setQuick("auto"); }} />
+        <Stat label="Konflikt" value={openBase.filter(quickFilter.conflict).length} icon={<TriangleAlert size={18} />} tone="text-fail" active={tab === "open" && quick === "conflict"} onClick={() => { setTab("open"); setQuick("conflict"); }} />
         <Stat label="Dein Review" value={openBase.filter(quickFilter.review).length} icon={<Inbox size={18} />} tone="text-accent" active={tab === "open" && quick === "review"} onClick={() => { setTab("open"); setQuick("review"); }} />
         <Stat label="Von dir" value={openBase.filter(quickFilter.mine).length} icon={<GitPullRequest size={18} />} tone="text-muted" active={tab === "open" && quick === "mine"} onClick={() => { setTab("open"); setQuick("mine"); }} />
       </div>
@@ -178,9 +195,14 @@ export function App() {
           />
         </label>
         {tab === "open" && (
-          <IconButton title={grouped ? "Flache Liste" : "Nach Repo gruppieren"} onClick={() => setGrouped(!grouped)} active={grouped}>
-            <Layers size={17} />
-          </IconButton>
+          <>
+            <IconButton title={view === "flow" ? "Listenansicht (v)" : "Flow-Ansicht (v)"} onClick={() => setView(view === "flow" ? "list" : "flow")} active={view === "flow"}>
+              {view === "flow" ? <List size={17} /> : <Workflow size={17} />}
+            </IconButton>
+            <IconButton title={grouped ? "Flache Liste" : "Nach Repo gruppieren"} onClick={() => setGrouped(!grouped)} active={grouped}>
+              <Layers size={17} />
+            </IconButton>
+          </>
         )}
       </div>
 
@@ -224,20 +246,12 @@ export function App() {
             {groups.map(([repo, list]) => (
               <section key={repo}>
                 <RepoHeader repo={repoMap.get(repo)} name={repo} count={list.length} />
-                <div className="overflow-hidden rounded-xl border border-line bg-panel">
-                  {list.map((pr) => (
-                    <PRRow key={pr.id} pr={pr} repo={repoMap.get(pr.repo)} viewer={viewer} showRepo={false} onError={setToast} />
-                  ))}
-                </div>
+                {prList(list, false)}
               </section>
             ))}
           </div>
         ) : (
-          <div className="overflow-hidden rounded-xl border border-line bg-panel">
-            {openList.map((pr) => (
-              <PRRow key={pr.id} pr={pr} repo={repoMap.get(pr.repo)} viewer={viewer} showRepo onError={setToast} />
-            ))}
-          </div>
+          prList(openList, true)
         )
       ) : tab === "merged" ? (
         <MergedView items={merged} />

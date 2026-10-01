@@ -5,7 +5,7 @@ import { api } from "../lib/api";
 import { ago } from "../lib/time";
 import { Avatar, Badge, cx, PipelineIcon, RepoTag } from "./ui";
 
-const METHOD_LABEL: Record<MergeMethod, string> = { SQUASH: "Squash", MERGE: "Merge", REBASE: "Rebase" };
+export const METHOD_LABEL: Record<MergeMethod, string> = { SQUASH: "Squash", MERGE: "Merge", REBASE: "Rebase" };
 
 function ReviewBadge({ pr }: { pr: OpenPR }) {
   if (pr.reviewDecision === "APPROVED") return <Badge tone="pass"><ShieldCheck size={12} />Approved</Badge>;
@@ -14,7 +14,13 @@ function ReviewBadge({ pr }: { pr: OpenPR }) {
   return null;
 }
 
-function AutoMergeControl({ pr, repo, onError }: { pr: OpenPR; repo?: RepoInfo; onError: (msg: string) => void }) {
+/** Merge-Konflikt – `DIRTY` greift auch, solange GitHub `mergeable` noch berechnet. */
+export const hasConflict = (pr: OpenPR) => pr.mergeable === "CONFLICTING" || pr.mergeStateStatus === "DIRTY";
+
+/** GitHub-Zustände, in denen ein PR sofort gemergt werden kann (Auto-Merge lehnt GitHub dann ab). */
+export const DIRECT_MERGE_STATES = ["CLEAN", "HAS_HOOKS", "UNSTABLE"];
+
+export function MergeControl({ pr, repo, onError }: { pr: OpenPR; repo?: RepoInfo; onError: (msg: string) => void }) {
   const [busy, setBusy] = useState(false);
   const [menu, setMenu] = useState(false);
   // Nur die Methoden, die das Repo tatsächlich erlaubt – kein stiller Fallback.
@@ -22,11 +28,11 @@ function AutoMergeControl({ pr, repo, onError }: { pr: OpenPR; repo?: RepoInfo; 
   const allowed = repo?.autoMergeAllowed ?? false;
   const canMerge = repo?.viewerCanMerge ?? false;
 
-  const run = async (enable: boolean, method?: MergeMethod) => {
+  const run = async (action: () => Promise<unknown>) => {
     setMenu(false);
     setBusy(true);
     try {
-      await api.autoMerge(pr.id, enable, method);
+      await action();
     } catch (e) {
       onError((e as Error).message);
     } finally {
@@ -35,18 +41,27 @@ function AutoMergeControl({ pr, repo, onError }: { pr: OpenPR; repo?: RepoInfo; 
   };
 
   const on = !!pr.autoMerge;
-  const disabled = busy || (!on && (!allowed || !methods.length || !canMerge || pr.isDraft));
+  // Direkt mergebar → Merge-Button statt Auto-Merge.
+  const direct =
+    !on && canMerge && !pr.isDraft && methods.length > 0 &&
+    pr.mergeable === "MERGEABLE" && DIRECT_MERGE_STATES.includes(pr.mergeStateStatus);
+  const disabled = busy || (!on && !direct && (!allowed || !methods.length || !canMerge || pr.isDraft));
   const title = on
     ? `Auto-Merge aktiv (${METHOD_LABEL[pr.autoMerge!.method]}${pr.autoMerge!.enabledBy ? `, von ${pr.autoMerge!.enabledBy}` : ""}) – klicken zum Deaktivieren`
-    : !allowed
-      ? "Auto-Merge ist in diesem Repo nicht erlaubt (Settings → Allow auto-merge)"
-      : !methods.length
-        ? "Keine Merge-Methode in diesem Repo erlaubt"
-        : !canMerge
-          ? "Keine Schreibrechte"
-          : pr.isDraft
-            ? "Draft-PRs können kein Auto-Merge"
-            : `Auto-Merge aktivieren (${methods.map((m) => METHOD_LABEL[m]).join(" / ")})`;
+    : direct
+      ? `Jetzt mergen (${methods.map((m) => METHOD_LABEL[m]).join(" / ")})`
+      : !allowed
+        ? "Auto-Merge ist in diesem Repo nicht erlaubt (Settings → Allow auto-merge)"
+        : !methods.length
+          ? "Keine Merge-Methode in diesem Repo erlaubt"
+          : !canMerge
+            ? "Keine Schreibrechte"
+            : pr.isDraft
+              ? "Draft-PRs können kein Auto-Merge"
+              : `Auto-Merge aktivieren (${methods.map((m) => METHOD_LABEL[m]).join(" / ")})`;
+
+  const choose = (m: MergeMethod) =>
+    void run(() => (direct ? api.merge(pr.id, m) : api.autoMerge(pr.id, true, m)));
 
   return (
     <div className="relative">
@@ -56,31 +71,33 @@ function AutoMergeControl({ pr, repo, onError }: { pr: OpenPR; repo?: RepoInfo; 
         title={title}
         onClick={(e) => {
           e.stopPropagation();
-          if (on) void run(false);
+          if (on) void run(() => api.autoMerge(pr.id, false));
           else setMenu((m) => !m);
         }}
         className={cx(
-          "inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium transition",
+          "inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 text-xs font-medium transition",
           on
             ? "border-accent/40 bg-accent/15 text-accent hover:bg-accent/25"
-            : "border-line text-muted hover:border-accent/50 hover:text-fg",
+            : direct
+              ? "border-pass/40 text-pass hover:bg-pass/15"
+              : "border-line text-muted hover:border-accent/50 hover:text-fg",
           disabled && !on && "opacity-40 cursor-not-allowed hover:border-line hover:text-muted",
           busy && "opacity-60",
         )}
       >
-        <Zap size={13} className={cx(on && "fill-current")} />
-        {on ? `Auto · ${METHOD_LABEL[pr.autoMerge!.method]}` : "Auto-Merge"}
+        {direct ? <GitMerge size={13} /> : <Zap size={13} className={cx(on && "fill-current")} />}
+        {on ? `Auto · ${METHOD_LABEL[pr.autoMerge!.method]}` : direct ? "Mergen" : "Auto-Merge"}
       </button>
       {menu && (
         <>
           <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setMenu(false); }} />
           <div className="absolute right-0 top-8 z-20 min-w-36 overflow-hidden rounded-lg border border-line bg-panel shadow-xl">
-            <div className="px-3 pt-2 pb-1 text-[11px] uppercase tracking-wide text-muted">Merge-Methode</div>
+            <div className="px-3 pt-2 pb-1 text-[11px] uppercase tracking-wide text-muted">{direct ? "Jetzt mergen" : "Merge-Methode"}</div>
             {methods.map((m) => (
               <button
                 key={m}
                 type="button"
-                onClick={(e) => { e.stopPropagation(); void run(true, m); }}
+                onClick={(e) => { e.stopPropagation(); choose(m); }}
                 className="block w-full px-3 py-2 text-left text-sm hover:bg-panel-2"
               >
                 {METHOD_LABEL[m]}
@@ -99,7 +116,13 @@ export function PRRow({ pr, repo, viewer, showRepo, onError }: { pr: OpenPR; rep
   const reviewForMe = !!viewer && pr.reviewRequests.includes(viewer);
 
   return (
-    <div className={cx("group border-b border-line last:border-b-0 transition-colors", open ? "bg-panel-2/60" : "hover:bg-panel-2/40")}>
+    <div
+      className={cx(
+        "group border-b border-line last:border-b-0 transition-colors",
+        open ? "bg-panel-2/60" : "hover:bg-panel-2/40",
+        hasConflict(pr) && "bg-fail/5 shadow-[inset_3px_0_0_var(--fail)]",
+      )}
+    >
       <div className="flex cursor-pointer items-start gap-3 px-4 py-3" onClick={() => setOpen((o) => !o)}>
         <div className="pt-0.5"><PipelineIcon state={p.state} /></div>
 
@@ -116,7 +139,7 @@ export function PRRow({ pr, repo, viewer, showRepo, onError }: { pr: OpenPR; rep
             </a>
             <span className="text-sm text-muted tabular-nums">#{pr.number}</span>
             {pr.isDraft && <Badge>Draft</Badge>}
-            {pr.mergeable === "CONFLICTING" && <Badge tone="fail"><TriangleAlert size={12} />Konflikt</Badge>}
+            {hasConflict(pr) && <Badge tone="fail"><TriangleAlert size={12} />Konflikt</Badge>}
             {reviewForMe && <Badge tone="accent">Dein Review</Badge>}
             {pr.labels.map((l) => (
               <span
@@ -152,7 +175,7 @@ export function PRRow({ pr, repo, viewer, showRepo, onError }: { pr: OpenPR; rep
               {p.passed}/{p.total}
             </span>
           )}
-          <AutoMergeControl pr={pr} repo={repo} onError={onError} />
+          <MergeControl pr={pr} repo={repo} onError={onError} />
           <ChevronDown size={16} className={cx("text-muted transition-transform", open && "rotate-180")} />
         </div>
       </div>
