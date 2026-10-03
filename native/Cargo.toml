@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 description = "Native Desktop-App für Pull Requests, Pipelines, Auto-Merge, Merges und Releases über mehrere GitHub-Repos."
 publish = false
+license = "Apache-2.0"
 
 [dependencies]
 gpui-kit = "=0.7.0"

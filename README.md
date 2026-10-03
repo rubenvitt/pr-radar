@@ -85,3 +85,7 @@ Auto-Merge schalten kann. Wenn sie öffentlich erreichbar wird (Traefik o. ä.),
 - Ganze Orgs/Topics abonnieren (`owner/*`)
 - Re-Run fehlgeschlagener Checks
 - Menüleisten-Symbol mit Badge für rote PRs in der nativen App
+
+## Lizenz
+
+[Apache-2.0](LICENSE)

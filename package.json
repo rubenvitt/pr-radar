@@ -1,6 +1,7 @@
 {
   "name": "pr-radar",
   "private": true,
+  "license": "Apache-2.0",
   "version": "0.1.0",
   "type": "module",
   "description": "Live-Dashboard f\u00fcr Pull Requests, Pipelines, Auto-Merge, Merges und Releases \u00fcber mehrere GitHub-Repos.",
