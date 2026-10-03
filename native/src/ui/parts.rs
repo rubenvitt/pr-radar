@@ -104,10 +104,12 @@ pub fn empty_state(
         .when_some(hint, |this, hint| this.child(div().text_sm().child(hint)))
 }
 
-/// Schmale Metadatenzeile: Teile mit „·“ getrennt.
+/// Schmale Metadatenzeile; bricht in engen Fenstern um.
 pub fn meta_row(cx: &App) -> Div {
     h_flex()
-        .gap_2()
+        .flex_wrap()
+        .gap_x_2()
+        .gap_y_0p5()
         .text_xs()
         .text_color(cx.theme().muted_foreground)
         .min_w_0()

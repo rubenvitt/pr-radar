@@ -20,7 +20,9 @@ use gpui_kit::component::{
     h_flex,
     input::{Input, InputEvent, InputState},
     notification::Notification,
-    sidebar::{Sidebar, SidebarFooter, SidebarGroup, SidebarMenu, SidebarMenuItem},
+    sidebar::{
+        Sidebar, SidebarCollapsible, SidebarFooter, SidebarGroup, SidebarMenu, SidebarMenuItem,
+    },
     v_flex,
 };
 use gpui_kit::prelude::FluentBuilder as _;
@@ -44,11 +46,20 @@ actions!(
         ShowMerged,
         ShowReleases,
         OpenSettings,
+        ToggleSidebar,
+        HideSidebar,
         Quit
     ]
 );
 
 const CONTEXT: &str = "Workspace";
+
+/// Breite der Seitenleiste – in px, damit sie beim Ein-/Ausblenden gleitet.
+const SIDEBAR_W: Pixels = px(240.);
+/// Darunter liegt die Seitenleiste über dem Inhalt statt daneben.
+const NARROW_W: Pixels = px(720.);
+/// Darunter rücken Steuerelemente in eigene Zeilen (gemessen an der Inhaltsbreite).
+const COMPACT_W: Pixels = px(600.);
 
 pub fn init(cx: &mut App) {
     // Einzeltasten nur, solange kein Eingabefeld den Fokus hat.
@@ -67,6 +78,8 @@ pub fn init(cx: &mut App) {
         KeyBinding::new("cmd-2", ShowMerged, Some(CONTEXT)),
         KeyBinding::new("cmd-3", ShowReleases, Some(CONTEXT)),
         KeyBinding::new("cmd-,", OpenSettings, Some(CONTEXT)),
+        KeyBinding::new("cmd-b", ToggleSidebar, Some(CONTEXT)),
+        KeyBinding::new("escape", HideSidebar, keys),
         KeyBinding::new("cmd-q", Quit, None),
     ]);
     cx.on_action(|_: &Quit, cx| cx.quit());
@@ -77,6 +90,8 @@ pub fn init(cx: &mut App) {
             MenuItem::action("PR Radar beenden", Quit),
         ]),
         Menu::new("Ansicht").items([
+            MenuItem::action("Seitenleiste ein-/ausblenden", ToggleSidebar),
+            MenuItem::separator(),
             MenuItem::action("Offen", ShowOpen),
             MenuItem::action("Gemergt", ShowMerged),
             MenuItem::action("Releases", ShowReleases),
@@ -108,6 +123,12 @@ pub struct Workspace {
     list: ListState,
     list_model: content::ListModel,
     settings: Entity<RepoSettings>,
+    /// Schmales Fenster: Seitenleiste liegt als Overlay über dem Inhalt
+    narrow: bool,
+    /// Overlay-Seitenleiste ist offen (nur im schmalen Fenster, nicht gespeichert)
+    sidebar_overlay: bool,
+    /// Wenig Platz für den Inhalt: Zeilen und Werkzeugleiste umbrechen
+    compact: bool,
     _subscriptions: Vec<Subscription>,
     _ticker: Task<()>,
 }
@@ -269,6 +290,9 @@ impl Workspace {
             list: ListState::new(0, ListAlignment::Top, px(600.)),
             list_model: content::ListModel::default(),
             settings,
+            narrow: false,
+            sidebar_overlay: false,
+            compact: false,
             _subscriptions: subscriptions,
             _ticker: ticker,
         }
@@ -368,16 +392,44 @@ impl Workspace {
     }
 
     fn show_tab(&mut self, tab: Tab, cx: &mut Context<Self>) {
+        self.sidebar_overlay = false;
         self.update_prefs(cx, |p| p.tab = tab);
+    }
+
+    /// Breit: Seitenleiste dauerhaft ein-/ausblenden. Schmal: Overlay öffnen/schließen.
+    fn toggle_sidebar(&mut self, _: &ToggleSidebar, _: &mut Window, cx: &mut Context<Self>) {
+        if self.narrow {
+            self.sidebar_overlay = !self.sidebar_overlay;
+            cx.notify();
+        } else {
+            self.update_prefs(cx, |p| p.sidebar_hidden = !p.sidebar_hidden);
+        }
+    }
+
+    fn hide_sidebar(&mut self, _: &HideSidebar, _: &mut Window, cx: &mut Context<Self>) {
+        if self.sidebar_overlay {
+            self.sidebar_overlay = false;
+            cx.notify();
+        } else {
+            cx.propagate();
+        }
+    }
+
+    fn sidebar_collapsed(&self, prefs: &Prefs) -> bool {
+        if self.narrow {
+            !self.sidebar_overlay
+        } else {
+            prefs.sidebar_hidden
+        }
     }
 
     fn open_settings(&mut self, _: &OpenSettings, window: &mut Window, cx: &mut Context<Self>) {
         let settings = self.settings.clone();
         settings.update(cx, |s, cx| s.reset(window, cx));
-        window.open_sheet(cx, move |sheet, _, _| {
+        window.open_sheet(cx, move |sheet, window, _| {
             sheet
                 .title("Repositories")
-                .size(rems(26.))
+                .size((window.rem_size() * 26.).min(window.viewport_size().width - px(16.)))
                 .child(settings.clone())
         });
     }
@@ -416,15 +468,42 @@ impl Workspace {
             None => "Noch nicht aktualisiert".into(),
         };
 
+        let collapsed = self.sidebar_collapsed(radar.prefs());
         TitleBar::new().child(
             h_flex()
                 .w_full()
+                .min_w_0()
                 .pr_2()
                 .gap_3()
-                .child(div().text_sm().font_semibold().child("PR Radar"))
+                .child(
+                    Button::new("sidebar")
+                        .ghost()
+                        .small()
+                        .icon(if collapsed {
+                            IconName::PanelLeftOpen
+                        } else {
+                            IconName::PanelLeftClose
+                        })
+                        .tooltip_with_action(
+                            if collapsed {
+                                "Seitenleiste einblenden"
+                            } else {
+                                "Seitenleiste ausblenden"
+                            },
+                            &ToggleSidebar,
+                            Some(CONTEXT),
+                        )
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.toggle_sidebar(&ToggleSidebar, window, cx)
+                        })),
+                )
+                .when(!self.narrow, |this| {
+                    this.child(div().text_sm().font_semibold().child("PR Radar"))
+                })
                 .child(
                     h_flex()
                         .id("live-status")
+                        .min_w_0()
                         .gap_1p5()
                         .px_2()
                         .py_0p5()
@@ -442,7 +521,7 @@ impl Workspace {
                                 .map(|t| t.timestamp_millis()),
                             cx,
                         ))
-                        .child(label)
+                        .child(div().truncate().child(label))
                         .tooltip(move |window, cx| {
                             gpui_kit::component::tooltip::Tooltip::new(tooltip.clone())
                                 .build(window, cx)
@@ -497,6 +576,7 @@ impl Workspace {
 
     fn render_sidebar(&self, d: Option<&Derived>, cx: &mut Context<Self>) -> impl IntoElement {
         let prefs = self.radar.read(cx).prefs().clone();
+        let collapsed = self.sidebar_collapsed(&prefs);
         let count = |n: usize| {
             move |_: &mut Window, cx: &mut App| {
                 div()
@@ -540,6 +620,7 @@ impl Workspace {
                 .active(prefs.tab == Tab::Open && prefs.quick == quick)
                 .suffix(count(d.map_or(0, |d| d.count(quick))))
                 .on_click(cx.listener(move |this, _, _, cx| {
+                    this.sidebar_overlay = false;
                     this.update_prefs(cx, |p| {
                         p.tab = Tab::Open;
                         p.quick = quick;
@@ -621,7 +702,9 @@ impl Workspace {
 
         let viewer = snapshot.as_ref().and_then(|s| s.viewer.clone());
         Sidebar::new("nav")
-            .w(rems(15.))
+            .w(SIDEBAR_W)
+            .collapsible(SidebarCollapsible::Offcanvas)
+            .collapsed(collapsed)
             .child(SidebarGroup::new("Ansicht").child(views))
             .child(SidebarGroup::new("Filter").child(filters))
             .child(SidebarGroup::new("Repositories").child(SidebarMenu::new().children(repos)))
@@ -645,23 +728,19 @@ impl Workspace {
             Tab::Merged => "Zuletzt gemergt",
             Tab::Releases => "Releases",
         };
-        h_flex()
-            .gap_2()
-            .px_4()
-            .py_2()
-            .border_b_1()
-            .border_color(cx.theme().border)
-            .child(div().text_base().font_semibold().child(title))
-            .child(div().flex_1())
+        let compact = self.compact;
+        let search = div()
+            .map(|d| if compact { d.w_full() } else { d.w_64() })
             .child(
-                div().w_64().child(
-                    Input::new(&self.search).small().cleanable(true).prefix(
-                        Icon::new(IconName::Search)
-                            .small()
-                            .text_color(cx.theme().muted_foreground),
-                    ),
+                Input::new(&self.search).small().cleanable(true).prefix(
+                    Icon::new(IconName::Search)
+                        .small()
+                        .text_color(cx.theme().muted_foreground),
                 ),
-            )
+            );
+        let controls = h_flex()
+            .gap_2()
+            .flex_shrink_0()
             .when(prefs.tab == Tab::Open, |this| {
                 let flow = prefs.view == View::Flow;
                 this.child(
@@ -671,13 +750,15 @@ impl Workspace {
                         .child(
                             Button::new("view-list")
                                 .icon(Lucide::List)
-                                .label("Liste")
+                                .when(!compact, |b| b.label("Liste"))
+                                .when(compact, |b| b.tooltip("Liste"))
                                 .selected(!flow),
                         )
                         .child(
                             Button::new("view-flow")
                                 .icon(Lucide::Workflow)
-                                .label("Flow")
+                                .when(!compact, |b| b.label("Flow"))
+                                .when(compact, |b| b.tooltip("Flow"))
                                 .selected(flow),
                         )
                         .on_click(cx.listener(|this, clicked: &Vec<usize>, _, cx| {
@@ -708,16 +789,57 @@ impl Workspace {
                             this.toggle_grouped(&ToggleGrouped, window, cx)
                         })),
                 )
-            })
+            });
+        let heading = h_flex().gap_2().min_w_0().child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .truncate()
+                .text_base()
+                .font_semibold()
+                .child(title),
+        );
+
+        // Schmal: Titel und Umschalter oben, Suche in voller Breite darunter.
+        if compact {
+            return v_flex()
+                .gap_2()
+                .px_4()
+                .py_2()
+                .border_b_1()
+                .border_color(cx.theme().border)
+                .child(heading.child(controls))
+                .child(search);
+        }
+        v_flex()
+            .px_4()
+            .py_2()
+            .border_b_1()
+            .border_color(cx.theme().border)
+            .child(heading.child(search).child(controls))
     }
 }
 
 impl Render for Workspace {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let (snapshot, prefs) = {
             let radar = self.radar.read(cx);
             (radar.snapshot(), radar.prefs().clone())
         };
+
+        let width = window.viewport_size().width;
+        self.narrow = width < NARROW_W;
+        if !self.narrow {
+            self.sidebar_overlay = false;
+        }
+        let docked = !self.narrow && !prefs.sidebar_hidden;
+        let content_w = if docked { width - SIDEBAR_W } else { width };
+        let compact = content_w < COMPACT_W;
+        if compact != self.compact {
+            self.compact = compact;
+            self.list.remeasure();
+        }
+
         let derived = snapshot.map(|s| Derived::new(s, prefs.clone(), &self.query));
         let error = self
             .radar
@@ -738,6 +860,8 @@ impl Render for Workspace {
             .on_action(cx.listener(Self::toggle_view))
             .on_action(cx.listener(Self::toggle_grouped))
             .on_action(cx.listener(Self::open_settings))
+            .on_action(cx.listener(Self::toggle_sidebar))
+            .on_action(cx.listener(Self::hide_sidebar))
             .on_action(cx.listener(|this, _: &ShowOpen, _, cx| this.show_tab(Tab::Open, cx)))
             .on_action(cx.listener(|this, _: &ShowMerged, _, cx| this.show_tab(Tab::Merged, cx)))
             .on_action(
@@ -750,8 +874,11 @@ impl Render for Workspace {
                 h_flex()
                     .flex_1()
                     .min_h_0()
+                    .relative()
                     .items_stretch()
-                    .child(self.render_sidebar(derived.as_ref(), cx))
+                    .when(!self.narrow, |this| {
+                        this.child(self.render_sidebar(derived.as_ref(), cx))
+                    })
                     .child(
                         v_flex()
                             .flex_1()
@@ -773,7 +900,38 @@ impl Render for Workspace {
                                 content,
                                 animate,
                             ))),
-                    ),
+                    )
+                    // Schmal: Seitenleiste gleitet über den Inhalt, Klick daneben schließt sie.
+                    .when(self.narrow, |this| {
+                        this.when(self.sidebar_overlay, |this| {
+                            this.child(
+                                div()
+                                    .id("sidebar-backdrop")
+                                    .absolute()
+                                    .inset_0()
+                                    .bg(black().opacity(0.25))
+                                    .occlude()
+                                    .on_mouse_down(
+                                        MouseButton::Left,
+                                        cx.listener(|this, _, _, cx| {
+                                            this.sidebar_overlay = false;
+                                            cx.notify();
+                                        }),
+                                    ),
+                            )
+                        })
+                        .child(
+                            div()
+                                .absolute()
+                                .top_0()
+                                .left_0()
+                                .h_full()
+                                // Klicks in der Seitenleiste erreichen den Hintergrund nicht.
+                                .occlude()
+                                .when(self.sidebar_overlay, |d| d.shadow_lg())
+                                .child(self.render_sidebar(derived.as_ref(), cx)),
+                        )
+                    }),
             )
     }
 }

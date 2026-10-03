@@ -136,6 +136,7 @@ impl Workspace {
                             .gap_1()
                             .child(
                                 h_flex()
+                                    .flex_wrap()
                                     .gap_2()
                                     .child(div().font_semibold().child(r.name.clone()))
                                     .when(r.name != r.tag_name, |this| {

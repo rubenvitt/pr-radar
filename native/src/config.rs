@@ -45,6 +45,8 @@ pub struct Prefs {
     pub grouped: bool,
     pub repo_filter: Vec<String>,
     pub notify: bool,
+    /// Seitenleiste im breiten Fenster ausgeblendet (⌘B)
+    pub sidebar_hidden: bool,
 }
 
 impl Default for Prefs {
@@ -56,6 +58,7 @@ impl Default for Prefs {
             grouped: true,
             repo_filter: Vec::new(),
             notify: false,
+            sidebar_hidden: false,
         }
     }
 }

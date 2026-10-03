@@ -372,6 +372,7 @@ impl Workspace {
             .child(
                 h_flex()
                     .id(SharedString::from(format!("repo-{repo}")))
+                    .min_w_0()
                     .text_sm()
                     .font_semibold()
                     .cursor_pointer()
@@ -394,6 +395,7 @@ impl Workspace {
                 |this, (branch, state)| {
                     this.child(
                         h_flex()
+                            .flex_shrink_0()
                             .gap_1p5()
                             .text_xs()
                             .text_color(cx.theme().muted_foreground)

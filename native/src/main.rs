@@ -96,7 +96,7 @@ fn main() {
 
         let options = WindowOptions {
             window_bounds: Some(WindowBounds::centered(size(px(1240.), px(820.)), cx)),
-            window_min_size: Some(size(px(900.), px(560.))),
+            window_min_size: Some(size(px(360.), px(480.))),
             ..TitleBar::window_options()
         };
         gpui_kit::open_window(options, cx, |window, cx| {

@@ -144,7 +144,13 @@ impl Workspace {
                     .min_w_0()
                     .font_family(cx.theme().mono_font_family.clone())
                     .child(Icon::new(Lucide::GitBranch).xsmall())
-                    .child(div().truncate().max_w_64().child(pr.head_ref.clone()))
+                    .child(
+                        div()
+                            .truncate()
+                            .min_w_0()
+                            .max_w_64()
+                            .child(pr.head_ref.clone()),
+                    )
                     .child("→")
                     .child(pr.base_ref.clone()),
             )
@@ -184,6 +190,30 @@ impl Workspace {
             _ => None,
         };
 
+        let compact = self.compact;
+        let actions = h_flex()
+            .id(SharedString::from(format!("actions-{}", pr.id)))
+            .flex_shrink_0()
+            .gap_2()
+            // Klicks auf Steuerelemente sollen die Zeile nicht auf-/zuklappen.
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .children(review)
+            .when(p.total > 0, |this| {
+                this.child(
+                    div()
+                        .text_xs()
+                        .text_color(state_color(p.state, cx))
+                        .child(format!("{}/{}", p.passed, p.total)),
+                )
+            })
+            .child(self.render_merge_control(pr, snapshot, cx));
+        // Schmal: Steuerung unter die Metadaten, damit der Titel Platz behält.
+        let (inline_actions, side_actions) = if compact {
+            (Some(actions.flex_wrap().gap_y_1().pt_1()), None)
+        } else {
+            (None, Some(actions))
+        };
+
         card_segment(first, last, cx)
             .relative()
             .when(conflict, |this| this.bg(cx.theme().danger.opacity(0.06)))
@@ -201,25 +231,16 @@ impl Workspace {
                     .hover(|this| this.bg(cx.theme().list_hover))
                     .on_click(cx.listener(move |this, _, _, cx| this.toggle_expanded(&id, cx)))
                     .child(div().pt_0p5().child(pipeline_icon(p.state, cx)))
-                    .child(v_flex().flex_1().min_w_0().gap_1().child(title).child(meta))
                     .child(
-                        h_flex()
-                            .id(SharedString::from(format!("actions-{}", pr.id)))
-                            .flex_shrink_0()
-                            .gap_2()
-                            // Klicks auf Steuerelemente sollen die Zeile nicht auf-/zuklappen.
-                            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                            .children(review)
-                            .when(p.total > 0, |this| {
-                                this.child(
-                                    div()
-                                        .text_xs()
-                                        .text_color(state_color(p.state, cx))
-                                        .child(format!("{}/{}", p.passed, p.total)),
-                                )
-                            })
-                            .child(self.render_merge_control(pr, snapshot, cx)),
+                        v_flex()
+                            .flex_1()
+                            .min_w_0()
+                            .gap_1()
+                            .child(title)
+                            .child(meta)
+                            .children(inline_actions),
                     )
+                    .children(side_actions)
                     .child(
                         Icon::new(if open {
                             IconName::ChevronUp
@@ -244,7 +265,8 @@ impl Workspace {
     fn render_checks(&self, pr: &OpenPr, cx: &mut Context<Self>) -> impl IntoElement {
         let muted = cx.theme().muted_foreground;
         v_flex()
-            .pl_12()
+            .when(self.compact, |d| d.pl_4())
+            .when(!self.compact, |d| d.pl_12())
             .pr_4()
             .pb_3()
             .gap_0p5()
