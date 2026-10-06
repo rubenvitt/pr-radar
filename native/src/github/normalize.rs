@@ -1,4 +1,4 @@
-//! GraphQL-Rohdaten → Domänenmodell. Port von `server/normalize.ts`.
+//! GraphQL-Rohdaten → Domänenmodell.
 
 use chrono::{DateTime, Utc};
 use serde::Deserialize;

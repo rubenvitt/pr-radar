@@ -1,4 +1,4 @@
-//! GraphQL-Dokumente – identisch zum Node-Server.
+//! GraphQL-Dokumente für Dashboard-Abfrage und Merge-Mutationen.
 
 const CHECKS: &str = r#"
   statusCheckRollup {

@@ -78,8 +78,8 @@ fn path() -> PathBuf {
 }
 
 impl Config {
-    /// Lädt die Konfiguration. Beim ersten Start werden die Repos der Web-App
-    /// (`data/config.json`) bzw. `REPOS=owner/a,owner/b` übernommen.
+    /// Lädt die Konfiguration. Beim ersten Start werden die Repos aus
+    /// `REPOS=owner/a,owner/b` übernommen.
     pub fn load() -> Self {
         if let Some(cfg) = std::fs::read_to_string(path())
             .ok()
@@ -87,18 +87,14 @@ impl Config {
         {
             return cfg;
         }
-        let legacy = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../data/config.json");
-        let mut cfg = std::fs::read_to_string(legacy)
-            .ok()
-            .and_then(|s| serde_json::from_str::<Config>(&s).ok())
-            .unwrap_or_default();
-        if cfg.repos.is_empty() {
-            cfg.repos = std::env::var("REPOS")
+        let cfg = Config {
+            repos: std::env::var("REPOS")
                 .unwrap_or_default()
                 .split(',')
                 .filter_map(parse_repo)
-                .collect();
-        }
+                .collect(),
+            ..Default::default()
+        };
         let _ = cfg.save();
         cfg
     }
