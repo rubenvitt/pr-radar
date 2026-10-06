@@ -327,6 +327,7 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let busy = self.radar.read(cx).is_pending(&pr.id);
+        let retrying = self.radar.read(cx).is_retrying(&pr.id);
         let id = pr.id.clone();
         let button_id = SharedString::from(format!("merge-{}", pr.id));
         let radar = self.radar.clone();
@@ -366,7 +367,9 @@ impl Workspace {
                 if busy {
                     return button
                         .loading(true)
-                        .tooltip(if now {
+                        .tooltip(if retrying {
+                            "GitHub lässt den Merge noch nicht zu – neuer Versuch gleich …"
+                        } else if now {
                             "Wird gemergt …"
                         } else {
                             "Auto-Merge wird aktiviert …"

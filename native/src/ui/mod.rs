@@ -19,6 +19,7 @@ use gpui_kit::component::{
     button::{Button, ButtonGroup, ButtonVariants as _},
     h_flex,
     input::{Input, InputEvent, InputState},
+    menu::{DropdownMenu as _, PopupMenuItem},
     notification::Notification,
     sidebar::{
         Sidebar, SidebarCollapsible, SidebarFooter, SidebarGroup, SidebarMenu, SidebarMenuItem,
@@ -29,10 +30,11 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::config::{Prefs, Quick, Tab, View};
-use crate::model::{OpenPr, PipelineState, Snapshot, TransitionKind};
+use crate::model::{MergeMethod, OpenPr, PipelineState, Snapshot, TransitionKind};
 use crate::radar::{PollState, Radar, RadarEvent};
 use crate::time::ago;
 use parts::state_color;
+use pr_row::MergeAction;
 use settings::RepoSettings;
 
 actions!(
@@ -330,6 +332,29 @@ impl Workspace {
                     Notification::error(message.clone()).title("Aktion fehlgeschlagen"),
                     cx,
                 );
+            }
+            RadarEvent::MergeAllFinished {
+                merged,
+                auto_merge,
+                failed,
+            } => {
+                let mut parts = Vec::new();
+                if *merged > 0 {
+                    parts.push(format!("{merged} gemergt"));
+                }
+                if *auto_merge > 0 {
+                    parts.push(format!("{auto_merge} per Auto-Merge"));
+                }
+                if !failed.is_empty() {
+                    parts.push(format!("{} fehlgeschlagen", failed.len()));
+                }
+                let summary = parts.join(" · ");
+                let notification = if failed.is_empty() {
+                    Notification::success(summary)
+                } else {
+                    Notification::error(format!("{summary}\n{}", failed.join("\n")))
+                };
+                window.push_notification(notification.title("Alle mergen"), cx);
             }
             RadarEvent::Transitions(transitions) => {
                 if !self.radar.read(cx).prefs().notify {
@@ -722,7 +747,97 @@ impl Workspace {
 
     /* ---------- Werkzeugleiste ---------- */
 
-    fn render_toolbar(&self, prefs: &Prefs, cx: &mut Context<Self>) -> impl IntoElement {
+    /// „Alle mergen“: alle sichtbaren, sofort mergebaren PRs. Mit mehreren erlaubten Methoden
+    /// wählt das Menü die bevorzugte; PRs, die sie nicht erlauben, nehmen ihre erste.
+    fn render_merge_all(
+        &self,
+        derived: Option<&Derived>,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        let d = derived?;
+        let radar = self.radar.read(cx);
+        let candidates: Vec<(String, Vec<MergeMethod>)> = d
+            .open_list
+            .iter()
+            .map(|&i| &d.snapshot.open[i])
+            .filter(|pr| !radar.is_pending(&pr.id))
+            .filter_map(|pr| match MergeAction::of(pr, &d.snapshot) {
+                MergeAction::MergeNow(methods) => Some((pr.id.clone(), methods)),
+                _ => None,
+            })
+            .collect();
+        if candidates.is_empty() {
+            return None;
+        }
+        let count = candidates.len();
+        let mut offered: Vec<MergeMethod> = Vec::new();
+        for (_, methods) in &candidates {
+            for m in methods {
+                if !offered.contains(m) {
+                    offered.push(*m);
+                }
+            }
+        }
+        // Wahl nur nötig, wenn ein PR mehrere Methoden erlaubt
+        let choice = candidates.iter().any(|(_, methods)| methods.len() > 1);
+        let radar = self.radar.clone();
+        let run = move |preferred: Option<MergeMethod>, cx: &mut App| {
+            let items = candidates
+                .iter()
+                .map(|(id, methods)| {
+                    let m = preferred
+                        .filter(|p| methods.contains(p))
+                        .unwrap_or(methods[0]);
+                    (id.clone(), m)
+                })
+                .collect();
+            radar.update(cx, |r, cx| r.merge_all(items, cx));
+        };
+
+        let compact = self.compact;
+        let label = format!("Alle mergen ({count})");
+        let button = Button::new("merge-all")
+            .small()
+            .outline()
+            .success()
+            .icon(Lucide::GitMerge)
+            .when(!compact, |b| b.label(label.clone()))
+            .when(compact, |b| b.label(count.to_string()));
+        if !choice {
+            return Some(
+                button
+                    .tooltip(format!(
+                        "{count} sichtbare PRs jetzt mergen – wartet GitHub noch, wird erneut versucht"
+                    ))
+                    .on_click(move |_, _, cx| run(None, cx))
+                    .into_any_element(),
+            );
+        }
+        let run = std::rc::Rc::new(run);
+        Some(
+            button
+                .dropdown_caret(true)
+                .tooltip(label)
+                .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
+                    let menu = menu.label(format!("{count} PRs mergen mit"));
+                    offered.iter().fold(menu, |menu, &m| {
+                        let run = run.clone();
+                        menu.item(
+                            PopupMenuItem::new(m.label())
+                                .on_click(move |_, _, cx| run(Some(m), cx)),
+                        )
+                    })
+                })
+                .into_any_element(),
+        )
+    }
+
+    fn render_toolbar(
+        &self,
+        prefs: &Prefs,
+        derived: Option<&Derived>,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let title = match prefs.tab {
             Tab::Open => "Offene Pull Requests",
             Tab::Merged => "Zuletzt gemergt",
@@ -738,10 +853,12 @@ impl Workspace {
                         .text_color(cx.theme().muted_foreground),
                 ),
             );
-        let controls = h_flex()
-            .gap_2()
-            .flex_shrink_0()
-            .when(prefs.tab == Tab::Open, |this| {
+        let merge_all = (prefs.tab == Tab::Open)
+            .then(|| self.render_merge_all(derived, cx))
+            .flatten();
+        let controls = h_flex().gap_2().flex_shrink_0().children(merge_all).when(
+            prefs.tab == Tab::Open,
+            |this| {
                 let flow = prefs.view == View::Flow;
                 this.child(
                     ButtonGroup::new("view")
@@ -789,7 +906,8 @@ impl Workspace {
                             this.toggle_grouped(&ToggleGrouped, window, cx)
                         })),
                 )
-            });
+            },
+        );
         let heading = h_flex().gap_2().min_w_0().child(
             div()
                 .flex_1()
@@ -883,7 +1001,7 @@ impl Render for Workspace {
                         v_flex()
                             .flex_1()
                             .min_w_0()
-                            .child(self.render_toolbar(&prefs, cx))
+                            .child(self.render_toolbar(&prefs, derived.as_ref(), cx))
                             .when_some(error, |this, e| {
                                 this.child(
                                     div().px_4().pt_4().child(

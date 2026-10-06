@@ -6,11 +6,17 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Result, anyhow, bail};
 use chrono::{DateTime, Utc};
-use gpui_kit::{AppContext as _, Context, EventEmitter, Task};
+use gpui_kit::{AppContext as _, AsyncApp, Context, EventEmitter, Task, WeakEntity};
 
 use crate::config::{Config, Prefs, parse_repo};
 use crate::github::{GitHub, RateLimit, TokenSource};
 use crate::model::{AutoMerge, MergeMethod, Snapshot, Transition, diff_snapshots};
+
+/// So lange wird ein Merge bei vorübergehenden GitHub-Fehlern wiederholt.
+const MERGE_DEADLINE: Duration = Duration::from_secs(180);
+/// Wartezeit vor dem ersten erneuten Versuch; wächst bis `MERGE_RETRY_MAX`.
+const MERGE_RETRY_START: Duration = Duration::from_secs(2);
+const MERGE_RETRY_MAX: Duration = Duration::from_secs(10);
 
 /// Wie lange ein lokal angenommener Auto-Merge-Zustand gegen ältere GitHub-Antworten gewinnt
 const OPTIMISTIC_TTL: Duration = Duration::from_secs(30);
@@ -22,6 +28,23 @@ enum Settle {
     AutoMerge(Option<MergeMethod>),
     /// Direkt gemergt: Spinner bis zum nächsten Poll (dann verschwindet der PR).
     AwaitRefresh,
+}
+
+/// Wie ein Merge-Auftrag ausgegangen ist.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum MergeOutcome {
+    Merged,
+    /// GitHub ließ den Merge noch nicht zu, Auto-Merge übernimmt.
+    AutoMerge(MergeMethod),
+}
+
+impl MergeOutcome {
+    fn settle(self) -> Settle {
+        match self {
+            Self::Merged => Settle::AwaitRefresh,
+            Self::AutoMerge(m) => Settle::AutoMerge(Some(m)),
+        }
+    }
 }
 
 /// Normales Poll-Intervall
@@ -53,6 +76,12 @@ pub enum RadarEvent {
     Changed(Vec<String>),
     /// Eine Nutzeraktion (Merge, Auto-Merge) ist fehlgeschlagen.
     ActionFailed(String),
+    /// „Alle mergen“ ist durch.
+    MergeAllFinished {
+        merged: usize,
+        auto_merge: usize,
+        failed: Vec<String>,
+    },
 }
 
 pub struct Radar {
@@ -64,6 +93,8 @@ pub struct Radar {
     pending: HashSet<String>,
     /// Gemergte PRs, die bis zum nächsten Poll noch als „läuft“ gelten
     awaiting_refresh: HashSet<String>,
+    /// PRs, deren Merge GitHub gerade noch ablehnt und der gleich erneut versucht wird
+    retrying: HashSet<String>,
     /// Lokal vorweggenommener Auto-Merge-Zustand je PR, bis GitHub ihn bestätigt
     optimistic: HashMap<String, (Instant, Option<AutoMerge>)>,
     poll_task: Option<Task<()>>,
@@ -87,6 +118,7 @@ impl Radar {
             },
             pending: HashSet::new(),
             awaiting_refresh: HashSet::new(),
+            retrying: HashSet::new(),
             optimistic: HashMap::new(),
             poll_task: None,
         };
@@ -112,6 +144,10 @@ impl Radar {
 
     pub fn is_pending(&self, pr_id: &str) -> bool {
         self.pending.contains(pr_id) || self.awaiting_refresh.contains(pr_id)
+    }
+
+    pub fn is_retrying(&self, pr_id: &str) -> bool {
+        self.retrying.contains(pr_id)
     }
 
     pub fn update_prefs(&mut self, cx: &mut Context<Self>, f: impl FnOnce(&mut Prefs)) {
@@ -235,16 +271,100 @@ impl Radar {
         });
     }
 
+    /// Jetzt mergen. Lehnt GitHub vorübergehend ab (z. B. weil gerade ein anderer PR in den
+    /// Ziel-Branch gemergt wurde), wird erneut versucht bzw. Auto-Merge aktiviert.
     pub fn merge(&mut self, pr_id: &str, method: MergeMethod, cx: &mut Context<Self>) {
         if let Err(e) = self.check_method(pr_id, method) {
             cx.emit(RadarEvent::ActionFailed(e.to_string()));
             return;
         }
-        let github = self.github.clone();
+        if !self.pending.insert(pr_id.to_string()) {
+            return; // läuft schon – keine Doppel-Submission
+        }
+        cx.notify();
         let id = pr_id.to_string();
-        self.run_mutation(pr_id, Settle::AwaitRefresh, cx, async move {
-            github.merge(&id, method).await
-        });
+        cx.spawn(async move |this, cx| {
+            let result = merge_until_done(&this, &id, method, cx).await;
+            this.update(cx, |this, cx| {
+                this.settle(&id, result.map(MergeOutcome::settle).map_err(Some), cx)
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// Mergt mehrere PRs: je Repo und Ziel-Branch nacheinander (parallele Merges in denselben
+    /// Branch lehnt GitHub ab), verschiedene Ziele parallel. Ein Fehlschlag stoppt die anderen nicht.
+    pub fn merge_all(&mut self, items: Vec<(String, MergeMethod)>, cx: &mut Context<Self>) {
+        let Some(snapshot) = self.snapshot.clone() else {
+            return;
+        };
+        // (Repo, Ziel-Branch) → [(PR-ID, „repo#nr“, Methode)]
+        type Job = (String, String, MergeMethod);
+        let mut groups: Vec<((String, String), Vec<Job>)> = Vec::new();
+        for (id, method) in items {
+            let Some(pr) = snapshot.open.iter().find(|p| p.id == id) else {
+                continue;
+            };
+            if self.check_method(&id, method).is_err() || !self.pending.insert(id.clone()) {
+                continue;
+            }
+            let key = (pr.repo.clone(), pr.base_ref.clone());
+            let label = format!("{}#{}", pr.repo, pr.number);
+            match groups.iter_mut().find(|(k, _)| *k == key) {
+                Some((_, list)) => list.push((id, label, method)),
+                None => groups.push((key, vec![(id, label, method)])),
+            }
+        }
+        if groups.is_empty() {
+            return;
+        }
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let runs = groups.into_iter().map(|(_, list)| {
+                let this = this.clone();
+                let mut cx = cx.clone();
+                async move {
+                    let mut results = Vec::new();
+                    for (id, label, method) in list {
+                        let result = merge_until_done(&this, &id, method, &mut cx).await;
+                        let summary = result
+                            .as_ref()
+                            .map(|o| *o)
+                            .map_err(|e| format!("{label}: {e:#}"));
+                        this.update(&mut cx, |this, cx| {
+                            this.settle(&id, result.map(MergeOutcome::settle).map_err(|_| None), cx)
+                        })
+                        .ok();
+                        results.push(summary);
+                    }
+                    results
+                }
+            });
+            let results: Vec<_> = futures::future::join_all(runs)
+                .await
+                .into_iter()
+                .flatten()
+                .collect();
+            let merged = results
+                .iter()
+                .filter(|r| matches!(r, Ok(MergeOutcome::Merged)))
+                .count();
+            let auto_merge = results
+                .iter()
+                .filter(|r| matches!(r, Ok(MergeOutcome::AutoMerge(_))))
+                .count();
+            let failed = results.into_iter().filter_map(Result::err).collect();
+            this.update(cx, |_, cx| {
+                cx.emit(RadarEvent::MergeAllFinished {
+                    merged,
+                    auto_merge,
+                    failed,
+                })
+            })
+            .ok();
+        })
+        .detach();
     }
 
     /// Zeigt einen erfolgreich geschalteten Auto-Merge sofort an, statt auf den nächsten Poll zu warten.
@@ -311,20 +431,109 @@ impl Radar {
         cx.spawn(async move |this, cx| {
             let result = cx.background_spawn(work).await;
             this.update(cx, |this, cx| {
-                this.pending.remove(&id);
-                match (result, settle) {
-                    (Err(e), _) => cx.emit(RadarEvent::ActionFailed(format!("{e:#}"))),
-                    (Ok(()), Settle::AutoMerge(method)) => this.apply_auto_merge(&id, method, cx),
-                    (Ok(()), Settle::AwaitRefresh) => {
-                        this.awaiting_refresh.insert(id.clone());
-                    }
-                }
-                this.refresh(cx);
+                this.settle(&id, result.map(|()| settle).map_err(Some), cx)
             })
             .ok();
         })
         .detach();
     }
+
+    /// Schließt eine Mutation ab: Spinner lösen, Ergebnis anzeigen, neu laden.
+    /// Ein `Err(None)` ist schon anderweitig gemeldet.
+    fn settle(
+        &mut self,
+        pr_id: &str,
+        result: Result<Settle, Option<anyhow::Error>>,
+        cx: &mut Context<Self>,
+    ) {
+        self.pending.remove(pr_id);
+        self.retrying.remove(pr_id);
+        match result {
+            Err(Some(e)) => cx.emit(RadarEvent::ActionFailed(format!("{e:#}"))),
+            Err(None) => {}
+            Ok(Settle::AutoMerge(method)) => self.apply_auto_merge(pr_id, method, cx),
+            Ok(Settle::AwaitRefresh) => {
+                self.awaiting_refresh.insert(pr_id.to_string());
+            }
+        }
+        self.refresh(cx);
+    }
+}
+
+/// Mergt einen PR und wiederholt bei vorübergehenden Ablehnungen bis `MERGE_DEADLINE`.
+/// Zwischendurch wird Auto-Merge versucht – GitHub nimmt ihn nur an, solange der PR nicht
+/// direkt mergebar ist, und mergt dann selbst, sobald es geht.
+async fn merge_until_done(
+    this: &WeakEntity<Radar>,
+    pr_id: &str,
+    method: MergeMethod,
+    cx: &mut AsyncApp,
+) -> Result<MergeOutcome> {
+    let started = Instant::now();
+    let mut delay = MERGE_RETRY_START;
+    loop {
+        // PR inzwischen weg (gemergt/geschlossen)? Dann ist nichts mehr zu tun.
+        let Some((github, auto_merge_allowed)) = this.update(cx, |this, _| {
+            let snapshot = this.snapshot.as_ref()?;
+            let pr = snapshot.open.iter().find(|p| p.id == pr_id)?;
+            let allowed = snapshot
+                .repo(&pr.repo)
+                .is_some_and(|r| r.auto_merge_allowed);
+            Some((this.github.clone(), allowed))
+        })?
+        else {
+            return Ok(MergeOutcome::Merged);
+        };
+
+        let id = pr_id.to_string();
+        let gh = github.clone();
+        let Err(error) = cx
+            .background_spawn(async move { gh.merge(&id, method).await })
+            .await
+        else {
+            return Ok(MergeOutcome::Merged);
+        };
+        if !is_transient_merge_error(&format!("{error:#}")) {
+            return Err(error);
+        }
+
+        if auto_merge_allowed {
+            let id = pr_id.to_string();
+            let enabled = cx
+                .background_spawn(async move { github.set_auto_merge(&id, Some(method)).await })
+                .await;
+            if enabled.is_ok() {
+                return Ok(MergeOutcome::AutoMerge(method));
+            }
+        }
+
+        if started.elapsed() + delay > MERGE_DEADLINE {
+            return Err(error.context(format!(
+                "GitHub lässt den Merge seit {} min nicht zu",
+                MERGE_DEADLINE.as_secs() / 60
+            )));
+        }
+        this.update(cx, |this, cx| {
+            this.retrying.insert(pr_id.to_string());
+            cx.notify();
+        })?;
+        cx.background_executor().timer(delay).await;
+        delay = (delay * 3 / 2).min(MERGE_RETRY_MAX);
+    }
+}
+
+/// Ablehnungen, die sich von selbst erledigen – etwa direkt nachdem ein anderer PR in denselben
+/// Branch gemergt wurde und GitHub die Mergebarkeit neu berechnet.
+fn is_transient_merge_error(message: &str) -> bool {
+    let message = message.to_lowercase();
+    [
+        "base branch was modified",
+        "try the merge again",
+        "not mergeable",
+        "merge already in progress",
+    ]
+    .iter()
+    .any(|pattern| message.contains(pattern))
 }
 
 /// IDs offener PRs, deren sichtbarer Zustand sich zwischen zwei Snapshots geändert hat.
@@ -401,6 +610,20 @@ mod tests {
             }],
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn erkennt_voruebergehende_merge_fehler() {
+        assert!(is_transient_merge_error(
+            "Base branch was modified. Review and try the merge again."
+        ));
+        assert!(is_transient_merge_error("Pull Request is not mergeable"));
+        assert!(!is_transient_merge_error(
+            "Repository rule violations found: Changes must be made through a pull request."
+        ));
+        assert!(!is_transient_merge_error(
+            "viewer does not have permission to merge"
+        ));
     }
 
     #[test]

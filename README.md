@@ -28,6 +28,8 @@ scripts/bundle.sh --install     # „PR Radar.app“ bauen und nach /Application
 - Token wie beim Server: `GITHUB_TOKEN`/`GH_TOKEN`, sonst `gh auth token` (auch aus dem Finder gestartet)
 - Konfiguration: `~/Library/Application Support/pr-radar/config.json`; beim ersten Start werden die Repos aus `data/config.json` übernommen
 - Seitenleiste mit Ansichten, Schnellfiltern und Repos, Liste oder Flow, Repositories-Sheet (`⌘,`)
+- „Alle mergen“ für alle sichtbaren, sofort mergebaren PRs (je Repo und Ziel-Branch nacheinander)
+- Lehnt GitHub einen Merge vorübergehend ab (z. B. „Base branch was modified“ direkt nach einem anderen Merge), versucht die App es bis zu 3 min erneut bzw. aktiviert Auto-Merge
 - Tastatur: `/` bzw. `⌘F` Suche, `r` neu laden, `v` Liste/Flow, `g` gruppieren, `1–3` bzw. `⌘1–3` Ansichten
 - Systembenachrichtigungen (rot/grün/gemergt) nur aus dem App-Bundle, nicht unter `cargo run`
 - Folgt Hell/Dunkel des Systems; Animationen entfallen bei „Bewegung reduzieren“
