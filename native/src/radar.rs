@@ -267,7 +267,7 @@ impl Radar {
         let github = self.github.clone();
         let id = pr_id.to_string();
         self.run_mutation(pr_id, Settle::AutoMerge(method), cx, async move {
-            github.set_auto_merge(&id, method).await
+            github.set_auto_merge(&id, method, None).await
         });
     }
 
@@ -278,13 +278,16 @@ impl Radar {
             cx.emit(RadarEvent::ActionFailed(e.to_string()));
             return;
         }
+        let Some(head) = self.head_of(pr_id) else {
+            return;
+        };
         if !self.pending.insert(pr_id.to_string()) {
             return; // läuft schon – keine Doppel-Submission
         }
         cx.notify();
         let id = pr_id.to_string();
         cx.spawn(async move |this, cx| {
-            let result = merge_until_done(&this, &id, method, cx).await;
+            let result = merge_until_done(&this, &id, method, &head, cx).await;
             this.update(cx, |this, cx| {
                 this.settle(&id, result.map(MergeOutcome::settle).map_err(Some), cx)
             })
@@ -299,8 +302,8 @@ impl Radar {
         let Some(snapshot) = self.snapshot.clone() else {
             return;
         };
-        // (Repo, Ziel-Branch) → [(PR-ID, „repo#nr“, Methode)]
-        type Job = (String, String, MergeMethod);
+        // (Repo, Ziel-Branch) → [(PR-ID, „repo#nr“, Methode, Head-Commit)]
+        type Job = (String, String, MergeMethod, String);
         let mut groups: Vec<((String, String), Vec<Job>)> = Vec::new();
         for (id, method) in items {
             let Some(pr) = snapshot.open.iter().find(|p| p.id == id) else {
@@ -311,9 +314,10 @@ impl Radar {
             }
             let key = (pr.repo.clone(), pr.base_ref.clone());
             let label = format!("{}#{}", pr.repo, pr.number);
+            let job = (id, label, method, pr.head_oid.clone());
             match groups.iter_mut().find(|(k, _)| *k == key) {
-                Some((_, list)) => list.push((id, label, method)),
-                None => groups.push((key, vec![(id, label, method)])),
+                Some((_, list)) => list.push(job),
+                None => groups.push((key, vec![job])),
             }
         }
         if groups.is_empty() {
@@ -326,8 +330,8 @@ impl Radar {
                 let mut cx = cx.clone();
                 async move {
                     let mut results = Vec::new();
-                    for (id, label, method) in list {
-                        let result = merge_until_done(&this, &id, method, &mut cx).await;
+                    for (id, label, method, head) in list {
+                        let result = merge_until_done(&this, &id, method, &head, &mut cx).await;
                         let summary = result
                             .as_ref()
                             .map(|o| *o)
@@ -395,6 +399,13 @@ impl Radar {
         cx.notify();
     }
 
+    /// Commit, auf dem der offene PR laut letztem Snapshot steht.
+    fn head_of(&self, pr_id: &str) -> Option<String> {
+        let snapshot = self.snapshot.as_ref()?;
+        let pr = snapshot.open.iter().find(|p| p.id == pr_id)?;
+        Some(pr.head_oid.clone())
+    }
+
     /// Nur Methoden zulassen, die das Repo des PRs erlaubt.
     fn check_method(&self, pr_id: &str, method: MergeMethod) -> Result<()> {
         let snapshot = self
@@ -460,35 +471,68 @@ impl Radar {
     }
 }
 
+/// Was vor einem (erneuten) Merge-Versuch laut aktuellem Snapshot gilt.
+#[derive(Debug, PartialEq)]
+enum Round {
+    /// Versuchen; `auto_merge_allowed`: Auto-Merge als Ausweg anbieten
+    Attempt { auto_merge_allowed: bool },
+    /// Nichts mehr zu tun
+    Done(MergeOutcome),
+    /// Abbrechen
+    Abort(&'static str),
+}
+
+fn next_round(snapshot: &Snapshot, pr_id: &str, head: &str) -> Round {
+    // PR inzwischen weg (gemergt/geschlossen)? Dann ist nichts mehr zu tun.
+    let Some(pr) = snapshot.open.iter().find(|p| p.id == pr_id) else {
+        return Round::Done(MergeOutcome::Merged);
+    };
+    if pr.head_oid != head {
+        return Round::Abort("Seit dem Klick wurden neue Commits gepusht – Merge abgebrochen.");
+    }
+    if let Some(am) = &pr.auto_merge {
+        return Round::Done(MergeOutcome::AutoMerge(am.method));
+    }
+    if pr.has_conflict() {
+        return Round::Abort("Merge-Konflikt – Branch muss erst aktualisiert werden.");
+    }
+    Round::Attempt {
+        auto_merge_allowed: snapshot
+            .repo(&pr.repo)
+            .is_some_and(|r| r.auto_merge_allowed),
+    }
+}
+
 /// Mergt einen PR und wiederholt bei vorübergehenden Ablehnungen bis `MERGE_DEADLINE`.
 /// Zwischendurch wird Auto-Merge versucht – GitHub nimmt ihn nur an, solange der PR nicht
-/// direkt mergebar ist, und mergt dann selbst, sobald es geht.
+/// direkt mergebar ist, und mergt dann selbst, sobald es geht. Beides nur auf dem Commit
+/// `head`, der beim Klick zu sehen war.
 async fn merge_until_done(
     this: &WeakEntity<Radar>,
     pr_id: &str,
     method: MergeMethod,
+    head: &str,
     cx: &mut AsyncApp,
 ) -> Result<MergeOutcome> {
     let started = Instant::now();
     let mut delay = MERGE_RETRY_START;
     loop {
-        // PR inzwischen weg (gemergt/geschlossen)? Dann ist nichts mehr zu tun.
-        let Some((github, auto_merge_allowed)) = this.update(cx, |this, _| {
-            let snapshot = this.snapshot.as_ref()?;
-            let pr = snapshot.open.iter().find(|p| p.id == pr_id)?;
-            let allowed = snapshot
-                .repo(&pr.repo)
-                .is_some_and(|r| r.auto_merge_allowed);
-            Some((this.github.clone(), allowed))
-        })?
-        else {
-            return Ok(MergeOutcome::Merged);
+        let (github, round) = this.update(cx, |this, _| {
+            let round = match &this.snapshot {
+                Some(snapshot) => next_round(snapshot, pr_id, head),
+                None => Round::Done(MergeOutcome::Merged),
+            };
+            (this.github.clone(), round)
+        })?;
+        let auto_merge_allowed = match round {
+            Round::Attempt { auto_merge_allowed } => auto_merge_allowed,
+            Round::Done(outcome) => return Ok(outcome),
+            Round::Abort(reason) => bail!(reason),
         };
 
-        let id = pr_id.to_string();
-        let gh = github.clone();
+        let (id, gh, h) = (pr_id.to_string(), github.clone(), head.to_string());
         let Err(error) = cx
-            .background_spawn(async move { gh.merge(&id, method).await })
+            .background_spawn(async move { gh.merge(&id, method, &h).await })
             .await
         else {
             return Ok(MergeOutcome::Merged);
@@ -498,9 +542,11 @@ async fn merge_until_done(
         }
 
         if auto_merge_allowed {
-            let id = pr_id.to_string();
+            let (id, h) = (pr_id.to_string(), head.to_string());
             let enabled = cx
-                .background_spawn(async move { github.set_auto_merge(&id, Some(method)).await })
+                .background_spawn(async move {
+                    github.set_auto_merge(&id, Some(method), Some(&h)).await
+                })
                 .await;
             if enabled.is_ok() {
                 return Ok(MergeOutcome::AutoMerge(method));
@@ -589,6 +635,7 @@ mod tests {
                 is_draft: false,
                 updated_at: Utc::now(),
                 head_ref: "h".into(),
+                head_oid: "abc".into(),
                 base_ref: "main".into(),
                 additions: 0,
                 deletions: 0,
@@ -624,6 +671,33 @@ mod tests {
         assert!(!is_transient_merge_error(
             "viewer does not have permission to merge"
         ));
+    }
+
+    #[test]
+    fn naechste_runde_bricht_bei_neuem_commit_und_konflikt_ab() {
+        let snap = snapshot(None);
+        assert!(matches!(
+            next_round(&snap, "1", "abc"),
+            Round::Attempt { .. }
+        ));
+        assert!(matches!(next_round(&snap, "1", "alt"), Round::Abort(_)));
+        assert_eq!(
+            next_round(&snap, "weg", "abc"),
+            Round::Done(MergeOutcome::Merged)
+        );
+
+        let mut conflict = snapshot(None);
+        conflict.open[0].merge_state_status = "DIRTY".into();
+        assert!(matches!(next_round(&conflict, "1", "abc"), Round::Abort(_)));
+
+        let auto = snapshot(Some(AutoMerge {
+            method: MergeMethod::Merge,
+            enabled_by: None,
+        }));
+        assert_eq!(
+            next_round(&auto, "1", "abc"),
+            Round::Done(MergeOutcome::AutoMerge(MergeMethod::Merge))
+        );
     }
 
     #[test]

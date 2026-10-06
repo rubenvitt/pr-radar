@@ -198,12 +198,18 @@ impl GitHub {
         Ok(())
     }
 
-    pub async fn set_auto_merge(&self, pr_id: &str, method: Option<MergeMethod>) -> Result<()> {
+    /// Auto-Merge an/aus. `head`: nur, wenn der Branch noch auf diesem Commit steht.
+    pub async fn set_auto_merge(
+        &self,
+        pr_id: &str,
+        method: Option<MergeMethod>,
+        head: Option<&str>,
+    ) -> Result<()> {
         match method {
             Some(m) => {
                 self.mutate(
                     queries::ENABLE_AUTO_MERGE,
-                    json!({ "id": pr_id, "method": m.graphql() }),
+                    json!({ "id": pr_id, "method": m.graphql(), "head": head }),
                 )
                 .await
             }
@@ -214,10 +220,11 @@ impl GitHub {
         }
     }
 
-    pub async fn merge(&self, pr_id: &str, method: MergeMethod) -> Result<()> {
+    /// Mergt – nur, wenn der Branch noch auf `head` steht (sonst lehnt GitHub ab).
+    pub async fn merge(&self, pr_id: &str, method: MergeMethod, head: &str) -> Result<()> {
         self.mutate(
             queries::MERGE_PR,
-            json!({ "id": pr_id, "method": method.graphql() }),
+            json!({ "id": pr_id, "method": method.graphql(), "head": head }),
         )
         .await
     }

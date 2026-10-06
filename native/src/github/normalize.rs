@@ -123,6 +123,8 @@ pub struct RawOpen {
     is_draft: bool,
     updated_at: DateTime<Utc>,
     head_ref_name: String,
+    #[serde(default)]
+    head_ref_oid: String,
     base_ref_name: String,
     #[serde(default)]
     additions: u64,
@@ -340,6 +342,7 @@ pub fn normalize_open(repo: &str, n: &RawOpen) -> OpenPr {
         is_draft: n.is_draft,
         updated_at: n.updated_at,
         head_ref: n.head_ref_name.clone(),
+        head_oid: n.head_ref_oid.clone(),
         base_ref: n.base_ref_name.clone(),
         additions: n.additions,
         deletions: n.deletions,

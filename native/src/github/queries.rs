@@ -25,7 +25,7 @@ fn repo_fields() -> String {
   open: pullRequests(states: OPEN, first: 40, orderBy: {{ field: UPDATED_AT, direction: DESC }}) {{
     nodes {{
       id number title url isDraft createdAt updatedAt
-      headRefName baseRefName additions deletions
+      headRefName headRefOid baseRefName additions deletions
       reviewDecision mergeable mergeStateStatus
       author {{ login avatarUrl }}
       autoMergeRequest {{ enabledAt mergeMethod enabledBy {{ login }} }}
@@ -74,8 +74,8 @@ pub fn dashboard_query(repos: &[String]) -> String {
 }
 
 pub const ENABLE_AUTO_MERGE: &str = r#"
-  mutation($id: ID!, $method: PullRequestMergeMethod!) {
-    enablePullRequestAutoMerge(input: { pullRequestId: $id, mergeMethod: $method }) {
+  mutation($id: ID!, $method: PullRequestMergeMethod!, $head: GitObjectID) {
+    enablePullRequestAutoMerge(input: { pullRequestId: $id, mergeMethod: $method, expectedHeadOid: $head }) {
       pullRequest { id autoMergeRequest { enabledAt } }
     }
   }"#;
@@ -88,8 +88,8 @@ pub const DISABLE_AUTO_MERGE: &str = r#"
   }"#;
 
 pub const MERGE_PR: &str = r#"
-  mutation($id: ID!, $method: PullRequestMergeMethod!) {
-    mergePullRequest(input: { pullRequestId: $id, mergeMethod: $method }) {
+  mutation($id: ID!, $method: PullRequestMergeMethod!, $head: GitObjectID) {
+    mergePullRequest(input: { pullRequestId: $id, mergeMethod: $method, expectedHeadOid: $head }) {
       pullRequest { id merged }
     }
   }"#;

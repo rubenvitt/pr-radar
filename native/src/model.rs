@@ -159,6 +159,8 @@ pub struct OpenPr {
     pub is_draft: bool,
     pub updated_at: DateTime<Utc>,
     pub head_ref: String,
+    /// Commit, auf dem der Branch gerade steht – Merges werden daran gebunden
+    pub head_oid: String,
     pub base_ref: String,
     pub additions: u64,
     pub deletions: u64,
@@ -340,6 +342,7 @@ mod tests {
             is_draft: false,
             updated_at: Utc::now(),
             head_ref: "h".into(),
+            head_oid: String::new(),
             base_ref: "main".into(),
             additions: 0,
             deletions: 0,
