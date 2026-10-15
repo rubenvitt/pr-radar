@@ -282,7 +282,8 @@ private struct RunningDots: Shape {
     var edges: [FlowEdge]
     var phase: CGFloat
 
-    var animatableData: CGFloat {
+    // nonisolated: Views sind ab iOS 18 MainActor-isoliert, die Animatable-Anforderung nicht.
+    nonisolated var animatableData: CGFloat {
         get { phase }
         set { phase = newValue }
     }

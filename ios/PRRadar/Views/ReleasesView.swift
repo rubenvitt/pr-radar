@@ -122,33 +122,28 @@ private struct ReleaseCard: View {
 
 /// Release Notes: `descriptionHTML` ist von GitHub gerendertes, bereinigtes HTML.
 /// Farben werden entfernt, damit der Text in Hell und Dunkel lesbar bleibt.
-private struct ReleaseNotes: UIViewRepresentable {
+/// Der HTML-Import läuft außerhalb des SwiftUI-Updates (in `.task`), weil er intern die
+/// Runloop dreht – mitten in `updateUIView` kann das hängen.
+private struct ReleaseNotes: View {
     var id: String
     var html: String
+    @State private var text: NSAttributedString?
 
     @MainActor private static var cache: [String: NSAttributedString] = [:]
 
-    func makeUIView(context: Context) -> UITextView {
-        let view = UITextView()
-        view.isEditable = false
-        view.isScrollEnabled = false
-        view.backgroundColor = .clear
-        view.textContainerInset = .zero
-        view.textContainer.lineFragmentPadding = 0
-        view.dataDetectorTypes = []
-        view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        return view
-    }
-
-    func updateUIView(_ view: UITextView, context: Context) {
-        view.attributedText = Self.render(id: id, html: html)
-        view.linkTextAttributes = [.foregroundColor: UIColor.tintColor]
-    }
-
-    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
-        let width = proposal.width ?? 320
-        let size = uiView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
-        return CGSize(width: width, height: ceil(size.height))
+    var body: some View {
+        Group {
+            if let text {
+                NotesTextView(text: text)
+            } else {
+                ProgressView().frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .task(id: "\(id):\(html.hashValue)") {
+            // erst nach dem aktuellen Update rendern
+            await Task.yield()
+            text = Self.render(id: id, html: html)
+        }
     }
 
     @MainActor private static func render(id: String, html: String) -> NSAttributedString {
@@ -186,5 +181,32 @@ private struct ReleaseNotes: UIViewRepresentable {
         }
         cache[key] = out
         return out
+    }
+}
+
+private struct NotesTextView: UIViewRepresentable {
+    var text: NSAttributedString
+
+    func makeUIView(context: Context) -> UITextView {
+        let view = UITextView()
+        view.isEditable = false
+        view.isScrollEnabled = false
+        view.backgroundColor = .clear
+        view.textContainerInset = .zero
+        view.textContainer.lineFragmentPadding = 0
+        view.dataDetectorTypes = []
+        view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return view
+    }
+
+    func updateUIView(_ view: UITextView, context: Context) {
+        if view.attributedText != text { view.attributedText = text }
+        view.linkTextAttributes = [.foregroundColor: UIColor.tintColor]
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
+        let width = proposal.width ?? 320
+        let size = uiView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
+        return CGSize(width: width, height: ceil(size.height))
     }
 }
