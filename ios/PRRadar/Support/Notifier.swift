@@ -16,8 +16,9 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     }
 
     /// Fragt einmalig nach Erlaubnis; `false`, wenn abgelehnt.
-    func requestAuthorization() async -> Bool {
-        (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false
+    /// nonisolated: Das Center ist nicht Sendable und darf nicht vom MainActor herübergereicht werden.
+    nonisolated func requestAuthorization() async -> Bool {
+        (try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])) ?? false
     }
 
     func post(_ transitions: [PRTransition]) {
