@@ -186,14 +186,18 @@ public final class GitHubClient: GitHubAPI {
         let chunks = stride(from: 0, to: repos.count, by: chunkSize).map {
             Array(repos[$0..<min($0 + chunkSize, repos.count)])
         }
-        let responses = try await withThrowingTaskGroup(of: (Int, GQLResponse).self) { group in
+        let results = await withTaskGroup(of: (Int, Result<GQLResponse, Error>).self) { group in
             for (i, chunk) in chunks.enumerated() {
-                group.addTask { (i, try await self.request(Queries.dashboard(chunk))) }
+                group.addTask {
+                    do { return (i, .success(try await self.request(Queries.dashboard(chunk)))) } catch { return (i, .failure(error)) }
+                }
             }
-            var out = [GQLResponse?](repeating: nil, count: chunks.count)
-            for try await (i, res) in group { out[i] = res }
-            return out.compactMap { $0 }
+            var out = [Result<GQLResponse, Error>?](repeating: nil, count: chunks.count)
+            for await (i, res) in group { out[i] = res }
+            return out
         }
+        // Fehler in Chunk-Reihenfolge melden – wie die macOS-App
+        let responses = try results.map { try $0!.get() }
 
         var snapshot = Snapshot()
         var rateLimit: RateLimit?
@@ -270,7 +274,7 @@ public final class GitHubClient: GitHubAPI {
         guard let (data, status) = try? await transport.send(req), (200..<300).contains(status) else {
             return nil
         }
-        return try? JSONDecoder().decode([RawRule].self, from: data)
+        return decodeRules(data)
     }
 }
 
@@ -333,14 +337,14 @@ struct DashboardData: Decodable, Sendable {
     private struct RawRateLimit: Decodable {
         var remaining: Int?
         var limit: Int?
-        var resetAt: Date?
+        var resetAt: String?
     }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: DynamicKey.self)
         viewer = (try? c.decodeIfPresent(Viewer.self, forKey: DynamicKey("viewer")))??.login
         if let rl = try? c.decodeIfPresent(RawRateLimit.self, forKey: DynamicKey("rateLimit")) {
-            rateLimit = RateLimit(remaining: rl.remaining ?? 0, limit: rl.limit ?? 0, resetAt: rl.resetAt)
+            rateLimit = RateLimit(remaining: rl.remaining ?? 0, limit: rl.limit ?? 0, resetAt: rl.resetAt.flatMap(parseISO8601))
         }
         var repos: [String: RepoSlot] = [:]
         for key in c.allKeys where key.stringValue.hasPrefix("r") && Int(key.stringValue.dropFirst()) != nil {
@@ -378,6 +382,19 @@ struct DynamicKey: CodingKey {
     init(_ s: String) { stringValue = s }
     init?(stringValue: String) { self.stringValue = stringValue }
     init?(intValue: Int) { nil }
+}
+
+/// Branch-Regeln tolerant lesen: unlesbare Einträge überspringen statt die ganze Antwort zu
+/// verwerfen; eine Antwort, die kein Array ist, gilt als „keine Regeln“ (wie die macOS-App).
+func decodeRules(_ data: Data) -> [RawRule]? {
+    guard let json = try? JSONSerialization.jsonObject(with: data) else { return nil }
+    guard let items = json as? [Any] else { return [] }
+    return items.compactMap { item in
+        guard let rule = item as? [String: Any], let type = rule["type"] as? String else { return nil }
+        let allowed = ((rule["parameters"] as? [String: Any])?["allowed_merge_methods"] as? [Any])?
+            .compactMap { $0 as? String }
+        return RawRule(type: type, parameters: allowed.map { RawRule.Parameters(allowedMergeMethods: $0) })
+    }
 }
 
 /// Prozent-Kodierung für ein Pfadsegment (Branch-Namen dürfen `/` enthalten).

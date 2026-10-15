@@ -168,6 +168,24 @@ private func run(_ status: String, _ conclusion: String?, _ name: String) -> Str
         }
     }
 
+    @Test func liestRegelnTolerant() throws {
+        let data = Data(#"""
+            [{ "parameters": {} },
+             { "type": "pull_request", "parameters": { "allowed_merge_methods": ["squash", null] } },
+             { "type": "required_linear_history" }]
+            """#.utf8)
+        let rules = try #require(decodeRules(data))
+        #expect(applyBranchRules([.squash, .merge, .rebase], rules) == [.squash])
+        #expect(decodeRules(Data("{}".utf8)) == [], "kein Array → keine Regeln")
+        #expect(decodeRules(Data("kaputt".utf8)) == nil)
+    }
+
+    @Test func rateLimitOhneLesbaresResetAt() throws {
+        let json = #"{ "data": { "viewer": { "login": "x" }, "rateLimit": { "remaining": 7, "limit": 9, "resetAt": "morgen" } } }"#
+        let res = try gitHubDecoder().decode(GQLResponse.self, from: Data(json.utf8))
+        #expect(res.data?.rateLimit == RateLimit(remaining: 7, limit: 9, resetAt: nil))
+    }
+
     @Test func regelnBleibenBeiAbruffehlerErhalten() async {
         let cache = RulesCache()
         let key = RulesCache.Key(repo: "a/b", branch: "main")

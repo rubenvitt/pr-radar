@@ -19,9 +19,12 @@ public struct Derived: Sendable {
     public init(snapshot: Snapshot, prefs: Prefs, query: String) {
         self.snapshot = snapshot
         self.prefs = prefs
-        let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
         let repoOK = { (repo: String) in prefs.repoFilter.isEmpty || prefs.repoFilter.contains(repo) }
-        let textOK = { (parts: [String]) in q.isEmpty || parts.contains { $0.lowercased().contains(q) } }
+        // Groß-/Kleinschreibung und Akzente egal: „cafe“ findet „Café“
+        let textOK = { (parts: [String]) in
+            q.isEmpty || parts.contains { $0.range(of: q, options: [.caseInsensitive, .diacriticInsensitive]) != nil }
+        }
 
         openBase = snapshot.open.filter { p in
             repoOK(p.repo) && textOK([p.title, p.repo, p.author?.login ?? "", p.headRef, "#\(p.number)"])

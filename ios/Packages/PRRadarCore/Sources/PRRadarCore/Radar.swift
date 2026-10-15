@@ -16,6 +16,9 @@ let mergeRetryStart: TimeInterval = 2
 let mergeRetryMax: TimeInterval = 10
 /// Wie lange ein lokal angenommener Auto-Merge-Zustand gegen ältere GitHub-Antworten gewinnt
 let optimisticTTL: TimeInterval = 30
+/// Ein zwischengespeicherter Stand dient höchstens so lange als Vergleichsbasis für
+/// Benachrichtigungen – sonst meldet der erste Abruf nach einer Nacht alles auf einmal.
+let cacheBaselineMaxAge: TimeInterval = 2 * 3600
 /// So lange bleibt eine geänderte Zeile hervorgehoben.
 public let flashDuration: TimeInterval = 1.6
 
@@ -94,8 +97,16 @@ public struct SnapshotCache: Sendable {
     }
 
     public func load() -> Snapshot? {
-        guard let data = try? Data(contentsOf: url) else { return nil }
-        return try? JSONDecoder().decode(Snapshot.self, from: data)
+        loadWithDate()?.snapshot
+    }
+
+    /// Stand samt Zeitpunkt, zu dem er gespeichert wurde.
+    public func loadWithDate() -> (snapshot: Snapshot, savedAt: Date)? {
+        guard let data = try? Data(contentsOf: url),
+            let snapshot = try? JSONDecoder().decode(Snapshot.self, from: data)
+        else { return nil }
+        let attrs = try? FileManager.default.attributesOfItem(atPath: url.path)
+        return (snapshot, attrs?[.modificationDate] as? Date ?? .distantPast)
     }
 
     public func save(_ snapshot: Snapshot) throws {
@@ -151,6 +162,8 @@ public final class Radar {
     /// Lokal vorweggenommener Auto-Merge-Zustand je PR, bis GitHub ihn bestätigt
     private var optimistic: [String: OptimisticEntry] = [:]
     private var flashEpoch = 0
+    /// Gesetzt, solange `snapshot` aus dem Cache stammt: wann er gespeichert wurde
+    private var cachedAt: Date?
 
     @ObservationIgnored public var onEvent: (@MainActor (RadarEvent) -> Void)?
     @ObservationIgnored private let github: GitHubAPI
@@ -168,7 +181,10 @@ public final class Radar {
         self.cache = cache
         self.timing = timing
         config = initialConfig ?? store?.load() ?? Config()
-        snapshot = cache?.load()
+        if let cached = cache?.loadWithDate() {
+            snapshot = cached.snapshot
+            cachedAt = cached.savedAt
+        }
     }
 
     public var prefs: Prefs { config.prefs }
@@ -247,7 +263,9 @@ public final class Radar {
         switch result {
         case let .success(fetched):
             var next = fetched.snapshot
-            if let prev = snapshot {
+            let baselineFresh = cachedAt.map { timing.now().timeIntervalSince($0) <= cacheBaselineMaxAge } ?? true
+            cachedAt = nil
+            if let prev = snapshot, baselineFresh {
                 let transitions = diffSnapshots(prev, next)
                 if !transitions.isEmpty { onEvent?(.transitions(transitions)) }
                 flash(changedPRs(prev, next))
@@ -370,13 +388,15 @@ public final class Radar {
 
         let jobLists = groups.map(\.jobs)
         Task {
-            var results: [JobResult] = []
-            await withTaskGroup(of: [JobResult].self) { group in
-                for jobs in jobLists {
-                    group.addTask { await self.runSequentially(jobs) }
+            // Ergebnisse in Gruppenreihenfolge, egal welche Gruppe zuerst fertig ist
+            var parts = [[JobResult]](repeating: [], count: jobLists.count)
+            await withTaskGroup(of: (Int, [JobResult]).self) { group in
+                for (i, jobs) in jobLists.enumerated() {
+                    group.addTask { (i, await self.runSequentially(jobs)) }
                 }
-                for await part in group { results += part }
+                for await (i, part) in group { parts[i] = part }
             }
+            let results = parts.flatMap { $0 }
             onEvent?(
                 .mergeAllFinished(
                     merged: results.filter { $0.outcome == .merged }.count,

@@ -19,6 +19,8 @@ import Testing
 
         d = Derived(snapshot: s, prefs: prefs, query: " LOGIN ")
         #expect(d.openList.map(\.id) == ["1"])
+        d = Derived(snapshot: s, prefs: prefs, query: "login réparieren")
+        #expect(d.openList.map(\.id) == ["1"], "Akzente egal")
         d = Derived(snapshot: s, prefs: prefs, query: "#2")
         #expect(d.openList.map(\.id) == ["2"])
 

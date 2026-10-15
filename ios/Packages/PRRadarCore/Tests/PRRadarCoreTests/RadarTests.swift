@@ -187,6 +187,33 @@ private func settled(_ radar: Radar) async {
         #expect(radar.status.interval == normalInterval)
     }
 
+    @Test func alterCacheLoestKeineBenachrichtigungenAus() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let cache = SnapshotCache(url: dir.appendingPathComponent("s.json"))
+        try cache.save(Snapshot(repos: [repoInfo()], open: [makePR("1", state: .running)]))
+        let next = Snapshot(repos: [repoInfo()], open: [makePR("1", state: .failed)])
+
+        // frisch gespeichert → Vergleichsbasis
+        var events: [RadarEvent] = []
+        var radar = Radar(github: FakeGitHub(snapshot: next), store: nil, cache: cache, timing: .live)
+        radar.onEvent = { events.append($0) }
+        await radar.pollOnce()
+        #expect(events.count == 1)
+
+        // älter als zwei Stunden → kein Schwall beim Öffnen
+        let old = SnapshotCache(url: dir.appendingPathComponent("alt.json"))
+        try old.save(Snapshot(repos: [repoInfo()], open: [makePR("1", state: .running)]))
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date() - cacheBaselineMaxAge - 60], ofItemAtPath: old.url.path)
+        events = []
+        radar = Radar(github: FakeGitHub(snapshot: next), store: nil, cache: old, timing: .live)
+        radar.onEvent = { events.append($0) }
+        #expect(radar.snapshot?.open.first?.pipeline.state == .running, "alter Stand wird trotzdem sofort gezeigt")
+        await radar.pollOnce()
+        #expect(events.isEmpty)
+        #expect(radar.flashes.isEmpty)
+    }
+
     @Test func reposVerwalten() throws {
         let radar = Radar(github: FakeGitHub(snapshot: Snapshot()), store: nil, cache: nil, timing: FakeClock().timing)
         try radar.addRepo("https://github.com/o/a")

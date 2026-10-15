@@ -31,9 +31,9 @@ struct RootView: View {
         .background { KeyboardShortcuts() }
     }
 
-    /// Rote PRs als Badge am Tab
+    /// Rote PRs als Badge am Tab – alle Repos, wie der Fenstertitel der macOS-App
     private var failedCount: Int {
-        radar.snapshot?.open.filter { $0.pipeline.state == .failed && (radar.prefs.repoFilter.isEmpty || radar.prefs.repoFilter.contains($0.repo)) }.count ?? 0
+        radar.snapshot?.open.filter { $0.pipeline.state == .failed }.count ?? 0
     }
 }
 
