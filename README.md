@@ -3,6 +3,8 @@
 Native macOS-App für Pull Requests über mehrere GitHub-Repos – modern, übersichtlich, ohne Tab-Chaos.
 Geschrieben in Rust mit [GPUI Kit](https://gpui-kit.com); spricht GitHub direkt an, ohne Server.
 
+Dazu gibt es eine **iOS-/iPadOS-App** mit denselben Funktionen in SwiftUI – siehe [`ios/`](ios/README.md).
+
 - **Offene PRs** gebündelt (gruppiert nach Repo oder flach), mit Review-Status, Konflikten, Labels, Branch, Diff-Größe – als Liste oder Flow
 - **Pipelines** pro PR: läuft (gelb, dreht) · rot · grün – aufklappbar mit allen Checks und direkten Links
 - **Auto-Merge** mit einem Klick an/aus bzw. direkt mergen – angeboten werden nur Methoden, die Repo-Einstellungen **und** Rulesets des Ziel-Branches erlauben
@@ -44,6 +46,7 @@ Auto-Merge muss im Repo erlaubt sein (Settings → General → *Allow auto-merge
 | `native/src/github/` | GraphQL-Queries, HTTP-Client, Normalisierung (getestet) |
 | `native/src/radar.rs` | Poll-Zyklus, Snapshot, Merge/Auto-Merge inkl. Wiederholung |
 | `native/src/ui/` | Fenster, Seitenleiste, Liste, Flow, Einstellungen |
+| `ios/` | iOS-/iPadOS-App (SwiftUI) mit plattformunabhängigem Kern `PRRadarCore` |
 
 ## Ideen / nächste Schritte
 

@@ -1,0 +1,43 @@
+name: iOS
+
+on:
+  push:
+    branches: [main]
+    paths: ["ios/**", ".github/workflows/ios.yml"]
+  pull_request:
+    paths: ["ios/**", ".github/workflows/ios.yml"]
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core-tests:
+    name: Core-Tests (Linux)
+    runs-on: ubuntu-latest
+    container: swift:6.2
+    defaults:
+      run:
+        working-directory: ios/Packages/PRRadarCore
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift test
+
+  app-build:
+    name: App bauen (iOS-Simulator)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Xcode
+        run: xcodebuild -version
+      - name: Core-Tests (macOS)
+        working-directory: ios/Packages/PRRadarCore
+        run: swift test
+      - name: App bauen
+        working-directory: ios
+        run: |
+          xcodebuild build \
+            -project PRRadar.xcodeproj \
+            -scheme PRRadar \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO

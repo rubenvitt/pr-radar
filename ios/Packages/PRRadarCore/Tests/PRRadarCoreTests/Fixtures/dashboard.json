@@ -1,0 +1,67 @@
+{
+  "data": {
+    "viewer": { "login": "rubeen" },
+    "rateLimit": { "remaining": 4990, "limit": 5000, "resetAt": "2026-10-15T12:00:00Z", "cost": 1 },
+    "r0": {
+      "nameWithOwner": "rubeen/pr-radar",
+      "url": "https://github.com/rubeen/pr-radar",
+      "autoMergeAllowed": true,
+      "squashMergeAllowed": true,
+      "mergeCommitAllowed": true,
+      "rebaseMergeAllowed": false,
+      "viewerPermission": "ADMIN",
+      "defaultBranchRef": { "name": "main", "target": { "statusCheckRollup": { "state": "SUCCESS" } } },
+      "open": {
+        "nodes": [
+          {
+            "id": "PR_old", "number": 3, "title": "Älterer PR", "url": "https://github.com/rubeen/pr-radar/pull/3",
+            "isDraft": true, "createdAt": "2026-10-01T10:00:00Z", "updatedAt": "2026-10-02T10:00:00Z",
+            "headRefName": "draft", "headRefOid": "aaa", "baseRefName": "main", "additions": 1, "deletions": 0,
+            "reviewDecision": null, "mergeable": "UNKNOWN", "mergeStateStatus": "DRAFT",
+            "author": null, "autoMergeRequest": null,
+            "labels": { "nodes": [] }, "reviewRequests": { "nodes": [] },
+            "commits": { "nodes": [] }
+          },
+          {
+            "id": "PR_new", "number": 7, "title": "Feature", "url": "https://github.com/rubeen/pr-radar/pull/7",
+            "isDraft": false, "createdAt": "2026-10-14T10:00:00Z", "updatedAt": "2026-10-14T11:00:00.123Z",
+            "headRefName": "feat/x", "headRefOid": "bbb", "baseRefName": "main", "additions": 30, "deletions": 4,
+            "reviewDecision": "APPROVED", "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
+            "author": { "login": "rubeen", "avatarUrl": "https://avatars.githubusercontent.com/u/1?v=4" },
+            "autoMergeRequest": null,
+            "labels": { "nodes": [{ "name": "feature", "color": "a2eeef" }] },
+            "reviewRequests": { "nodes": [{ "requestedReviewer": { "__typename": "Team", "slug": "core" } }] },
+            "commits": { "nodes": [{ "commit": { "statusCheckRollup": {
+              "state": "SUCCESS",
+              "contexts": { "nodes": [
+                { "__typename": "CheckRun", "name": "build", "status": "COMPLETED", "conclusion": "SUCCESS",
+                  "detailsUrl": "https://example.com/build", "checkSuite": { "workflowRun": { "workflow": { "name": "CI" } } } },
+                { "__typename": "StatusContext", "context": "ci/legacy", "state": "SUCCESS", "targetUrl": null }
+              ] }
+            } } }] }
+          }
+        ]
+      },
+      "merged": {
+        "nodes": [
+          { "id": "PR_m", "number": 5, "title": "Gemergt", "url": "u", "mergedAt": "2026-10-13T09:00:00Z",
+            "baseRefName": "main", "author": { "login": "a" }, "mergedBy": { "login": "b" } },
+          { "id": "PR_m2", "number": 4, "title": "Ohne Datum", "url": "u", "mergedAt": null,
+            "baseRefName": "main", "author": null, "mergedBy": null }
+        ]
+      },
+      "releases": {
+        "nodes": [
+          { "id": "R1", "name": "", "tagName": "v1.0.0", "url": "u", "publishedAt": "2026-10-10T09:00:00Z",
+            "isPrerelease": false, "isLatest": true, "isDraft": false, "descriptionHTML": "<p>Hallo</p>", "author": { "login": "rubeen" } },
+          { "id": "R0", "name": "Entwurf", "tagName": "v1.1.0", "url": "u", "publishedAt": null,
+            "isPrerelease": false, "isLatest": false, "isDraft": true, "descriptionHTML": "", "author": null }
+        ]
+      }
+    },
+    "r1": null
+  },
+  "errors": [
+    { "type": "NOT_FOUND", "path": ["r1"], "message": "Could not resolve to a Repository with the name 'rubeen/geheim'." }
+  ]
+}
