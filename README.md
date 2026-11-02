@@ -57,4 +57,8 @@ Auto-Merge muss im Repo erlaubt sein (Settings → General → *Allow auto-merge
 
 ## Lizenz
 
-[Apache-2.0](LICENSE)
+[Functional Source License 1.1, ALv2 Future License](LICENSE.md) (FSL-1.1-ALv2).
+
+Der Quellcode ist offen einsehbar. Nutzen, ändern und weitergeben ist erlaubt, nur kein konkurrierendes kommerzielles Produkt daraus machen. Zwei Jahre nach ihrer Veröffentlichung steht jede Version zusätzlich unter Apache-2.0.
+
+Stände bis einschließlich Commit `469e369` (2. November 2026) wurden unter Apache-2.0 veröffentlicht und bleiben das.
