@@ -19,7 +19,7 @@ struct SettingsView: View {
                     Link(destination: URL(string: "https://github.com/rubenvitt/pr-radar")!) {
                         Label("Quellcode auf GitHub", systemImage: "chevron.left.forwardslash.chevron.right")
                     }
-                    LabeledContent("Lizenz", value: "Apache-2.0")
+                    LabeledContent("Lizenz", value: "FSL-1.1-ALv2")
                 }
             }
             .navigationTitle("Einstellungen")
