@@ -98,15 +98,18 @@ pub struct Radar {
     /// Lokal vorweggenommener Auto-Merge-Zustand je PR, bis GitHub ihn bestätigt
     optimistic: HashMap<String, (Instant, Option<AutoMerge>)>,
     poll_task: Option<Task<()>>,
+    /// Hinweis aus dem Laden der Konfiguration, bis ihn ein Fenster anzeigt.
+    config_warning: Option<String>,
 }
 
 impl EventEmitter<RadarEvent> for Radar {}
 
 impl Radar {
     pub fn new(github: Arc<GitHub>, cx: &mut Context<Self>) -> Self {
+        let loaded = Config::load();
         let mut this = Self {
             github,
-            config: Config::load(),
+            config: loaded.config,
             snapshot: None,
             status: Status {
                 state: PollState::Idle,
@@ -121,6 +124,7 @@ impl Radar {
             retrying: HashSet::new(),
             optimistic: HashMap::new(),
             poll_task: None,
+            config_warning: loaded.warning,
         };
         this.refresh(cx);
         this
@@ -128,6 +132,11 @@ impl Radar {
 
     pub fn snapshot(&self) -> Option<Arc<Snapshot>> {
         self.snapshot.clone()
+    }
+
+    /// Liefert den Hinweis zur Konfiguration genau einmal.
+    pub fn take_config_warning(&mut self) -> Option<String> {
+        self.config_warning.take()
     }
 
     pub fn status(&self) -> &Status {

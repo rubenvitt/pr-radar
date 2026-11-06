@@ -412,6 +412,18 @@ impl Workspace {
             cx.subscribe_in(&radar, window, Self::on_radar_event),
         ];
 
+        // Defekte config.json: einmal deutlich melden (nach dem Aufbau des Fensters).
+        if let Some(warning) = radar.update(cx, |radar, _| radar.take_config_warning()) {
+            cx.defer_in(window, move |_, window, cx| {
+                window.push_notification(
+                    Notification::warning(warning)
+                        .title("Konfiguration zurückgesetzt")
+                        .autohide(false),
+                    cx,
+                );
+            });
+        }
+
         // Relative Zeitangaben („vor 2 Min.“) aktuell halten.
         let ticker = cx.spawn(async move |this, cx| {
             loop {
