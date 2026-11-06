@@ -116,7 +116,8 @@ fn save_to(path: &Path, cfg: &Config) -> Result<()> {
     }
     // Erst in eine Nachbardatei schreiben und dann umbenennen, damit ein Absturz
     // mitten im Schreiben keine halbe config.json hinterlässt.
-    let tmp = path.with_extension("json.tmp");
+    // Je Prozess eine eigene Nachbardatei, damit sich zwei Instanzen nicht in die Quere kommen.
+    let tmp = path.with_extension(format!("json.tmp-{}", std::process::id()));
     std::fs::write(&tmp, serde_json::to_string_pretty(cfg)? + "\n")
         .context("Konfiguration nicht speicherbar")?;
     std::fs::rename(&tmp, path).context("Konfiguration nicht speicherbar")
@@ -130,15 +131,15 @@ fn first_start(env_repos: &str) -> Config {
 }
 
 fn load_from(path: &Path, env_repos: &str, now: chrono::DateTime<chrono::Local>) -> Loaded {
-    let problem = match std::fs::read_to_string(path) {
-        Ok(text) => match serde_json::from_str::<Config>(&text) {
+    let (problem, bytes) = match std::fs::read(path) {
+        Ok(bytes) => match serde_json::from_slice::<Config>(&bytes) {
             Ok(config) => {
                 return Loaded {
                     config,
                     warning: None,
                 };
             }
-            Err(e) => format!("ungültiges JSON ({e})"),
+            Err(e) => (format!("ungültiges JSON ({e})"), Some(bytes)),
         },
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             let config = first_start(env_repos);
@@ -148,12 +149,11 @@ fn load_from(path: &Path, env_repos: &str, now: chrono::DateTime<chrono::Local>)
                 warning: None,
             };
         }
-        Err(e) => format!("nicht lesbar ({e})"),
+        Err(e) => (format!("nicht lesbar ({e})"), None),
     };
 
-    let backup = backup_path(path, now);
-    match std::fs::rename(path, &backup) {
-        Ok(()) => {
+    match backup(path, now, bytes.as_deref()) {
+        Ok(backup) => {
             let config = Config::default();
             let _ = save_to(path, &config);
             Loaded {
@@ -180,19 +180,56 @@ fn load_from(path: &Path, env_repos: &str, now: chrono::DateTime<chrono::Local>)
     }
 }
 
-fn backup_path(path: &Path, now: chrono::DateTime<chrono::Local>) -> PathBuf {
+/// Legt eine Sicherung `config.json.defekt-<Zeitstempel>[-n]` an, ohne je eine vorhandene
+/// Datei zu ersetzen: Ein harter Link bzw. `create_new` schlägt fehl, wenn der Name schon
+/// vergeben ist (etwa durch eine zweite, gleichzeitig startende Instanz), dann geht es mit
+/// dem nächsten Suffix weiter. Das Original bleibt liegen und wird erst danach überschrieben.
+fn backup(
+    path: &Path,
+    now: chrono::DateTime<chrono::Local>,
+    bytes: Option<&[u8]>,
+) -> std::io::Result<PathBuf> {
+    use std::io::{ErrorKind, Write as _};
+
     let name = path
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| "config.json".into());
     let stamp = now.format("%Y%m%d-%H%M%S");
-    let mut candidate = path.with_file_name(format!("{name}.defekt-{stamp}"));
-    let mut n = 2;
-    while candidate.exists() {
-        candidate = path.with_file_name(format!("{name}.defekt-{stamp}-{n}"));
-        n += 1;
+    for n in 1..=100 {
+        let candidate = if n == 1 {
+            path.with_file_name(format!("{name}.defekt-{stamp}"))
+        } else {
+            path.with_file_name(format!("{name}.defekt-{stamp}-{n}"))
+        };
+        match std::fs::hard_link(path, &candidate) {
+            Ok(()) => return Ok(candidate),
+            Err(e) if e.kind() == ErrorKind::AlreadyExists => continue,
+            // Kein harter Link möglich (Dateisystem): Inhalt in eine neue Datei kopieren.
+            Err(link_err) => {
+                let Some(bytes) = bytes else {
+                    return Err(link_err);
+                };
+                match std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(&candidate)
+                {
+                    Ok(mut file) => {
+                        file.write_all(bytes)?;
+                        file.sync_all()?;
+                        return Ok(candidate);
+                    }
+                    Err(e) if e.kind() == ErrorKind::AlreadyExists => continue,
+                    Err(e) => return Err(e),
+                }
+            }
+        }
     }
-    candidate
+    Err(std::io::Error::new(
+        ErrorKind::AlreadyExists,
+        "kein freier Name für die Sicherung",
+    ))
 }
 
 fn valid_part(s: &str) -> bool {
@@ -306,7 +343,12 @@ mod tests {
             ..Default::default()
         };
         save_to(&path, &cfg).unwrap();
-        assert!(!dir.join("config.json.tmp").exists());
+        let leftovers: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().contains(".tmp"))
+            .collect();
+        assert!(leftovers.is_empty(), "{leftovers:?}");
         assert_eq!(load_from(&path, "", now()).config, cfg);
     }
 
