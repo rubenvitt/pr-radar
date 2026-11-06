@@ -18,7 +18,7 @@ use gpui_kit::component::{
     ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _, TitleBar, WindowExt as _,
     button::{Button, ButtonGroup, ButtonVariants as _},
     h_flex,
-    input::{Input, InputEvent, InputState},
+    input::{self, Input, InputEvent, InputState},
     menu::{DropdownMenu as _, PopupMenuItem},
     notification::Notification,
     sidebar::{
@@ -50,9 +50,22 @@ actions!(
         OpenSettings,
         ToggleSidebar,
         HideSidebar,
-        Quit
+        Quit,
+        CloseWindow,
+        Minimize,
+        Zoom,
+        ToggleFullScreen,
+        Hide,
+        HideOthers,
+        ShowAll,
+        ShowMainWindow,
+        About,
+        OpenHelp,
+        OpenLicense
     ]
 );
+
+const REPO_URL: &str = "https://github.com/rubenvitt/pr-radar";
 
 const CONTEXT: &str = "Workspace";
 
@@ -63,7 +76,7 @@ const NARROW_W: Pixels = px(720.);
 /// Darunter rücken Steuerelemente in eigene Zeilen (gemessen an der Inhaltsbreite).
 const COMPACT_W: Pixels = px(600.);
 
-pub fn init(cx: &mut App) {
+pub fn init(radar: Entity<Radar>, cx: &mut App) {
     // Einzeltasten nur, solange kein Eingabefeld den Fokus hat.
     let keys = Some("Workspace && !Input");
     cx.bind_keys([
@@ -82,14 +95,72 @@ pub fn init(cx: &mut App) {
         KeyBinding::new("cmd-,", OpenSettings, Some(CONTEXT)),
         KeyBinding::new("cmd-b", ToggleSidebar, Some(CONTEXT)),
         KeyBinding::new("escape", HideSidebar, keys),
+        // macOS-Standardkürzel: global, damit sie auch im Suchfeld und im
+        // Repositories-Sheet greifen (das Sheet liegt außerhalb des Workspace).
         KeyBinding::new("cmd-q", Quit, None),
+        KeyBinding::new("cmd-w", CloseWindow, None),
+        KeyBinding::new("cmd-m", Minimize, None),
+        KeyBinding::new("ctrl-cmd-f", ToggleFullScreen, None),
+        KeyBinding::new("cmd-h", Hide, None),
+        KeyBinding::new("alt-cmd-h", HideOthers, None),
+        // ⌘Z/⇧⌘Z/⌘X/⌘C/⌘V/⌘A bindet das Eingabefeld selbst (Kontext „Input“);
+        // das Bearbeiten-Menü unten zeigt sie nur an und löst dieselben Aktionen aus.
     ]);
+
     cx.on_action(|_: &Quit, cx| cx.quit());
+    cx.on_action(|_: &Hide, cx| cx.hide());
+    cx.on_action(|_: &HideOthers, cx| cx.hide_other_apps());
+    cx.on_action(|_: &ShowAll, cx| cx.unhide_other_apps());
+    cx.on_action(|_: &OpenHelp, cx| cx.open_url(&format!("{REPO_URL}#readme")));
+    cx.on_action(|_: &OpenLicense, cx| cx.open_url(&format!("{REPO_URL}/blob/main/LICENSE.md")));
+    cx.on_action(|_: &CloseWindow, cx| {
+        with_active_window(cx, |window, cx| {
+            // Erst ein offenes Sheet (Repositories) schließen, dann das Fenster.
+            if window.has_active_sheet(cx) {
+                window.close_sheet(cx);
+            } else {
+                window.remove_window();
+            }
+        })
+    });
+    cx.on_action(|_: &Minimize, cx| with_active_window(cx, |window, _| window.minimize_window()));
+    cx.on_action(|_: &Zoom, cx| with_active_window(cx, |window, _| window.zoom_window()));
+    cx.on_action(|_: &ToggleFullScreen, cx| {
+        with_active_window(cx, |window, _| window.toggle_fullscreen())
+    });
+    cx.on_action(|_: &About, cx| with_active_window(cx, open_about));
+    cx.set_global(MainRadar(radar));
+    cx.on_action(|_: &ShowMainWindow, cx| show_main_window(cx));
+
     cx.set_menus(vec![
         Menu::new("PR Radar").items([
+            MenuItem::action("Über PR Radar", About),
+            MenuItem::separator(),
             MenuItem::action("Repositories…", OpenSettings),
             MenuItem::separator(),
+            MenuItem::os_submenu("Dienste", SystemMenuType::Services),
+            MenuItem::separator(),
+            MenuItem::action("PR Radar ausblenden", Hide),
+            MenuItem::action("Andere ausblenden", HideOthers),
+            MenuItem::action("Alle einblenden", ShowAll),
+            MenuItem::separator(),
             MenuItem::action("PR Radar beenden", Quit),
+        ]),
+        Menu::new("Ablage").items([
+            MenuItem::action("Aktualisieren", Refresh),
+            MenuItem::separator(),
+            MenuItem::action("Schließen", CloseWindow),
+        ]),
+        Menu::new("Bearbeiten").items([
+            MenuItem::os_action("Widerrufen", input::Undo, OsAction::Undo),
+            MenuItem::os_action("Wiederholen", input::Redo, OsAction::Redo),
+            MenuItem::separator(),
+            MenuItem::os_action("Ausschneiden", input::Cut, OsAction::Cut),
+            MenuItem::os_action("Kopieren", input::Copy, OsAction::Copy),
+            MenuItem::os_action("Einsetzen", input::Paste, OsAction::Paste),
+            MenuItem::os_action("Alles auswählen", input::SelectAll, OsAction::SelectAll),
+            MenuItem::separator(),
+            MenuItem::action("Suchen", FocusSearch),
         ]),
         Menu::new("Ansicht").items([
             MenuItem::action("Seitenleiste ein-/ausblenden", ToggleSidebar),
@@ -101,10 +172,84 @@ pub fn init(cx: &mut App) {
             MenuItem::action("Liste / Flow umschalten", ToggleView),
             MenuItem::action("Nach Repo gruppieren", ToggleGrouped),
             MenuItem::separator(),
-            MenuItem::action("Suchen", FocusSearch),
-            MenuItem::action("Aktualisieren", Refresh),
+            MenuItem::action("Vollbildmodus ein/aus", ToggleFullScreen),
+        ]),
+        Menu::new("Fenster").items([
+            MenuItem::action("Im Dock ablegen", Minimize),
+            MenuItem::action("Zoomen", Zoom),
+            MenuItem::separator(),
+            MenuItem::action("PR Radar", ShowMainWindow),
+        ]),
+        Menu::new("Hilfe").items([
+            MenuItem::action("PR Radar auf GitHub", OpenHelp),
+            MenuItem::action("Lizenz", OpenLicense),
         ]),
     ]);
+}
+
+/// Öffnet das Hauptfenster.
+pub fn open_main_window(radar: Entity<Radar>, cx: &mut App) {
+    let options = WindowOptions {
+        window_bounds: Some(WindowBounds::centered(size(px(1240.), px(820.)), cx)),
+        window_min_size: Some(size(px(360.), px(480.))),
+        ..TitleBar::window_options()
+    };
+    gpui_kit::open_window(options, cx, |window, cx| {
+        window
+            .observe_window_appearance(|window, cx| {
+                gpui_kit::component::Theme::sync_system_appearance(Some(window), cx)
+            })
+            .detach();
+        cx.new(|cx| Workspace::new(radar, window, cx))
+    })
+    .expect("Fenster konnte nicht geöffnet werden");
+}
+
+/// Hält den Radar über das Hauptfenster hinaus, damit es nach ⌘W wieder öffnen kann.
+struct MainRadar(Entity<Radar>);
+
+impl Global for MainRadar {}
+
+/// Holt das Hauptfenster nach vorn oder öffnet es neu, falls es mit ⌘W geschlossen
+/// wurde (Menü „Fenster“ oder Klick aufs Dock-Symbol).
+pub fn show_main_window(cx: &mut App) {
+    match cx.windows().first().copied() {
+        Some(handle) => {
+            handle
+                .update(cx, |_, window, _| window.activate_window())
+                .ok();
+        }
+        None => {
+            let Some(radar) = cx.try_global::<MainRadar>().map(|r| r.0.clone()) else {
+                return;
+            };
+            open_main_window(radar, cx);
+        }
+    }
+    cx.activate(true);
+}
+
+/// Führt `f` mit dem aktiven Fenster aus. Globale Aktionen laufen, während das
+/// Fenster noch verliehen ist, daher erst im nächsten Effekt-Durchlauf.
+fn with_active_window(cx: &mut App, f: impl FnOnce(&mut Window, &mut App) + 'static) {
+    cx.defer(move |cx| {
+        let Some(handle) = cx.active_window().or_else(|| cx.windows().first().copied()) else {
+            return;
+        };
+        handle.update(cx, |_, window, cx| f(window, cx)).ok();
+    });
+}
+
+fn open_about(window: &mut Window, cx: &mut App) {
+    window.open_alert_dialog(cx, |dialog, _, _| {
+        dialog
+            .title("PR Radar")
+            .description(format!(
+                "Version {}\n\nPull Requests, Pipelines, Auto-Merge, Merges und Releases über \
+                 mehrere GitHub-Repos.\n\nLizenz: Functional Source License 1.1, ALv2 Future License.",
+                env!("CARGO_PKG_VERSION")
+            ))
+    });
 }
 
 pub struct Workspace {
