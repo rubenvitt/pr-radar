@@ -8,6 +8,37 @@ import Observation
 public let normalInterval: TimeInterval = 30
 /// Intervall, solange irgendwo eine Pipeline läuft
 public let activeInterval: TimeInterval = 10
+/// Längste Pause nach wiederholten Fehlern (ohne Drosselung durch GitHub)
+let maxBackoff: TimeInterval = 300
+/// Längste Pause bei Drosselung (GitHub setzt das Kontingent stündlich zurück)
+let maxRateLimitWait: TimeInterval = 3600
+/// Drosselung ohne Zeitangabe: so lange warten
+let unknownRateLimitWait: TimeInterval = 120
+/// Puffer nach dem Reset, damit der erste Versuch nicht knapp davor landet
+let resetSlack: TimeInterval = 5
+
+/// Wartezeit nach einem fehlgeschlagenen Poll: bei Drosselung bis GitHub wieder Anfragen
+/// annimmt, sonst exponentiell steigend (30 s, 60 s, 120 s … bis 5 min).
+func waitAfterError(_ error: Error, failures: Int, base: TimeInterval, now: Date) -> TimeInterval {
+    if case let .rateLimited(retryAt)? = error as? GitHubError {
+        let wait = retryAt.map { $0.timeIntervalSince(now) + resetSlack } ?? unknownRateLimitWait
+        return min(max(wait, normalInterval), maxRateLimitWait)
+    }
+    let factor = pow(2, Double(min(max(failures - 1, 0), 8)))
+    return min(max(base, normalInterval) * factor, maxBackoff)
+}
+
+/// Wartezeit nach einem erfolgreichen Poll: Ist das Kontingent aufgebraucht, bis zum Reset.
+func waitAfterSuccess(_ rateLimit: RateLimit?, base: TimeInterval, now: Date) -> TimeInterval {
+    guard let rateLimit, rateLimit.remaining == 0, let reset = rateLimit.resetAt, reset > now else { return base }
+    return min(max(reset.timeIntervalSince(now) + resetSlack, base), maxRateLimitWait)
+}
+
+/// „30 s“ bzw. bei längeren Pausen (Backoff, Drosselung) „5 Min.“
+public func intervalLabel(_ interval: TimeInterval) -> String {
+    let secs = Int(interval.rounded())
+    return secs < 120 ? "\(secs) s" : "\((secs + 59) / 60) Min."
+}
 
 /// So lange wird ein Merge bei vorübergehenden GitHub-Fehlern wiederholt.
 let mergeDeadline: TimeInterval = 180
@@ -162,6 +193,8 @@ public final class Radar {
     /// Lokal vorweggenommener Auto-Merge-Zustand je PR, bis GitHub ihn bestätigt
     private var optimistic: [String: OptimisticEntry] = [:]
     private var flashEpoch = 0
+    /// Fehlgeschlagene Polls in Folge, für den Backoff
+    private var failures = 0
     /// Gesetzt, solange `snapshot` aus dem Cache stammt: wann er gespeichert wurde
     private var cachedAt: Date?
 
@@ -277,15 +310,23 @@ public final class Radar {
             status.state = .idle
             status.error = nil
             status.lastSuccess = timing.now()
+            failures = 0
             if let cache {
                 Task.detached(priority: .utility) { try? cache.save(next) }
             }
         case let .failure(error):
             status.state = .error
             status.error = error.localizedDescription
+            failures += 1
         }
-        status.interval = (snapshot?.anyRunning ?? false) ? activeInterval : normalInterval
-        return status.state == .error ? max(status.interval, normalInterval) : status.interval
+        let base = (snapshot?.anyRunning ?? false) ? activeInterval : normalInterval
+        switch result {
+        case .success:
+            status.interval = waitAfterSuccess(status.rateLimit, base: base, now: timing.now())
+        case let .failure(error):
+            status.interval = waitAfterError(error, failures: failures, base: base, now: timing.now())
+        }
+        return status.interval
     }
 
     private func flash(_ ids: [String]) {

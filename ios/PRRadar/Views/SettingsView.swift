@@ -201,7 +201,7 @@ private struct StatusSection: View {
     var body: some View {
         let s = radar.status
         Section("Status") {
-            LabeledContent("Aktualisierung", value: "alle \(Int(s.interval)) s")
+            LabeledContent("Aktualisierung", value: "alle \(intervalLabel(s.interval))")
             LabeledContent("Zuletzt") { AgoText(date: s.lastSuccess) }
             if let rl = s.rateLimit {
                 LabeledContent("API-Kontingent", value: "\(rl.remaining) / \(rl.limit)")

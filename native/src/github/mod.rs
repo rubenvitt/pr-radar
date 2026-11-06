@@ -55,6 +55,8 @@ pub struct GqlError {
     pub message: String,
     #[serde(default)]
     pub path: Vec<Value>,
+    #[serde(default, rename = "type")]
+    pub kind: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -62,6 +64,96 @@ struct GqlResponse {
     data: Option<HashMap<String, Value>>,
     #[serde(default)]
     errors: Vec<GqlError>,
+}
+
+/// GitHub drosselt: Kontingent aufgebraucht (primär) oder zu viele Anfragen (sekundär).
+/// Wird über `anyhow` transportiert; der Radar erkennt ihn per `downcast_ref` und wartet.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RateLimited {
+    /// Ab hier ist das Kontingent wieder frei (`x-ratelimit-reset` bzw. `rateLimit.resetAt`).
+    pub reset_at: Option<DateTime<Utc>>,
+    /// Von GitHub verlangte Wartezeit (`Retry-After`).
+    pub retry_after: Option<Duration>,
+}
+
+impl RateLimited {
+    /// Zeitpunkt, ab dem ein neuer Versuch sinnvoll ist.
+    pub fn retry_at(&self, now: DateTime<Utc>) -> Option<DateTime<Utc>> {
+        let after = self
+            .retry_after
+            .and_then(|d| chrono::Duration::from_std(d).ok())
+            .map(|d| now + d);
+        match (self.reset_at, after) {
+            (Some(a), Some(b)) => Some(a.max(b)),
+            (a, b) => a.or(b),
+        }
+    }
+}
+
+impl std::fmt::Display for RateLimited {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.retry_at(Utc::now()) {
+            Some(at) => write!(
+                f,
+                "GitHub-API-Kontingent aufgebraucht. Wieder frei um {} Uhr.",
+                at.with_timezone(&chrono::Local).format("%H:%M")
+            ),
+            None => write!(
+                f,
+                "GitHub drosselt gerade die Anfragen. Neuer Versuch in ein paar Minuten."
+            ),
+        }
+    }
+}
+
+impl std::error::Error for RateLimited {}
+
+/// Liest die Drossel-Angaben aus einer Antwort, falls GitHub drosselt.
+fn rate_limited(
+    status: u16,
+    headers: &gpui_kit::http_client::http::HeaderMap,
+) -> Option<RateLimited> {
+    let header = |name: &str| headers.get(name).and_then(|v| v.to_str().ok());
+    let retry_after = header("retry-after")
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .map(Duration::from_secs);
+    let exhausted = header("x-ratelimit-remaining").is_some_and(|v| v.trim() == "0");
+    let reset_at = header("x-ratelimit-reset")
+        .and_then(|v| v.trim().parse::<i64>().ok())
+        .and_then(|secs| DateTime::from_timestamp(secs, 0));
+    let throttled = status == 429 || (status == 403 && (exhausted || retry_after.is_some()));
+    throttled.then_some(RateLimited {
+        reset_at: if exhausted { reset_at } else { None },
+        retry_after,
+    })
+}
+
+/// Verständlicher Text für einen HTTP-Fehler statt des rohen Antwort-Bodys.
+fn describe_http_error(status: u16, body: &str) -> String {
+    // GitHub liefert meist `{"message": "...", "documentation_url": "..."}`.
+    let detail = serde_json::from_str::<Value>(body)
+        .ok()
+        .and_then(|v| v["message"].as_str().map(str::to_owned))
+        .filter(|m| !m.trim().is_empty())
+        .map(|m| {
+            format!(
+                " GitHub meldet: „{}“",
+                m.chars().take(160).collect::<String>()
+            )
+        })
+        .unwrap_or_default();
+    let text = match status {
+        403 => "GitHub verweigert den Zugriff (403). Fehlen dem Token Rechte für diese Repos?",
+        404 => "GitHub kennt die Adresse nicht (404).",
+        408 | 504 => "GitHub hat nicht rechtzeitig geantwortet. Neuer Versuch folgt automatisch.",
+        500..=599 => "GitHub hat gerade Probleme. Neuer Versuch folgt automatisch.",
+        _ => "GitHub hat die Anfrage abgelehnt.",
+    };
+    if (500..=599).contains(&status) {
+        format!("{text} (HTTP {status})")
+    } else {
+        format!("{text}{detail}")
+    }
 }
 
 /// Ergebnis eines Abrufs aller Repos.
@@ -166,6 +258,9 @@ impl GitHub {
             .await
             .context("GitHub nicht erreichbar")?;
         let status = res.status();
+        if let Some(limited) = rate_limited(status.as_u16(), res.headers()) {
+            return Err(limited.into());
+        }
         let mut text = String::new();
         res.body_mut().read_to_string(&mut text).await?;
         if status.as_u16() == 401 {
@@ -173,13 +268,23 @@ impl GitHub {
             bail!("GitHub lehnt den Token ab (401). Token prüfen.");
         }
         if !status.is_success() {
-            bail!(
-                "GitHub API {}: {}",
-                status.as_u16(),
-                text.chars().take(300).collect::<String>()
-            );
+            bail!("{}", describe_http_error(status.as_u16(), &text));
         }
-        serde_json::from_str(&text).context("Unerwartete Antwort von GitHub")
+        let res: GqlResponse =
+            serde_json::from_str(&text).context("Unerwartete Antwort von GitHub")?;
+        // GraphQL meldet das erschöpfte Kontingent mit HTTP 200 und Fehlertyp RATE_LIMITED.
+        if res
+            .errors
+            .iter()
+            .any(|e| e.kind.as_deref() == Some("RATE_LIMITED"))
+        {
+            return Err(RateLimited {
+                reset_at: None,
+                retry_after: None,
+            }
+            .into());
+        }
+        Ok(res)
     }
 
     /// Führt eine Mutation aus; GraphQL-Fehler werden zu einem `Err`.
@@ -234,8 +339,16 @@ impl GitHub {
         let mut snapshot = Snapshot::default();
         let mut rate_limit = None;
         let chunks: Vec<&[String]> = repos.chunks(CHUNK).collect();
-        let results =
+        let mut results =
             futures::future::join_all(chunks.iter().map(|c| self.request_dashboard(c))).await;
+        // Ein Rate-Limit in irgendeinem Chunk zählt vor anderen Fehlern, damit der
+        // Backoff bis zum Reset wartet statt zu früh erneut anzufragen.
+        if let Some(i) = results.iter().position(|r| {
+            r.as_ref()
+                .is_err_and(|e| e.downcast_ref::<RateLimited>().is_some())
+        }) {
+            results.swap_remove(i)?;
+        }
 
         for (chunk, res) in chunks.into_iter().zip(results) {
             let res = res?;
@@ -420,6 +533,72 @@ fn encode_path(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn headers(pairs: &[(&'static str, &str)]) -> gpui_kit::http_client::http::HeaderMap {
+        let mut map = gpui_kit::http_client::http::HeaderMap::new();
+        for (k, v) in pairs {
+            map.insert(*k, v.parse().unwrap());
+        }
+        map
+    }
+
+    #[test]
+    fn erkennt_erschoepftes_kontingent() {
+        let h = headers(&[
+            ("x-ratelimit-remaining", "0"),
+            ("x-ratelimit-reset", "1793988000"),
+        ]);
+        let limited = rate_limited(403, &h).expect("gedrosselt");
+        assert_eq!(limited.reset_at, DateTime::from_timestamp(1_793_988_000, 0));
+        assert_eq!(limited.retry_after, None);
+    }
+
+    #[test]
+    fn erkennt_sekundaeres_limit_mit_retry_after() {
+        let limited = rate_limited(403, &headers(&[("retry-after", "60")])).unwrap();
+        assert_eq!(limited.retry_after, Some(Duration::from_secs(60)));
+        assert!(rate_limited(429, &headers(&[])).is_some());
+    }
+
+    #[test]
+    fn normales_403_ist_keine_drosselung() {
+        let h = headers(&[("x-ratelimit-remaining", "4000")]);
+        assert_eq!(rate_limited(403, &h), None);
+        assert_eq!(rate_limited(502, &headers(&[])), None);
+    }
+
+    #[test]
+    fn retry_at_nimmt_den_spaeteren_zeitpunkt() {
+        let now = DateTime::from_timestamp(1_000, 0).unwrap();
+        let limited = RateLimited {
+            reset_at: DateTime::from_timestamp(1_100, 0),
+            retry_after: Some(Duration::from_secs(300)),
+        };
+        assert_eq!(limited.retry_at(now), DateTime::from_timestamp(1_300, 0));
+        let none = RateLimited {
+            reset_at: None,
+            retry_after: None,
+        };
+        assert_eq!(none.retry_at(now), None);
+    }
+
+    #[test]
+    fn http_fehler_ohne_rohen_body() {
+        let html = "<!DOCTYPE html><html>Unicorn!</html>";
+        let msg = describe_http_error(502, html);
+        assert!(!msg.contains("html"), "{msg}");
+        assert!(msg.contains("502"), "{msg}");
+
+        let msg = describe_http_error(
+            403,
+            r#"{"message":"Resource not accessible by integration"}"#,
+        );
+        assert!(msg.contains("Rechte"), "{msg}");
+        assert!(msg.contains("Resource not accessible"), "{msg}");
+
+        let msg = describe_http_error(400, "kein json");
+        assert!(!msg.contains("kein json"), "{msg}");
+    }
 
     #[test]
     fn regeln_bleiben_bei_abruffehler_erhalten() {
