@@ -16,6 +16,7 @@ Dazu gibt es eine **iOS-/iPadOS-App** mit denselben Funktionen in SwiftUI – si
 - Seitenleiste mit Ansichten, Schnellfiltern (läuft / rot / grün / Auto-Merge / Konflikt / „Dein Review“ / „Von dir“) und Repos, Repositories-Sheet (`⌘,`)
 - Systembenachrichtigungen, wenn eine Pipeline rot/grün wird oder ein PR gemergt wurde (nur aus dem App-Bundle, nicht unter `cargo run`)
 - Tastatur: `/` bzw. `⌘F` Suche, `r` neu laden, `v` Liste/Flow, `g` gruppieren, `1–3` bzw. `⌘1–3` Ansichten, `⌘B` Seitenleiste
+- macOS-Standards: `⌘W` schließt Sheet bzw. Fenster (die App läuft weiter, Dock-Klick öffnet es wieder), `⌘M` Dock, `⌘H`/`⌥⌘H` ausblenden, `⌃⌘F` Vollbild; Menüs Ablage, Bearbeiten (Widerrufen, Ausschneiden, Kopieren, Einsetzen, Alles auswählen), Fenster und Hilfe
 - Folgt Hell/Dunkel des Systems; Animationen entfallen bei „Bewegung reduzieren“
 
 ## Start
