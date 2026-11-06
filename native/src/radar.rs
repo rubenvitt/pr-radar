@@ -153,7 +153,9 @@ impl Radar {
     pub fn update_prefs(&mut self, cx: &mut Context<Self>, f: impl FnOnce(&mut Prefs)) {
         f(&mut self.config.prefs);
         // Einstellungen sind Komfort – ein Schreibfehler soll die Bedienung nicht stören.
-        let _ = self.config.save();
+        if let Err(e) = self.config.save() {
+            log::warn!("Einstellungen nicht gespeichert: {e:#}");
+        }
         cx.notify();
     }
 
@@ -211,8 +213,13 @@ impl Radar {
                 self.status.last_success = Some(Utc::now());
             }
             Err(e) => {
+                // Nur neue Fehler protokollieren, nicht jeden weiteren Poll mit demselben.
+                let message = format!("{e:#}");
+                if self.status.error.as_deref() != Some(message.as_str()) {
+                    log::warn!("Aktualisierung fehlgeschlagen: {message}");
+                }
                 self.status.state = PollState::Error;
-                self.status.error = Some(format!("{e:#}"));
+                self.status.error = Some(message);
             }
         }
         let running = self.snapshot.as_ref().is_some_and(|s| s.any_running());
@@ -261,6 +268,7 @@ impl Radar {
         if let Some(m) = method
             && let Err(e) = self.check_method(pr_id, m)
         {
+            log::warn!("Aktion fehlgeschlagen: {e:#}");
             cx.emit(RadarEvent::ActionFailed(e.to_string()));
             return;
         }
@@ -275,6 +283,7 @@ impl Radar {
     /// Ziel-Branch gemergt wurde), wird erneut versucht bzw. Auto-Merge aktiviert.
     pub fn merge(&mut self, pr_id: &str, method: MergeMethod, cx: &mut Context<Self>) {
         if let Err(e) = self.check_method(pr_id, method) {
+            log::warn!("Aktion fehlgeschlagen: {e:#}");
             cx.emit(RadarEvent::ActionFailed(e.to_string()));
             return;
         }
@@ -460,7 +469,10 @@ impl Radar {
         self.pending.remove(pr_id);
         self.retrying.remove(pr_id);
         match result {
-            Err(Some(e)) => cx.emit(RadarEvent::ActionFailed(format!("{e:#}"))),
+            Err(Some(e)) => {
+                log::warn!("Aktion fehlgeschlagen: {e:#}");
+                cx.emit(RadarEvent::ActionFailed(format!("{e:#}")));
+            }
             Err(None) => {}
             Ok(Settle::AutoMerge(method)) => self.apply_auto_merge(pr_id, method, cx),
             Ok(Settle::AwaitRefresh) => {

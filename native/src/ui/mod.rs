@@ -61,7 +61,8 @@ actions!(
         ShowMainWindow,
         About,
         OpenHelp,
-        OpenLicense
+        OpenLicense,
+        RevealLog
     ]
 );
 
@@ -113,6 +114,7 @@ pub fn init(radar: Entity<Radar>, cx: &mut App) {
     cx.on_action(|_: &ShowAll, cx| cx.unhide_other_apps());
     cx.on_action(|_: &OpenHelp, cx| cx.open_url(&format!("{REPO_URL}#readme")));
     cx.on_action(|_: &OpenLicense, cx| cx.open_url(&format!("{REPO_URL}/blob/main/LICENSE.md")));
+    cx.on_action(|_: &RevealLog, cx| cx.reveal_path(crate::logging::log_path()));
     cx.on_action(|_: &CloseWindow, cx| {
         with_active_window(cx, |window, cx| {
             // Erst ein offenes Sheet (Repositories) schließen, dann das Fenster.
@@ -183,12 +185,14 @@ pub fn init(radar: Entity<Radar>, cx: &mut App) {
         Menu::new("Hilfe").items([
             MenuItem::action("PR Radar auf GitHub", OpenHelp),
             MenuItem::action("Lizenz", OpenLicense),
+            MenuItem::separator(),
+            MenuItem::action("Protokoll im Finder zeigen", RevealLog),
         ]),
     ]);
 }
 
 /// Öffnet das Hauptfenster.
-pub fn open_main_window(radar: Entity<Radar>, cx: &mut App) {
+pub fn open_main_window(radar: Entity<Radar>, cx: &mut App) -> anyhow::Result<()> {
     let options = WindowOptions {
         window_bounds: Some(WindowBounds::centered(size(px(1240.), px(820.)), cx)),
         window_min_size: Some(size(px(360.), px(480.))),
@@ -201,8 +205,8 @@ pub fn open_main_window(radar: Entity<Radar>, cx: &mut App) {
             })
             .detach();
         cx.new(|cx| Workspace::new(radar, window, cx))
-    })
-    .expect("Fenster konnte nicht geöffnet werden");
+    })?;
+    Ok(())
 }
 
 /// Hält den Radar über das Hauptfenster hinaus, damit es nach ⌘W wieder öffnen kann.
@@ -223,7 +227,9 @@ pub fn show_main_window(cx: &mut App) {
             let Some(radar) = cx.try_global::<MainRadar>().map(|r| r.0.clone()) else {
                 return;
             };
-            open_main_window(radar, cx);
+            if let Err(e) = open_main_window(radar, cx) {
+                log::error!("Fenster konnte nicht wieder geöffnet werden: {e:#}");
+            }
         }
     }
     cx.activate(true);
