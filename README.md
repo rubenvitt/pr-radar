@@ -30,6 +30,8 @@ scripts/bundle.sh --install     # „PR Radar.app“ bauen und nach /Application
 Konfiguration: `~/Library/Application Support/pr-radar/config.json`. Repos im Repositories-Sheet hinzufügen
 (`owner/repo`, GitHub-URL oder SSH-URL) oder beim ersten Start per `REPOS=owner/a,owner/b`.
 
+Protokoll: `~/Library/Logs/PR Radar/pr-radar.log` (Fehler, Warnungen und Abstürze, keine Tokens; Menü Hilfe → „Protokoll im Finder zeigen“).
+
 ## Token
 
 Reihenfolge: `GITHUB_TOKEN` / `GH_TOKEN` → GitHub CLI (`gh auth token`, funktioniert auch beim Start aus dem Finder).

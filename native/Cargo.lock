@@ -5170,6 +5170,7 @@ dependencies = [
  "futures",
  "gpui-kit",
  "gpui-pre-reqwest-client",
+ "log",
  "rust-embed",
  "serde",
  "serde_json",
