@@ -339,8 +339,16 @@ impl GitHub {
         let mut snapshot = Snapshot::default();
         let mut rate_limit = None;
         let chunks: Vec<&[String]> = repos.chunks(CHUNK).collect();
-        let results =
+        let mut results =
             futures::future::join_all(chunks.iter().map(|c| self.request_dashboard(c))).await;
+        // Ein Rate-Limit in irgendeinem Chunk zählt vor anderen Fehlern, damit der
+        // Backoff bis zum Reset wartet statt zu früh erneut anzufragen.
+        if let Some(i) = results.iter().position(|r| {
+            r.as_ref()
+                .is_err_and(|e| e.downcast_ref::<RateLimited>().is_some())
+        }) {
+            results.swap_remove(i)?;
+        }
 
         for (chunk, res) in chunks.into_iter().zip(results) {
             let res = res?;

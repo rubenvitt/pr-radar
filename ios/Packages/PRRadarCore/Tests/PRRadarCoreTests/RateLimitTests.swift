@@ -1,6 +1,10 @@
 import Foundation
 import Testing
 
+#if canImport(FoundationNetworking)
+    import FoundationNetworking
+#endif
+
 @testable import PRRadarCore
 
 /// Antwortet auf jede Anfrage mit festem Status, Body und Headern.

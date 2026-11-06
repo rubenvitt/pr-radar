@@ -259,7 +259,12 @@ public final class GitHubClient: GitHubAPI {
             for await (i, res) in group { out[i] = res }
             return out
         }
-        // Fehler in Chunk-Reihenfolge melden – wie die macOS-App
+        // Ein Rate-Limit in irgendeinem Chunk zählt vor anderen Fehlern, damit der
+        // Backoff bis zum Reset wartet statt zu früh erneut anzufragen.
+        for case .failure(let error)? in results {
+            if case GitHubError.rateLimited = error { throw error }
+        }
+        // Sonst Fehler in Chunk-Reihenfolge melden – wie die macOS-App
         let responses = try results.map { try $0!.get() }
 
         var snapshot = Snapshot()
