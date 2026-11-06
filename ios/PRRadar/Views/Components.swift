@@ -341,7 +341,7 @@ struct PollFooter: View {
         let s = radar.status
         TimelineView(.periodic(from: .now, by: 10)) { ctx in
             VStack(spacing: 2) {
-                Text("Aktualisiert \(GermanTime.ago(s.lastSuccess, now: ctx.date)) · alle \(Int(s.interval)) s")
+                Text("Aktualisiert \(GermanTime.ago(s.lastSuccess, now: ctx.date)) · alle \(intervalLabel(s.interval))")
                 if let rl = s.rateLimit {
                     Text("API-Kontingent \(rl.remaining) / \(rl.limit)")
                 }
