@@ -155,12 +155,20 @@ fn load_from(path: &Path, env_repos: &str, now: chrono::DateTime<chrono::Local>)
     match backup(path, now, bytes.as_deref()) {
         Ok(backup) => {
             let config = Config::default();
-            let _ = save_to(path, &config);
+            // Scheitert das Speichern, gelten die Standardwerte nur im Speicher;
+            // spätere Saves bleiben möglich und dürfen es erneut versuchen.
+            let unsaved = match save_to(path, &config) {
+                Ok(()) => String::new(),
+                Err(e) => format!(
+                    " Die Standardwerte ließen sich nicht speichern ({e:#}), \
+                     sie gelten nur bis zum Beenden."
+                ),
+            };
             Loaded {
                 config,
                 warning: Some(format!(
                     "Die Konfiguration war {problem}. PR Radar startet mit Standardwerten; \
-                     die alte Datei liegt unter {}.",
+                     die alte Datei liegt unter {}.{unsaved}",
                     backup.display()
                 )),
             }
@@ -323,6 +331,23 @@ mod tests {
             std::fs::read_to_string(dir.join(format!("config.json.defekt-{stamp}-2"))).unwrap(),
             "kaputt"
         );
+    }
+
+    #[test]
+    fn fehlgeschlagenes_speichern_nach_sicherung_wird_gemeldet() {
+        let dir = temp_dir("speichern-scheitert");
+        let path = dir.join("config.json");
+        std::fs::write(&path, "kaputt").unwrap();
+        // Ein Ordner an der Stelle der Zwischendatei lässt das Speichern scheitern.
+        std::fs::create_dir(path.with_extension(format!("json.tmp-{}", std::process::id())))
+            .unwrap();
+
+        let loaded = load_from(&path, "", now());
+
+        let warning = loaded.warning.expect("Hinweis erwartet");
+        assert!(warning.contains("nicht speichern"), "{warning}");
+        assert!(!loaded.config.read_only, "spätere Saves bleiben möglich");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "kaputt");
     }
 
     #[test]
