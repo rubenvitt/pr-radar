@@ -9,7 +9,7 @@ use chrono::{DateTime, Utc};
 use gpui_kit::{AppContext as _, AsyncApp, Context, EventEmitter, Task, WeakEntity};
 
 use crate::config::{Config, Prefs, parse_repo};
-use crate::github::{GitHub, RateLimit, TokenSource};
+use crate::github::{GitHub, RateLimit, RateLimited, TokenSource};
 use crate::model::{AutoMerge, MergeMethod, Snapshot, Transition, diff_snapshots};
 
 /// So lange wird ein Merge bei vorübergehenden GitHub-Fehlern wiederholt.
@@ -51,6 +51,14 @@ impl MergeOutcome {
 const NORMAL: Duration = Duration::from_secs(30);
 /// Intervall, solange irgendwo eine Pipeline läuft
 const ACTIVE: Duration = Duration::from_secs(10);
+/// Längste Pause nach wiederholten Fehlern (ohne Drosselung durch GitHub)
+const MAX_BACKOFF: Duration = Duration::from_secs(300);
+/// Längste Pause bei Drosselung (GitHub setzt das Kontingent stündlich zurück)
+const MAX_RATE_LIMIT_WAIT: Duration = Duration::from_secs(3600);
+/// Drosselung ohne Zeitangabe: so lange warten
+const UNKNOWN_RATE_LIMIT_WAIT: Duration = Duration::from_secs(120);
+/// Puffer nach `reset_at`, damit der erste Versuch nicht knapp davor landet
+const RESET_SLACK: Duration = Duration::from_secs(5);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PollState {
@@ -98,6 +106,8 @@ pub struct Radar {
     /// Lokal vorweggenommener Auto-Merge-Zustand je PR, bis GitHub ihn bestätigt
     optimistic: HashMap<String, (Instant, Option<AutoMerge>)>,
     poll_task: Option<Task<()>>,
+    /// Fehlgeschlagene Polls in Folge, für den Backoff
+    failures: u32,
 }
 
 impl EventEmitter<RadarEvent> for Radar {}
@@ -121,6 +131,7 @@ impl Radar {
             retrying: HashSet::new(),
             optimistic: HashMap::new(),
             poll_task: None,
+            failures: 0,
         };
         this.refresh(cx);
         this
@@ -191,7 +202,8 @@ impl Radar {
         cx: &mut Context<Self>,
     ) -> Duration {
         self.status.token_source = self.github.token_source();
-        match fetched {
+        let now = Utc::now();
+        let error = match fetched {
             Ok(f) => {
                 if let Some(prev) = &self.snapshot {
                     let transitions = diff_snapshots(prev, &f.snapshot);
@@ -210,7 +222,9 @@ impl Radar {
                 self.status.rate_limit = f.rate_limit.or(self.status.rate_limit.take());
                 self.status.state = PollState::Idle;
                 self.status.error = None;
-                self.status.last_success = Some(Utc::now());
+                self.status.last_success = Some(now);
+                self.failures = 0;
+                None
             }
             Err(e) => {
                 // Nur neue Fehler protokollieren, nicht jeden weiteren Poll mit demselben.
@@ -220,16 +234,19 @@ impl Radar {
                 }
                 self.status.state = PollState::Error;
                 self.status.error = Some(message);
+                self.failures = self.failures.saturating_add(1);
+                Some(e)
             }
-        }
+        };
         let running = self.snapshot.as_ref().is_some_and(|s| s.any_running());
-        self.status.interval = if running { ACTIVE } else { NORMAL };
+        let base = if running { ACTIVE } else { NORMAL };
+        let wait = match &error {
+            Some(e) => wait_after_error(e, self.failures, base, now),
+            None => wait_after_success(self.status.rate_limit.as_ref(), base, now),
+        };
+        self.status.interval = wait;
         cx.notify();
-        if self.status.state == PollState::Error {
-            self.status.interval.max(NORMAL)
-        } else {
-            self.status.interval
-        }
+        wait
     }
 
     pub fn add_repo(&mut self, input: &str, cx: &mut Context<Self>) -> Result<()> {
@@ -367,7 +384,10 @@ impl Radar {
                 .iter()
                 .filter(|r| matches!(r, Ok(MergeOutcome::AutoMerge(_))))
                 .count();
-            let failed = results.into_iter().filter_map(Result::err).collect();
+            let failed: Vec<String> = results.into_iter().filter_map(Result::err).collect();
+            for f in &failed {
+                log::warn!("Alle mergen: {f}");
+            }
             this.update(cx, |_, cx| {
                 cx.emit(RadarEvent::MergeAllFinished {
                     merged,
@@ -630,10 +650,112 @@ fn reconcile_optimistic(
     });
 }
 
+/// Wartezeit nach einem fehlgeschlagenen Poll: bei Drosselung bis GitHub wieder Anfragen
+/// annimmt, sonst exponentiell steigend (30 s, 60 s, 120 s … bis 5 min).
+fn wait_after_error(
+    error: &anyhow::Error,
+    failures: u32,
+    base: Duration,
+    now: DateTime<Utc>,
+) -> Duration {
+    if let Some(limited) = error.downcast_ref::<RateLimited>() {
+        return match limited.retry_at(now) {
+            Some(at) => until(at, now) + RESET_SLACK,
+            None => UNKNOWN_RATE_LIMIT_WAIT,
+        }
+        .clamp(NORMAL, MAX_RATE_LIMIT_WAIT);
+    }
+    let base = base.max(NORMAL);
+    let factor = 1u32 << failures.saturating_sub(1).min(8);
+    (base * factor).min(MAX_BACKOFF)
+}
+
+/// Wartezeit nach einem erfolgreichen Poll: Ist das Kontingent aufgebraucht, bis zum Reset.
+fn wait_after_success(
+    rate_limit: Option<&RateLimit>,
+    base: Duration,
+    now: DateTime<Utc>,
+) -> Duration {
+    match rate_limit {
+        Some(RateLimit {
+            remaining: 0,
+            reset_at: Some(reset),
+            ..
+        }) if *reset > now => (until(*reset, now) + RESET_SLACK).clamp(base, MAX_RATE_LIMIT_WAIT),
+        _ => base,
+    }
+}
+
+fn until(at: DateTime<Utc>, now: DateTime<Utc>) -> Duration {
+    (at - now).to_std().unwrap_or_default()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::model::{Mergeable, OpenPr, Pipeline, PipelineState};
+
+    fn at(secs: i64) -> DateTime<Utc> {
+        DateTime::from_timestamp(secs, 0).unwrap()
+    }
+
+    #[test]
+    fn backoff_steigt_bis_fuenf_minuten() {
+        let e = anyhow!("GitHub nicht erreichbar");
+        let waits: Vec<u64> = (1..=6)
+            .map(|n| wait_after_error(&e, n, ACTIVE, at(0)).as_secs())
+            .collect();
+        assert_eq!(waits, [30, 60, 120, 240, 300, 300]);
+        assert_eq!(wait_after_error(&e, 1000, NORMAL, at(0)), MAX_BACKOFF);
+    }
+
+    #[test]
+    fn drosselung_wartet_bis_zum_reset() {
+        let e = anyhow::Error::new(RateLimited {
+            reset_at: Some(at(1_000 + 600)),
+            retry_after: None,
+        });
+        assert_eq!(
+            wait_after_error(&e, 1, NORMAL, at(1_000)),
+            Duration::from_secs(605)
+        );
+        // Reset liegt in der Vergangenheit → frühestens normales Intervall
+        assert_eq!(wait_after_error(&e, 1, NORMAL, at(5_000)), NORMAL);
+        // Ohne Zeitangabe
+        let e = anyhow::Error::new(RateLimited {
+            reset_at: None,
+            retry_after: None,
+        });
+        assert_eq!(
+            wait_after_error(&e, 1, NORMAL, at(0)),
+            UNKNOWN_RATE_LIMIT_WAIT
+        );
+        // Höchstens eine Stunde
+        let e = anyhow::Error::new(RateLimited {
+            reset_at: Some(at(100_000)),
+            retry_after: None,
+        });
+        assert_eq!(wait_after_error(&e, 1, NORMAL, at(0)), MAX_RATE_LIMIT_WAIT);
+    }
+
+    #[test]
+    fn leeres_kontingent_nach_erfolg_pausiert_bis_reset() {
+        let rl = RateLimit {
+            remaining: 0,
+            limit: 5000,
+            reset_at: Some(at(1_000 + 120)),
+        };
+        assert_eq!(
+            wait_after_success(Some(&rl), ACTIVE, at(1_000)),
+            Duration::from_secs(125)
+        );
+        let rl = RateLimit {
+            remaining: 10,
+            ..rl
+        };
+        assert_eq!(wait_after_success(Some(&rl), ACTIVE, at(1_000)), ACTIVE);
+        assert_eq!(wait_after_success(None, NORMAL, at(1_000)), NORMAL);
+    }
 
     fn snapshot(auto: Option<AutoMerge>) -> Snapshot {
         Snapshot {

@@ -45,3 +45,10 @@ swift test
 ```
 
 In Xcode laufen dieselben Tests mit `⌘U`. Die CI (`.github/workflows/ios.yml`) testet den Kern unter Linux und baut die App für den iOS-Simulator.
+
+## Datenschutz
+
+`PRRadar/PrivacyInfo.xcprivacy` ist das Privacy Manifest für den App Store: kein Tracking, keine erhobenen
+Daten (die App spricht nur direkt mit GitHub, der Token bleibt im Schlüsselbund). Required-Reason-APIs:
+Datei-Zeitstempel (`C617.1`, Alter des Snapshot-Caches) und UserDefaults (`CA92.1`, nur app-eigene Werte).
+Wer neue Required-Reason-APIs oder SDKs einbaut, ergänzt das Manifest.

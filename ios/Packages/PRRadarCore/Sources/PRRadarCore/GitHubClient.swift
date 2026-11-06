@@ -33,9 +33,12 @@ public enum GitHubError: LocalizedError, Equatable, Sendable {
     case noToken
     case unauthorized
     case unreachable(String)
+    /// HTTP-Fehler; der zweite Wert ist GitHubs `message` (kann leer sein), nie der rohe Body.
     case http(Int, String)
     case graphQL(String)
     case unreadable(String)
+    /// GitHub drosselt; `retryAt` = ab dann ist ein neuer Versuch sinnvoll (falls bekannt).
+    case rateLimited(retryAt: Date?)
 
     public var errorDescription: String? {
         switch self {
@@ -45,14 +48,48 @@ public enum GitHubError: LocalizedError, Equatable, Sendable {
             "GitHub lehnt den Token ab (401). Token prüfen."
         case let .unreachable(detail):
             "GitHub nicht erreichbar: \(detail)"
-        case let .http(status, body):
-            "GitHub API \(status): \(body)"
+        case let .http(status, message):
+            describeHTTPError(status, message: message)
         case let .graphQL(message):
             message
         case let .unreadable(detail):
             "Unerwartete Antwort von GitHub: \(detail)"
+        case let .rateLimited(retryAt?):
+            "GitHub-API-Kontingent aufgebraucht. Wieder frei um \(GermanTime.clock(retryAt)) Uhr."
+        case .rateLimited(nil):
+            "GitHub drosselt gerade die Anfragen. Neuer Versuch in ein paar Minuten."
         }
     }
+}
+
+/// Verständlicher Text für einen HTTP-Fehler statt des rohen Antwort-Bodys.
+func describeHTTPError(_ status: Int, message: String) -> String {
+    let detail = message.trimmingCharacters(in: .whitespacesAndNewlines)
+    let suffix = detail.isEmpty ? "" : " GitHub meldet: „\(detail.prefix(160))“"
+    switch status {
+    case 403: return "GitHub verweigert den Zugriff (403). Fehlen dem Token Rechte für diese Repos?" + suffix
+    case 404: return "GitHub kennt die Adresse nicht (404)." + suffix
+    case 408, 504: return "GitHub hat nicht rechtzeitig geantwortet. Neuer Versuch folgt automatisch. (HTTP \(status))"
+    case 500..<600: return "GitHub hat gerade Probleme. Neuer Versuch folgt automatisch. (HTTP \(status))"
+    default: return "GitHub hat die Anfrage abgelehnt." + suffix
+    }
+}
+
+/// GitHubs `message` aus einer Fehlerantwort (`{"message": "…"}`), sonst leer.
+func gitHubMessage(_ data: Data) -> String {
+    struct Body: Decodable { var message: String? }
+    return (try? JSONDecoder().decode(Body.self, from: data))?.message ?? ""
+}
+
+/// Erkennt eine Drosselung anhand von Status und Headern (Header-Namen klein geschrieben).
+func rateLimitError(status: Int, headers: [String: String], now: Date) -> GitHubError? {
+    let retryAfter = headers["retry-after"].flatMap { TimeInterval($0.trimmingCharacters(in: .whitespaces)) }
+    let exhausted = headers["x-ratelimit-remaining"]?.trimmingCharacters(in: .whitespaces) == "0"
+    let reset = headers["x-ratelimit-reset"].flatMap { TimeInterval($0.trimmingCharacters(in: .whitespaces)) }
+        .map { Date(timeIntervalSince1970: $0) }
+    guard status == 429 || (status == 403 && (exhausted || retryAfter != nil)) else { return nil }
+    let candidates = [exhausted ? reset : nil, retryAfter.map { now.addingTimeInterval($0) }].compactMap { $0 }
+    return .rateLimited(retryAt: candidates.max())
 }
 
 /// Was die App von GitHub braucht – als Protokoll, damit `Radar` ohne Netz testbar ist.
@@ -67,6 +104,15 @@ public protocol GitHubAPI: Sendable {
 /// Schickt einen Request und liefert Body und HTTP-Status.
 public protocol HTTPTransport: Sendable {
     func send(_ request: URLRequest) async throws -> (Data, Int)
+    /// Wie `send`, zusätzlich mit den Antwort-Headern (Namen klein geschrieben) – für Rate-Limits.
+    func sendWithHeaders(_ request: URLRequest) async throws -> (Data, Int, [String: String])
+}
+
+extension HTTPTransport {
+    public func sendWithHeaders(_ request: URLRequest) async throws -> (Data, Int, [String: String]) {
+        let (data, status) = try await send(request)
+        return (data, status, [:])
+    }
 }
 
 public struct URLSessionTransport: HTTPTransport {
@@ -77,8 +123,18 @@ public struct URLSessionTransport: HTTPTransport {
     }
 
     public func send(_ request: URLRequest) async throws -> (Data, Int) {
+        let (data, status, _) = try await sendWithHeaders(request)
+        return (data, status)
+    }
+
+    public func sendWithHeaders(_ request: URLRequest) async throws -> (Data, Int, [String: String]) {
         let (data, response) = try await session.data(for: request)
-        return (data, (response as? HTTPURLResponse)?.statusCode ?? 0)
+        let http = response as? HTTPURLResponse
+        var headers: [String: String] = [:]
+        for (key, value) in http?.allHeaderFields ?? [:] {
+            if let key = key as? String, let value = value as? String { headers[key.lowercased()] = value }
+        }
+        return (data, http?.statusCode ?? 0, headers)
     }
 }
 
@@ -142,23 +198,30 @@ public final class GitHubClient: GitHubAPI {
 
         let data: Data
         let status: Int
+        let headers: [String: String]
         do {
-            (data, status) = try await transport.send(req)
+            (data, status, headers) = try await transport.sendWithHeaders(req)
         } catch is CancellationError {
             throw CancellationError()
         } catch {
             throw GitHubError.unreachable(error.localizedDescription)
         }
+        if let limited = rateLimitError(status: status, headers: headers, now: Date()) { throw limited }
         if status == 401 { throw GitHubError.unauthorized }
         guard (200..<300).contains(status) else {
-            let body = String(decoding: data, as: UTF8.self)
-            throw GitHubError.http(status, String(body.prefix(300)))
+            throw GitHubError.http(status, gitHubMessage(data))
         }
+        let response: GQLResponse
         do {
-            return try gitHubDecoder().decode(GQLResponse.self, from: data)
+            response = try gitHubDecoder().decode(GQLResponse.self, from: data)
         } catch {
             throw GitHubError.unreadable(String(describing: error))
         }
+        // GraphQL meldet das erschöpfte Kontingent mit HTTP 200 und Fehlertyp RATE_LIMITED.
+        if response.errors.contains(where: { $0.type == "RATE_LIMITED" }) {
+            throw GitHubError.rateLimited(retryAt: nil)
+        }
+        return response
     }
 
     /// Führt eine Mutation aus; GraphQL-Fehler werden zu einem Fehler.
@@ -196,7 +259,12 @@ public final class GitHubClient: GitHubAPI {
             for await (i, res) in group { out[i] = res }
             return out
         }
-        // Fehler in Chunk-Reihenfolge melden – wie die macOS-App
+        // Ein Rate-Limit in irgendeinem Chunk zählt vor anderen Fehlern, damit der
+        // Backoff bis zum Reset wartet statt zu früh erneut anzufragen.
+        for case .failure(let error)? in results {
+            if case GitHubError.rateLimited = error { throw error }
+        }
+        // Sonst Fehler in Chunk-Reihenfolge melden – wie die macOS-App
         let responses = try results.map { try $0!.get() }
 
         var snapshot = Snapshot()
@@ -301,12 +369,15 @@ struct GQLError: Decodable, Sendable {
     var message: String
     /// Nur die String-Teile des Pfads (Aliase wie `r0`); Indizes werden ausgelassen.
     var path: [String]
+    /// Fehlertyp, z. B. `RATE_LIMITED` oder `NOT_FOUND`.
+    var type: String?
 
-    enum CodingKeys: String, CodingKey { case message, path }
+    enum CodingKeys: String, CodingKey { case message, path, type }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         message = try c.decodeIfPresent(String.self, forKey: .message) ?? "Unbekannter Fehler"
+        type = try? c.decodeIfPresent(String.self, forKey: .type)
         var out: [String] = []
         if var p = try? c.nestedUnkeyedContainer(forKey: .path) {
             while !p.isAtEnd {

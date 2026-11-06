@@ -179,13 +179,23 @@ impl Render for RepoSettings {
                         status.token_source.map_or("–", |t| t.label())
                     ))
                     .child(format!(
-                        "Aktualisierung alle {} s · zuletzt {}",
-                        status.interval.as_secs(),
+                        "Aktualisierung alle {} · zuletzt {}",
+                        interval_label(status.interval),
                         ago(status.last_success)
                     ))
                     .when_some(status.rate_limit, |this, rl| {
                         this.child(format!("API-Kontingent: {} / {}", rl.remaining, rl.limit))
                     }),
             )
+    }
+}
+
+/// „30 s“ bzw. bei längeren Pausen (Backoff, Drosselung) „5 Min.“
+fn interval_label(interval: std::time::Duration) -> String {
+    let secs = interval.as_secs();
+    if secs < 120 {
+        format!("{secs} s")
+    } else {
+        format!("{} Min.", secs.div_ceil(60))
     }
 }
