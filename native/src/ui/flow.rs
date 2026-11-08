@@ -8,6 +8,7 @@ use gpui_kit::*;
 
 use super::Workspace;
 use super::parts::{avatar, card_segment, pipeline_icon, repo_name};
+use super::typography::TypeScale as _;
 use crate::model::{Check, OpenPr, PipelineState, ReviewDecision, Snapshot};
 use crate::time::ago;
 
@@ -288,10 +289,10 @@ fn node(
             v_flex()
                 .flex_1()
                 .min_w_0()
-                .child(div().text_sm().font_medium().truncate().child(title))
+                .child(div().text_small().font_medium().truncate().child(title))
                 .child(
                     div()
-                        .text_xs()
+                        .text_small()
                         .text_color(cx.theme().muted_foreground)
                         .truncate()
                         .child(sub),

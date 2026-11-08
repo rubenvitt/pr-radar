@@ -62,6 +62,9 @@ fn main() {
         gpui_kit::init(cx);
         ui::theme::init(cx);
         Theme::sync_system_appearance(None, cx);
+        // macOS-Maß statt der 16 px von gpui-component; Hell/Dunkel-Wechsel lassen das stehen,
+        // weil die mitgelieferten Themes keine Schriftgröße setzen.
+        Theme::update(cx, |theme| theme.font_size = ui::typography::BASE);
 
         // Ein Client für GraphQL und Avatare (img(url) braucht einen registrierten Client).
         let http = match reqwest_client::ReqwestClient::user_agent("pr-radar-native") {

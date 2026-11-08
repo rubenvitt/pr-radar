@@ -4,7 +4,6 @@
 use std::sync::Arc;
 
 use gpui_kit::assets::IconName as Lucide;
-use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::{
     ActiveTheme as _, IconName, Sizable as _,
     button::{Button, ButtonVariants as _},
@@ -17,6 +16,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use super::parts::{EmptyState, pipeline_icon, repo_name};
+use super::typography::TypeScale as _;
 use super::{Derived, OpenSettings, Refresh, Workspace, quick_label};
 use crate::config::{Prefs, Quick, Tab, View};
 use crate::model::Snapshot;
@@ -404,8 +404,7 @@ impl Workspace {
             }
             Row::Day { label } => div()
                 .px_1()
-                .text_xs()
-                .font_semibold()
+                .text_heading()
                 .text_color(cx.theme().muted_foreground)
                 .child(label.clone())
                 .into_any_element(),
@@ -456,15 +455,14 @@ impl Workspace {
                 h_flex()
                     .id(SharedString::from(format!("repo-{repo}")))
                     .min_w_0()
-                    .text_sm()
-                    .font_semibold()
+                    .text_heading()
                     .cursor_pointer()
                     .child(repo_name(repo, cx))
                     .on_click(move |_, _, cx| cx.open_url(&url)),
             )
             .child(
                 div()
-                    .text_xs()
+                    .text_small()
                     .text_color(cx.theme().muted_foreground)
                     .child(count.to_string()),
             )
@@ -480,7 +478,7 @@ impl Workspace {
                         h_flex()
                             .flex_shrink_0()
                             .gap_1p5()
-                            .text_xs()
+                            .text_small()
                             .text_color(cx.theme().muted_foreground)
                             .child(pipeline_icon(state, cx))
                             .child(
