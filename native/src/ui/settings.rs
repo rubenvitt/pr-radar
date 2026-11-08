@@ -1,4 +1,5 @@
-//! Repositories verwalten (Inhalt der Seitenleiste-Sheet): hinzufügen, entfernen, Status.
+//! Repositories-Sheet: GitHub-Konto (Anmeldung per Device Flow), Repos hinzufügen und
+//! entfernen, Status.
 
 use gpui_kit::assets::IconName as Lucide;
 use gpui_kit::component::{
@@ -6,6 +7,7 @@ use gpui_kit::component::{
     button::{Button, ButtonVariants as _},
     h_flex,
     input::{Input, InputEvent, InputState},
+    spinner::Spinner,
     v_flex,
 };
 use gpui_kit::prelude::FluentBuilder as _;
@@ -13,8 +15,9 @@ use gpui_kit::*;
 
 use super::parts::{pipeline_icon, repo_name};
 use super::typography::TypeScale as _;
+use crate::github::{TokenSource, oauth};
 use crate::model::PipelineState;
-use crate::radar::Radar;
+use crate::radar::{Login, Radar};
 use crate::time::ago;
 
 pub struct RepoSettings {
@@ -69,10 +72,132 @@ impl RepoSettings {
         }
         cx.notify();
     }
+
+    /// GitHub-Konto: Anmeldestatus, „Mit GitHub anmelden“ bzw. der Code zum Eingeben.
+    fn render_account(&self, cx: &mut Context<Self>) -> AnyElement {
+        let radar = self.radar.read(cx);
+        let login = radar.login().clone();
+        let source = radar.status().token_source;
+        let viewer = radar.snapshot().and_then(|s| s.viewer.clone());
+        let muted = cx.theme().muted_foreground;
+        let configured = oauth::client_id().is_some();
+
+        let state = match (source, viewer) {
+            (Some(TokenSource::OAuth), Some(v)) => format!("Angemeldet als {v}"),
+            (Some(TokenSource::OAuth), None) => "Angemeldet".into(),
+            (Some(TokenSource::Env), _) => "Token aus GITHUB_TOKEN".into(),
+            (Some(TokenSource::GhCli), _) => "Token aus der GitHub-CLI".into(),
+            (None, _) => "Nicht angemeldet".into(),
+        };
+
+        let error = match &login {
+            Login::Failed(e) => Some(e.clone()),
+            _ => None,
+        };
+        let body = match login {
+            Login::Waiting {
+                user_code,
+                verification_uri,
+            } => v_flex()
+                .gap_2()
+                .child(
+                    div()
+                        .text_body()
+                        .child("Gib diesen Code auf GitHub ein (liegt in der Zwischenablage):"),
+                )
+                .child(
+                    div()
+                        .text_2xl()
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .child(user_code.clone()),
+                )
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .child(
+                            Button::new("open-device")
+                                .primary()
+                                .small()
+                                .label("Code kopieren und GitHub öffnen")
+                                .on_click(move |_, _, cx| {
+                                    cx.write_to_clipboard(ClipboardItem::new_string(
+                                        user_code.clone(),
+                                    ));
+                                    cx.open_url(&verification_uri);
+                                }),
+                        )
+                        .child(self.cancel_button(cx)),
+                )
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .text_small()
+                        .text_color(muted)
+                        .child(Spinner::new().small())
+                        .child("Warte auf die Bestätigung auf GitHub …"),
+                )
+                .into_any_element(),
+            Login::Starting => h_flex()
+                .gap_2()
+                .text_body()
+                .child(Spinner::new().small())
+                .child(div().flex_1().child("Verbinde mit GitHub …"))
+                .child(self.cancel_button(cx))
+                .into_any_element(),
+            Login::Idle | Login::Failed(_) => {
+                let radar = self.radar.clone();
+                h_flex()
+                    .gap_2()
+                    .child(div().flex_1().text_body().child(state))
+                    .when(source != Some(TokenSource::OAuth), |this| {
+                        this.child(
+                            Button::new("sign-in")
+                                .primary()
+                                .small()
+                                .label("Mit GitHub anmelden")
+                                .disabled(!configured)
+                                .when(!configured, |b| {
+                                    b.tooltip("In diesem Build ist keine OAuth-App hinterlegt")
+                                })
+                                .on_click(move |_, _, cx| {
+                                    radar.update(cx, |r, cx| r.start_login(cx));
+                                }),
+                        )
+                    })
+                    .into_any_element()
+            }
+        };
+
+        v_flex()
+            .gap_1()
+            .pb_3()
+            .border_b_1()
+            .border_color(cx.theme().border)
+            .child(div().text_heading().text_color(muted).child("GitHub-Konto"))
+            .child(body)
+            .when_some(error, |this, e| {
+                this.child(div().text_body().text_color(cx.theme().danger).child(e))
+            })
+            .child(div().text_small().text_color(muted).child(
+                "Erweitert: Ohne Anmeldung nutzt PR Radar GITHUB_TOKEN/GH_TOKEN oder die \
+                 GitHub-CLI (gh auth login). Die Anmeldung gilt bis zum Beenden der App.",
+            ))
+            .into_any_element()
+    }
+
+    fn cancel_button(&self, _cx: &mut Context<Self>) -> Button {
+        let radar = self.radar.clone();
+        Button::new("cancel-login")
+            .ghost()
+            .small()
+            .label("Abbrechen")
+            .on_click(move |_, _, cx| radar.update(cx, |r, cx| r.cancel_login(cx)))
+    }
 }
 
 impl Render for RepoSettings {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let account = self.render_account(cx);
         let radar = self.radar.read(cx);
         let repos = radar.repos().to_vec();
         let snapshot = radar.snapshot();
@@ -83,6 +208,7 @@ impl Render for RepoSettings {
         v_flex()
             .size_full()
             .gap_4()
+            .child(account)
             .child(
                 v_flex()
                     .gap_1()

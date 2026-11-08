@@ -1,6 +1,7 @@
-//! GitHub-GraphQL-Client: Token-Suche, Requests, Dashboard-Abfrage, Mutationen.
+//! GitHub-GraphQL-Client: Token-Suche, Anmeldung, Requests, Dashboard-Abfrage, Mutationen.
 
 mod normalize;
+pub mod oauth;
 mod queries;
 
 use std::collections::HashMap;
@@ -27,6 +28,8 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TokenSource {
+    /// Angemeldet per Device Flow („Mit GitHub anmelden“)
+    OAuth,
     Env,
     GhCli,
 }
@@ -34,6 +37,7 @@ pub enum TokenSource {
 impl TokenSource {
     pub fn label(self) -> &'static str {
         match self {
+            Self::OAuth => "GitHub-Anmeldung",
             Self::Env => "GITHUB_TOKEN",
             Self::GhCli => "GitHub CLI (gh auth token)",
         }
@@ -232,6 +236,55 @@ fn describe_http_error(status: u16, body: &str) -> String {
     }
 }
 
+/// Klartext für fehlende Rechte statt GitHubs Rohmeldung; `None`, wenn es kein Rechtefehler ist.
+fn explain_access_error(message: &str, kind: Option<&str>) -> Option<String> {
+    let lower = message.to_lowercase();
+    if lower.contains("oauth app access restrictions") {
+        // „… the `acme` organization has enabled OAuth App access restrictions …“
+        let org = message
+            .split('`')
+            .nth(1)
+            .filter(|o| !o.is_empty() && !o.contains(' '));
+        let who = org.map_or("Die Organisation".to_string(), |o| {
+            format!("Die Organisation „{o}“")
+        });
+        return Some(format!(
+            "{who} hat PR Radar noch nicht freigegeben. Ein Owner kann das unter \
+             Settings → Third-party access → OAuth app policy erlauben."
+        ));
+    }
+    let denied = kind == Some("FORBIDDEN")
+        || [
+            "resource not accessible by",
+            "does not have the correct permissions",
+            "does not have permission",
+            "must have push access",
+            "must have write access",
+            "not authorized",
+        ]
+        .iter()
+        .any(|p| lower.contains(p));
+    denied.then(|| {
+        "Keine Schreibrechte für diesen Pull Request. Mergen und Auto-Merge brauchen Schreibrechte \
+         im Repo und beim Token „Pull requests: write“ (Fine-grained PAT) bzw. den Scope `repo`."
+            .to_string()
+    })
+}
+
+/// Fehler einer Mutation: Rechtefehler im Klartext, sonst GitHubs Meldungen.
+fn describe_mutation_errors(errors: &[GqlError]) -> String {
+    errors
+        .iter()
+        .find_map(|e| explain_access_error(&e.message, e.kind.as_deref()))
+        .unwrap_or_else(|| {
+            errors
+                .iter()
+                .map(|e| e.message.as_str())
+                .collect::<Vec<_>>()
+                .join("; ")
+        })
+}
+
 /// Ergebnis eines Abrufs aller Repos.
 pub struct Fetched {
     pub snapshot: Snapshot,
@@ -306,7 +359,10 @@ impl GitHub {
             return Ok(t);
         }
         let token = find_token().ok_or_else(|| {
-            anyhow!("Kein GitHub-Token gefunden. Setze GITHUB_TOKEN oder melde dich mit `gh auth login` an.")
+            anyhow!(
+                "Nicht bei GitHub angemeldet. Melde dich unter Repositories (⌘,) mit GitHub an, \
+                 oder setze GITHUB_TOKEN bzw. nutze `gh auth login`."
+            )
         })?;
         *self
             .token
@@ -319,6 +375,65 @@ impl GitHub {
         if let Ok(mut t) = self.token.lock() {
             *t = None;
         }
+    }
+
+    /// Übernimmt den Token aus der GitHub-Anmeldung; er gilt vor `GITHUB_TOKEN` und `gh`.
+    pub fn sign_in(&self, token: String) {
+        if let Ok(mut t) = self.token.lock() {
+            *t = Some(Token {
+                value: token,
+                source: TokenSource::OAuth,
+            });
+        }
+        // Branch-Regeln hängen an den Rechten des Tokens.
+        if let Ok(mut rules) = self.rules.lock() {
+            *rules = RulesCache::default();
+        }
+    }
+
+    /// Device Flow, Schritt 1: Code für die Anmeldung anfordern.
+    pub async fn request_device_code(&self, client_id: &str) -> Result<oauth::DeviceCode> {
+        let body = self
+            .post_form(oauth::DEVICE_CODE_URL, oauth::device_code_form(client_id))
+            .await?;
+        oauth::parse_device_code(&body)
+    }
+
+    /// Device Flow, Schritt 2: Fragen, ob der Nutzer den Code bestätigt hat.
+    pub async fn poll_device_token(
+        &self,
+        client_id: &str,
+        device_code: &str,
+        interval: Duration,
+    ) -> Result<oauth::PollStep> {
+        let body = self
+            .post_form(oauth::TOKEN_URL, oauth::token_form(client_id, device_code))
+            .await?;
+        oauth::parse_token_response(&body, interval)
+    }
+
+    /// POST mit Formular-Body an github.com (nicht die API); liefert den JSON-Body.
+    async fn post_form(&self, url: &str, form: String) -> Result<String> {
+        let req = Request::builder()
+            .method(Method::POST)
+            .uri(url)
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .header("User-Agent", "pr-radar-native")
+            .body(AsyncBody::from(form.into_bytes()))?;
+        let mut res = self
+            .http
+            .send(req)
+            .await
+            .context("GitHub nicht erreichbar")?;
+        let status = res.status();
+        let mut text = String::new();
+        res.body_mut().read_to_string(&mut text).await?;
+        // Fehler des Device Flows kommen als JSON mit `error`, auch bei HTTP 4xx.
+        if !status.is_success() && !text.contains("\"error\"") {
+            bail!("{}", describe_http_error(status.as_u16(), &text));
+        }
+        Ok(text)
     }
 
     async fn request(&self, query: &str, variables: Value) -> Result<GqlResponse> {
@@ -393,14 +508,7 @@ impl GitHub {
             }
         })?;
         if !res.errors.is_empty() {
-            bail!(
-                "{}",
-                res.errors
-                    .iter()
-                    .map(|e| e.message.as_str())
-                    .collect::<Vec<_>>()
-                    .join("; ")
-            );
+            bail!("{}", describe_mutation_errors(&res.errors));
         }
         Ok(())
     }
@@ -493,9 +601,14 @@ impl GitHub {
                         let err = res.errors.iter().find(|e| {
                             e.path.first().and_then(Value::as_str) == Some(alias.as_str())
                         });
-                        let msg = err.map(|e| e.message.clone()).unwrap_or_else(|| {
-                            "Repository nicht gefunden oder kein Zugriff".into()
-                        });
+                        let msg = err
+                            .map(|e| {
+                                explain_access_error(&e.message, e.kind.as_deref())
+                                    .unwrap_or_else(|| e.message.clone())
+                            })
+                            .unwrap_or_else(|| {
+                                "Repository nicht gefunden oder kein Zugriff".into()
+                            });
                         snapshot.repos.push(RepoInfo::unavailable(full, msg));
                     }
                 }
@@ -890,6 +1003,65 @@ mod tests {
 
         let msg = describe_http_error(400, "kein json");
         assert!(!msg.contains("kein json"), "{msg}");
+    }
+
+    fn gql_error(message: &str, kind: Option<&str>) -> GqlError {
+        GqlError {
+            message: message.into(),
+            path: Vec::new(),
+            kind: kind.map(String::from),
+        }
+    }
+
+    #[test]
+    fn fehlende_schreibrechte_im_klartext() {
+        let msg = describe_mutation_errors(&[gql_error(
+            "Resource not accessible by personal access token",
+            Some("FORBIDDEN"),
+        )]);
+        assert!(msg.contains("Keine Schreibrechte"), "{msg}");
+        assert!(!msg.contains("Resource not accessible"), "{msg}");
+
+        let msg = describe_mutation_errors(&[gql_error(
+            "octocat does not have the correct permissions to execute `MergePullRequest`",
+            None,
+        )]);
+        assert!(msg.contains("Keine Schreibrechte"), "{msg}");
+
+        // Andere Fehler bleiben, wie sie sind – „Base branch was modified“ wird erneut versucht.
+        let msg = describe_mutation_errors(&[
+            gql_error(
+                "Base branch was modified. Review and try the merge again.",
+                None,
+            ),
+            gql_error("zweiter", None),
+        ]);
+        assert_eq!(
+            msg,
+            "Base branch was modified. Review and try the merge again.; zweiter"
+        );
+    }
+
+    #[test]
+    fn org_ohne_freigabe_im_klartext() {
+        let raw = "Although you appear to have the correct authorization credentials, the `acme` \
+                   organization has enabled OAuth App access restrictions, meaning that data access \
+                   to third-parties is limited.";
+        let msg = explain_access_error(raw, Some("FORBIDDEN")).unwrap();
+        assert!(msg.contains("„acme“"), "{msg}");
+        assert!(msg.contains("Third-party access"), "{msg}");
+        assert_eq!(
+            explain_access_error("Could not resolve to a Repository", Some("NOT_FOUND")),
+            None
+        );
+    }
+
+    #[test]
+    fn angemeldeter_token_hat_vorrang() {
+        let github = GitHub::new(Arc::new(gpui_kit::http_client::BlockedHttpClient));
+        github.sign_in("gho_abc".into());
+        assert_eq!(github.token_source(), Some(TokenSource::OAuth));
+        assert_eq!(github.token().unwrap().value, "gho_abc");
     }
 
     #[test]
