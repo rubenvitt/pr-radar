@@ -33,7 +33,7 @@
       <h3>Kurz gesagt</h3>
       <ul>
         <li>Die Apps schicken uns keine Daten. Es gibt keinen PR-Radar-Server, kein Konto, keine Analyse und kein Tracking.</li>
-        <li>Dein GitHub-Token bleibt auf deinem Gerät. Die Apps verbinden sich nur direkt mit GitHub.</li>
+        <li>Dein GitHub-Token bleibt auf deinem Gerät. Die Apps verbinden sich direkt mit GitHub und sonst nirgendwohin. Einzige Ausnahme ist die Prüfung eines direkt gekauften Lizenzschlüssels (Abschnitt 2.5).</li>
         <li>Personenbezogene Daten erhalten wir nur, wenn du uns schreibst oder eine Lizenz direkt kaufst.</li>
       </ul>
     </div>
@@ -58,13 +58,14 @@
     <table>
       <thead><tr><th>Daten</th><th>Wo</th><th>Wozu</th></tr></thead>
       <tbody>
-        <tr><td>GitHub-Zugangstoken</td><td>iPhone/iPad: Schlüsselbund des Geräts, ohne iCloud-Synchronisierung. Mac: aus der Umgebung oder der GitHub CLI (<code>gh</code>) gelesen bzw. im Schlüsselbund</td><td>Anfragen an GitHub in deinem Namen</td></tr>
+        <tr><td>GitHub-Zugangstoken</td><td>iPhone/iPad: Schlüsselbund des Geräts, ohne iCloud-Synchronisierung. Mac: bei Bedarf aus der Umgebung oder der GitHub CLI (<code>gh</code>) gelesen, nicht von der App gespeichert</td><td>Anfragen an GitHub in deinem Namen</td></tr>
         <tr><td>Liste der Repositories, Filter und Einstellungen</td><td>App-Ordner auf dem Gerät</td><td>damit die App beim nächsten Start weiß, was sie zeigen soll</td></tr>
         <tr><td>Zuletzt geladener Stand (Pull Requests, Checks, Releases)</td><td>Zwischenspeicher auf dem Gerät</td><td>schneller Start, Anzeige ohne Netz</td></tr>
         <tr><td>Protokoll (nur Mac)</td><td><code>~/Library/Logs/PR Radar/</code></td><td>Fehlersuche. Enthält Fehlermeldungen und Warnungen, etwa mit Repository-Namen, aber keine Tokens. Bleibt auf dem Mac, bis du es selbst schickst.</td></tr>
       </tbody>
     </table>
-    <p>Diese Daten löschst du, indem du den Token in der App entfernst oder die App deinstallierst. Auf dem Mac liegen Einstellungen und Protokoll außerdem unter <code>~/Library/Application Support/pr-radar/</code> und <code>~/Library/Logs/PR Radar/</code>.</p>
+    <p><strong>iPhone und iPad:</strong> Entferne den Token in der App und lösche die App. Damit sind alle diese Daten gelöscht.</p>
+    <p><strong>Mac:</strong> Lösche die App und zusätzlich die Ordner <code>~/Library/Application Support/pr-radar/</code> (Einstellungen) und <code>~/Library/Logs/PR Radar/</code> (Protokoll). Den Token speichert die Mac-App nicht selbst. Du entfernst ihn dort, wo du ihn hinterlegt hast: <code>GITHUB_TOKEN</code> bzw. <code>GH_TOKEN</code> entfernen oder dich mit <code>gh auth logout</code> von der GitHub CLI abmelden.</p>
 
     <h3>2.3 Verbindung zu GitHub</h3>
     <p>Um Pull Requests, Pipelines und Releases anzuzeigen und Aktionen wie Mergen auszuführen, verbinden sich die Apps direkt mit Servern von GitHub:</p>
