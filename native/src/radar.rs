@@ -139,6 +139,34 @@ impl Radar {
         this
     }
 
+    /// Für UI-Tests: ohne `config.json` (speichert nie) und ohne Poll-Zyklus.
+    #[cfg(test)]
+    pub fn for_tests(github: Arc<GitHub>) -> Self {
+        Self {
+            github,
+            config: Config {
+                read_only: true,
+                ..Config::default()
+            },
+            snapshot: None,
+            status: Status {
+                state: PollState::Idle,
+                last_success: None,
+                interval: NORMAL,
+                error: None,
+                rate_limit: None,
+                token_source: None,
+            },
+            pending: HashSet::new(),
+            awaiting_refresh: HashSet::new(),
+            retrying: HashSet::new(),
+            optimistic: HashMap::new(),
+            poll_task: None,
+            config_warning: None,
+            failures: 0,
+        }
+    }
+
     pub fn snapshot(&self) -> Option<Arc<Snapshot>> {
         self.snapshot.clone()
     }
