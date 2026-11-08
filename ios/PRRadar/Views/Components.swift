@@ -284,12 +284,20 @@ struct SetupStateView: View {
     var body: some View {
         if !app.hasToken {
             ContentUnavailableView {
-                Label("Kein GitHub-Token", systemImage: "key")
+                Label("Nicht bei GitHub angemeldet", systemImage: "person.badge.key")
             } description: {
-                Text("PR Radar spricht GitHub direkt an. Hinterlege einen Personal Access Token.")
+                Text("PR Radar spricht GitHub direkt an, ohne eigenen Server.")
             } actions: {
-                Button("Token eintragen") { radar.updatePrefs { $0.tab = .settings } }
+                if app.canLogin {
+                    Button("Mit GitHub anmelden") {
+                        app.startLogin()
+                        radar.updatePrefs { $0.tab = .settings }
+                    }
                     .buttonStyle(.borderedProminent)
+                } else {
+                    Button("Token eintragen") { radar.updatePrefs { $0.tab = .settings } }
+                        .buttonStyle(.borderedProminent)
+                }
                 DemoButton()
             }
         } else if radar.repos.isEmpty {

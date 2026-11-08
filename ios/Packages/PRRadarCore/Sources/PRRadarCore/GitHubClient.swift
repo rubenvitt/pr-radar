@@ -43,7 +43,7 @@ public enum GitHubError: LocalizedError, Equatable, Sendable {
     public var errorDescription: String? {
         switch self {
         case .noToken:
-            "Kein GitHub-Token hinterlegt. Trage in den Einstellungen einen Personal Access Token ein."
+            "Nicht bei GitHub angemeldet. Melde dich in den Einstellungen mit GitHub an oder hinterlege einen Personal Access Token."
         case .unauthorized:
             "GitHub lehnt den Token ab (401). Token prüfen."
         case let .unreachable(detail):
@@ -73,6 +73,30 @@ func describeHTTPError(_ status: Int, message: String) -> String {
     case 500..<600: return "GitHub hat gerade Probleme. Neuer Versuch folgt automatisch. (HTTP \(status))"
     default: return "GitHub hat die Anfrage abgelehnt." + suffix
     }
+}
+
+/// Klartext für fehlende Rechte statt GitHubs Rohmeldung; `nil`, wenn es kein Rechtefehler ist.
+func explainAccessError(_ message: String, type: String? = nil) -> String? {
+    let lower = message.lowercased()
+    if lower.contains("oauth app access restrictions") {
+        // „… the `acme` organization has enabled OAuth App access restrictions …“
+        let parts = message.split(separator: "`", omittingEmptySubsequences: false)
+        let org = parts.count > 2 ? String(parts[1]) : ""
+        let who = org.isEmpty || org.contains(" ") ? "Die Organisation" : "Die Organisation „\(org)“"
+        return "\(who) hat PR Radar noch nicht freigegeben. Ein Owner kann das unter Settings → Third-party access → OAuth app policy erlauben."
+    }
+    let patterns = [
+        "resource not accessible by", "does not have the correct permissions", "does not have permission",
+        "must have push access", "must have write access", "not authorized",
+    ]
+    guard type == "FORBIDDEN" || patterns.contains(where: lower.contains) else { return nil }
+    return "Keine Schreibrechte für diesen Pull Request. Mergen und Auto-Merge brauchen Schreibrechte im Repo und beim Token „Pull requests: write“ (Fine-grained PAT) bzw. den Scope `repo`."
+}
+
+/// Fehler einer Mutation: Rechtefehler im Klartext, sonst GitHubs Meldungen.
+func describeMutationErrors(_ errors: [GQLError]) -> String {
+    errors.lazy.compactMap { explainAccessError($0.message, type: $0.type) }.first
+        ?? errors.map(\.message).joined(separator: "; ")
 }
 
 /// GitHubs `message` aus einer Fehlerantwort (`{"message": "…"}`), sonst leer.
@@ -254,7 +278,7 @@ public final class GitHubClient: GitHubAPI {
     private func mutate(_ query: String, variables: [String: String?]) async throws {
         let res = try await request(query, variables: variables)
         if !res.errors.isEmpty {
-            throw GitHubError.graphQL(res.errors.map(\.message).joined(separator: "; "))
+            throw GitHubError.graphQL(describeMutationErrors(res.errors))
         }
     }
 
@@ -313,8 +337,9 @@ public final class GitHubClient: GitHubAPI {
                     snapshot.repos.append(.unavailable(full, error: "Antwort nicht lesbar: \(message)"))
                 case .null?, nil:
                     let err = res.errors.first { $0.path.first == alias }
+                    let message = err.map { explainAccessError($0.message, type: $0.type) ?? $0.message }
                     snapshot.repos.append(
-                        .unavailable(full, error: err?.message ?? "Repository nicht gefunden oder kein Zugriff"))
+                        .unavailable(full, error: message ?? "Repository nicht gefunden oder kein Zugriff"))
                 }
             }
         }

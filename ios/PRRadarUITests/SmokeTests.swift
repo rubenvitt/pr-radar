@@ -54,7 +54,9 @@ final class SmokeTests: XCTestCase {
     func testOhneTokenZumEintragen() {
         let app = launch()
         openTab("Offen", in: app)
-        if app.staticTexts["Kein GitHub-Token"].waitForExistence(timeout: 5) {
+        if app.staticTexts["Nicht bei GitHub angemeldet"].waitForExistence(timeout: 5) {
+            // Ohne Client-ID der OAuth App (CI) bleibt nur der Weg über den Token.
+            if app.buttons["Mit GitHub anmelden"].exists { return }
             app.buttons["Token eintragen"].tap()
             XCTAssertTrue(app.navigationBars["Einstellungen"].waitForExistence(timeout: 5))
             XCTAssertTrue(app.secureTextFields["ghp_… oder github_pat_…"].exists)

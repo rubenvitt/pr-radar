@@ -11,7 +11,9 @@ use gpui_kit::{AppContext as _, AsyncApp, Context, EventEmitter, Task, WeakEntit
 use crate::config::{Config, Loaded, Prefs};
 use crate::demo;
 use crate::github::oauth::{self, PollStep};
-use crate::github::{GitHub, RateLimit, RateLimited, TokenSource, UNKNOWN_RATE_LIMIT_WAIT};
+use crate::github::{
+    GitHub, RateLimit, RateLimited, TimedOut, TokenSource, UNKNOWN_RATE_LIMIT_WAIT,
+};
 use crate::model::{AutoMerge, MergeMethod, Snapshot, Transition, diff_snapshots};
 
 /// So lange wird ein Merge bei vorübergehenden GitHub-Fehlern wiederholt.
@@ -823,7 +825,7 @@ async fn run_login(
 }
 
 fn is_network_error(e: &anyhow::Error) -> bool {
-    format!("{e:#}").contains("GitHub nicht erreichbar")
+    e.downcast_ref::<TimedOut>().is_some() || format!("{e:#}").contains("GitHub nicht erreichbar")
 }
 
 /// Ablehnungen, die sich von selbst erledigen – etwa direkt nachdem ein anderer PR in denselben

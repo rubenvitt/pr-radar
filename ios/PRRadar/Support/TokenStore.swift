@@ -6,12 +6,16 @@ import Security
 import Synchronization
 
 enum TokenSource: Equatable {
+    /// Per „Mit GitHub anmelden“ (Device Flow) geholt, liegt im Schlüsselbund
+    case login
+    /// Von Hand eingetragener Personal Access Token im Schlüsselbund
     case keychain
     case environment
 
     var label: String {
         switch self {
-        case .keychain: "Schlüsselbund"
+        case .login: "GitHub-Anmeldung"
+        case .keychain: "Personal Access Token"
         case .environment: "GITHUB_TOKEN (Xcode-Scheme)"
         }
     }
@@ -43,7 +47,7 @@ final class TokenStore: Sendable {
     }
 
     var source: TokenSource? {
-        if stored != nil { return .keychain }
+        if stored != nil { return UserDefaults.standard.bool(forKey: fromLoginKey) ? .login : .keychain }
         if environmentToken != nil { return .environment }
         return nil
     }
@@ -64,7 +68,11 @@ final class TokenStore: Sendable {
             .first { !$0.isEmpty }
     }
 
-    func save(_ token: String) throws {
+    /// Merkt sich, ob der Token im Schlüsselbund aus der Anmeldung stammt (kein Geheimnis).
+    private var fromLoginKey: String { "\(service).\(account).fromLogin" }
+
+    /// `fromLogin`: Token aus dem Device Flow statt eines eingetragenen PAT.
+    func save(_ token: String, fromLogin: Bool = false) throws {
         let value = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty else { return }
         let query = baseQuery()
@@ -75,10 +83,12 @@ final class TokenStore: Sendable {
         let status = SecItemAdd(add as CFDictionary, nil)
         guard status == errSecSuccess else { throw KeychainError(status: status) }
         cache.withLock { $0 = .some(value) }
+        UserDefaults.standard.set(fromLogin, forKey: fromLoginKey)
     }
 
     func delete() {
         SecItemDelete(baseQuery() as CFDictionary)
+        UserDefaults.standard.removeObject(forKey: fromLoginKey)
         cache.withLock { $0 = .some(nil) }
     }
 

@@ -1,7 +1,8 @@
-// Einstellungen: Token, Repositories, Benachrichtigungen, Status.
+// Einstellungen: GitHub-Konto, Token (Erweitert), Repositories, Benachrichtigungen, Status.
 
 import PRRadarCore
 import SwiftUI
+import UIKit
 
 struct SettingsView: View {
     @Environment(AppState.self) private var app
@@ -10,6 +11,7 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                AccountSection()
                 TokenSection()
                 ReposSection()
                     // Die Demo-Repos sind fest; eigene Repos gibt es erst nach dem Beenden.
@@ -24,27 +26,87 @@ struct SettingsView: View {
     }
 }
 
-private struct TokenSection: View {
+private struct AccountSection: View {
     @Environment(AppState.self) private var app
     @Environment(Radar.self) private var radar
+    @Environment(\.openURL) private var openURL
+
+    var body: some View {
+        Section {
+            switch app.login {
+            case .starting:
+                HStack(spacing: 10) {
+                    ProgressView()
+                    Text("Verbinde mit GitHub …")
+                }
+                Button("Abbrechen", role: .cancel) { app.cancelLogin() }
+            case let .waiting(code):
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Gib diesen Code auf GitHub ein (liegt in der Zwischenablage):")
+                        .font(.subheadline)
+                    Text(code.userCode)
+                        .font(.system(.title, design: .monospaced).weight(.semibold))
+                        .textSelection(.enabled)
+                    HStack(spacing: 8) {
+                        ProgressView()
+                        Text("Warte auf die Bestätigung auf GitHub …")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.vertical, 4)
+                Button("Code kopieren und GitHub öffnen", systemImage: "safari") {
+                    UIPasteboard.general.string = code.userCode
+                    openURL(code.verificationURI)
+                }
+                Button("Abbrechen", role: .cancel) { app.cancelLogin() }
+            case .idle, .failed:
+                if let source = app.tokenSource {
+                    LabeledContent {
+                        Text(source.label)
+                    } label: {
+                        if let viewer = radar.snapshot?.viewer {
+                            Label("Angemeldet als \(viewer)", systemImage: "checkmark.seal.fill")
+                                .foregroundStyle(.green)
+                        } else {
+                            Label("Token hinterlegt", systemImage: "key.fill")
+                        }
+                    }
+                }
+                if app.tokenSource != .login {
+                    Button("Mit GitHub anmelden", systemImage: "person.badge.key") { app.startLogin() }
+                        .disabled(!app.canLogin)
+                }
+                if case let .failed(message) = app.login {
+                    Text(message).font(.footnote).foregroundStyle(.red)
+                }
+                if app.tokenSource == .login {
+                    Button("Abmelden", role: .destructive) { app.deleteToken() }
+                }
+            }
+        } header: {
+            Text("GitHub-Konto")
+        } footer: {
+            if app.canLogin {
+                Text(
+                    "Die Anmeldung öffnet GitHub im Browser. PR Radar bekommt Zugriff auf deine Repos (Scope „repo“), um PRs zu lesen, zu mergen und Auto-Merge zu schalten. Org-Repos erscheinen erst, wenn die Organisation PR Radar freigibt. Der Token liegt nur im Schlüsselbund dieses Geräts."
+                )
+            } else {
+                Text("In diesem Build ist keine Anmeldung eingerichtet. Trage unter „Erweitert“ einen Personal Access Token ein.")
+            }
+        }
+    }
+}
+
+/// Erweitert: Personal Access Token von Hand, z. B. für feinere Rechte als bei der Anmeldung.
+private struct TokenSection: View {
+    @Environment(AppState.self) private var app
     @State private var input = ""
     @State private var error: String?
     @FocusState private var focused: Bool
 
     var body: some View {
         Section {
-            if let source = app.tokenSource {
-                LabeledContent {
-                    Text(source.label)
-                } label: {
-                    if let viewer = radar.snapshot?.viewer {
-                        Label("Angemeldet als \(viewer)", systemImage: "checkmark.seal.fill")
-                            .foregroundStyle(.green)
-                    } else {
-                        Label("Token hinterlegt", systemImage: "key.fill")
-                    }
-                }
-            }
             HStack {
                 SecureField(app.hasToken ? "Neuen Token eintragen" : "ghp_… oder github_pat_…", text: $input)
                     .textInputAutocapitalization(.never)
@@ -62,11 +124,11 @@ private struct TokenSection: View {
                 Button("Token entfernen", role: .destructive) { app.deleteToken() }
             }
         } header: {
-            Text("GitHub-Token")
+            Text("Erweitert: Personal Access Token")
         } footer: {
             VStack(alignment: .leading, spacing: 6) {
                 Text(
-                    "Fine-grained PAT auf die gewünschten Repos: Metadata, Contents, Commit statuses, Actions/Checks (read) und Pull requests (**write** für Merge und Auto-Merge). Für Org-Repos ohne fine-grained Tokens einen klassischen PAT mit `repo` nutzen. Der Token liegt nur im Schlüsselbund dieses Geräts."
+                    "Statt der Anmeldung: Fine-grained PAT auf die gewünschten Repos mit Metadata, Contents, Commit statuses, Actions/Checks (read) und Pull requests (**write** für Merge und Auto-Merge). Für Org-Repos ohne fine-grained Tokens einen klassischen PAT mit `repo` nutzen. Ersetzt eine bestehende Anmeldung."
                 )
                 Link("Token auf GitHub erstellen", destination: URL(string: "https://github.com/settings/personal-access-tokens/new")!)
             }
