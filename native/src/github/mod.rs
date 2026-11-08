@@ -37,7 +37,7 @@ pub enum TokenSource {
 impl TokenSource {
     pub fn label(self) -> &'static str {
         match self {
-            Self::OAuth => "GitHub-Anmeldung",
+            Self::OAuth => tr!("GitHub sign-in", "GitHub-Anmeldung"),
             Self::Env => "GITHUB_TOKEN",
             Self::GhCli => "GitHub CLI (gh auth token)",
         }
@@ -107,15 +107,15 @@ impl RateLimited {
 impl std::fmt::Display for RateLimited {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.retry_at(Utc::now()) {
-            Some(at) => write!(
-                f,
+            Some(at) => f.write_str(&trf!(
+                "GitHub API quota used up. Available again at {}.",
                 "GitHub-API-Kontingent aufgebraucht. Wieder frei um {} Uhr.",
-                at.with_timezone(&chrono::Local).format("%H:%M")
-            ),
-            None => write!(
-                f,
+                crate::time::clock(at)
+            )),
+            None => f.write_str(tr!(
+                "GitHub is throttling requests right now. Retrying in a few minutes.",
                 "GitHub drosselt gerade die Anfragen. Neuer Versuch in ein paar Minuten."
-            ),
+            )),
         }
     }
 }
@@ -129,11 +129,11 @@ pub struct TimedOut(pub Duration);
 
 impl std::fmt::Display for TimedOut {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
+        f.write_str(&trf!(
+            "GitHub did not respond within {} s. Retrying automatically.",
             "GitHub hat nicht innerhalb von {} s geantwortet. Neuer Versuch folgt automatisch.",
             self.0.as_secs()
-        )
+        ))
     }
 }
 
@@ -236,18 +236,31 @@ fn describe_http_error(status: u16, body: &str) -> String {
         .and_then(|v| v["message"].as_str().map(str::to_owned))
         .filter(|m| !m.trim().is_empty())
         .map(|m| {
-            format!(
-                " GitHub meldet: „{}“",
-                m.chars().take(160).collect::<String>()
-            )
+            let m = m.chars().take(160).collect::<String>();
+            trf!(" GitHub says: “{m}”", " GitHub meldet: „{m}“")
         })
         .unwrap_or_default();
     let text = match status {
-        403 => "GitHub verweigert den Zugriff (403). Fehlen dem Token Rechte für diese Repos?",
-        404 => "GitHub kennt die Adresse nicht (404).",
-        408 | 504 => "GitHub hat nicht rechtzeitig geantwortet. Neuer Versuch folgt automatisch.",
-        500..=599 => "GitHub hat gerade Probleme. Neuer Versuch folgt automatisch.",
-        _ => "GitHub hat die Anfrage abgelehnt.",
+        403 => tr!(
+            "GitHub denied access (403). Does the token lack permissions for these repos?",
+            "GitHub verweigert den Zugriff (403). Fehlen dem Token Rechte für diese Repos?"
+        ),
+        404 => tr!(
+            "GitHub does not know this address (404).",
+            "GitHub kennt die Adresse nicht (404)."
+        ),
+        408 | 504 => tr!(
+            "GitHub did not respond in time. Retrying automatically.",
+            "GitHub hat nicht rechtzeitig geantwortet. Neuer Versuch folgt automatisch."
+        ),
+        500..=599 => tr!(
+            "GitHub is having problems right now. Retrying automatically.",
+            "GitHub hat gerade Probleme. Neuer Versuch folgt automatisch."
+        ),
+        _ => tr!(
+            "GitHub rejected the request.",
+            "GitHub hat die Anfrage abgelehnt."
+        ),
     };
     if (500..=599).contains(&status) {
         format!("{text} (HTTP {status})")
@@ -271,13 +284,21 @@ fn explain_oauth_restriction(message: &str) -> Option<String> {
             .split('`')
             .nth(1)
             .filter(|o| !o.is_empty() && !o.contains(' '));
-        let who = org.map_or("Die Organisation".to_string(), |o| {
-            format!("Die Organisation „{o}“")
+        return Some(match org {
+            Some(o) => trf!(
+                "The organization “{o}” has not approved PR Radar yet. An owner can allow it under \
+                 Settings → Third-party access → OAuth app policy.",
+                "Die Organisation „{o}“ hat PR Radar noch nicht freigegeben. Ein Owner kann das unter \
+                 Settings → Third-party access → OAuth app policy erlauben."
+            ),
+            None => tr!(
+                "The organization has not approved PR Radar yet. An owner can allow it under \
+                 Settings → Third-party access → OAuth app policy.",
+                "Die Organisation hat PR Radar noch nicht freigegeben. Ein Owner kann das unter \
+                 Settings → Third-party access → OAuth app policy erlauben."
+            )
+            .to_string(),
         });
-        return Some(format!(
-            "{who} hat PR Radar noch nicht freigegeben. Ein Owner kann das unter \
-             Settings → Third-party access → OAuth app policy erlauben."
-        ));
     }
     None
 }
@@ -298,9 +319,13 @@ fn explain_missing_write(message: &str, kind: Option<&str>) -> Option<String> {
         .iter()
         .any(|p| lower.contains(p));
     denied.then(|| {
-        "Keine Schreibrechte für diesen Pull Request. Mergen und Auto-Merge brauchen Schreibrechte \
-         im Repo und beim Token „Pull requests: write“ (Fine-grained PAT) bzw. den Scope `repo`."
-            .to_string()
+        tr!(
+            "No write access to this pull request. Merging and auto-merge need write access \
+             to the repo and, for the token, “Pull requests: write” (fine-grained PAT) or the `repo` scope.",
+            "Keine Schreibrechte für diesen Pull Request. Mergen und Auto-Merge brauchen Schreibrechte \
+             im Repo und beim Token „Pull requests: write“ (Fine-grained PAT) bzw. den Scope `repo`."
+        )
+        .to_string()
     })
 }
 
@@ -391,21 +416,24 @@ impl GitHub {
         if let Some(t) = self
             .token
             .lock()
-            .map_err(|_| anyhow!("Token-Cache gesperrt"))?
+            .map_err(|_| anyhow!(tr!("Token cache locked", "Token-Cache gesperrt")))?
             .clone()
         {
             return Ok(t);
         }
         let token = find_token().ok_or_else(|| {
-            anyhow!(
+            anyhow!(tr!(
+                "Not signed in to GitHub. Sign in with GitHub under Repositories (⌘,), \
+                 or set GITHUB_TOKEN or use `gh auth login`.",
                 "Nicht bei GitHub angemeldet. Melde dich unter Repositories (⌘,) mit GitHub an, \
                  oder setze GITHUB_TOKEN bzw. nutze `gh auth login`."
-            )
+            ))
         })?;
         *self
             .token
             .lock()
-            .map_err(|_| anyhow!("Token-Cache gesperrt"))? = Some(token.clone());
+            .map_err(|_| anyhow!(tr!("Token cache locked", "Token-Cache gesperrt")))? =
+            Some(token.clone());
         Ok(token)
     }
 
@@ -460,17 +488,23 @@ impl GitHub {
             .header("User-Agent", "pr-radar-native")
             .body(AsyncBody::from(form.into_bytes()))?;
         let (status, text) = within(self.timeout, async {
-            let mut res = self
-                .http
-                .send(req)
-                .await
-                .map_err(|e| Transient(format!("GitHub nicht erreichbar: {e:#}")))?;
+            let mut res = self.http.send(req).await.map_err(|e| {
+                Transient(trf!(
+                    "GitHub unreachable: {e:#}",
+                    "GitHub nicht erreichbar: {e:#}"
+                ))
+            })?;
             let status = res.status();
             let mut text = String::new();
             res.body_mut()
                 .read_to_string(&mut text)
                 .await
-                .map_err(|e| Transient(format!("Antwort von GitHub abgebrochen: {e}")))?;
+                .map_err(|e| {
+                    Transient(trf!(
+                        "Response from GitHub interrupted: {e}",
+                        "Antwort von GitHub abgebrochen: {e}"
+                    ))
+                })?;
             Ok((status, text))
         })
         .await?;
@@ -503,7 +537,7 @@ impl GitHub {
                 .http
                 .send(req)
                 .await
-                .context("GitHub nicht erreichbar")?;
+                .context(tr!("GitHub is unreachable", "GitHub nicht erreichbar"))?;
             let status = res.status();
             let headers = res.headers().clone();
             // Was schon Status und Header als Drosselung zeigen, geht ohne Body an den Poller:
@@ -512,10 +546,10 @@ impl GitHub {
                 return Err(limited.into());
             }
             let mut text = String::new();
-            res.body_mut()
-                .read_to_string(&mut text)
-                .await
-                .context("Antwort von GitHub nicht vollständig gelesen")?;
+            res.body_mut().read_to_string(&mut text).await.context(tr!(
+                "Response from GitHub was not read completely",
+                "Antwort von GitHub nicht vollständig gelesen"
+            ))?;
             Ok((status, headers, text))
         })
         .await?;
@@ -525,13 +559,18 @@ impl GitHub {
         }
         if status.as_u16() == 401 {
             self.forget_token();
-            bail!("GitHub lehnt den Token ab (401). Token prüfen.");
+            bail!(tr!(
+                "GitHub rejected the token (401). Check the token.",
+                "GitHub lehnt den Token ab (401). Token prüfen."
+            ));
         }
         if !status.is_success() {
             bail!("{}", describe_http_error(status.as_u16(), &text));
         }
-        let res: GqlResponse =
-            serde_json::from_str(&text).context("Unerwartete Antwort von GitHub")?;
+        let res: GqlResponse = serde_json::from_str(&text).context(tr!(
+            "Unexpected response from GitHub",
+            "Unerwartete Antwort von GitHub"
+        ))?;
         // GraphQL meldet das erschöpfte Kontingent mit HTTP 200 und Fehlertyp RATE_LIMITED;
         // die Reset-Zeit steht dann trotzdem in den Headern.
         if res
@@ -550,10 +589,11 @@ impl GitHub {
         // ausgeführt haben: Die Meldung darf weder Erfolg noch einen neuen Versuch versprechen.
         let res = self.request(query, variables).await.map_err(|e| {
             match e.downcast_ref::<TimedOut>() {
-                Some(TimedOut(limit)) => anyhow!(
+                Some(TimedOut(limit)) => anyhow!(trf!(
+                    "GitHub did not respond within {} s. The next refresh shows whether the action went through.",
                     "GitHub hat nicht innerhalb von {} s geantwortet. Ob die Aktion ausgeführt wurde, zeigt die nächste Aktualisierung.",
                     limit.as_secs()
-                ),
+                )),
                 None => e,
             }
         })?;
@@ -619,7 +659,7 @@ impl GitHub {
                 bail!(
                     "{}",
                     if msg.is_empty() {
-                        "Leere Antwort von GitHub".into()
+                        tr!("Empty response from GitHub", "Leere Antwort von GitHub").into()
                     } else {
                         msg
                     }
@@ -645,7 +685,7 @@ impl GitHub {
                     Some(Ok(raw)) => normalize::push_repo(&mut snapshot, &raw),
                     Some(Err(e)) => snapshot.repos.push(RepoInfo::unavailable(
                         full,
-                        format!("Antwort nicht lesbar: {e}"),
+                        trf!("Unreadable response: {e}", "Antwort nicht lesbar: {e}"),
                     )),
                     None => {
                         let err = res.errors.iter().find(|e| {
@@ -657,7 +697,11 @@ impl GitHub {
                                     .unwrap_or_else(|| e.message.clone())
                             })
                             .unwrap_or_else(|| {
-                                "Repository nicht gefunden oder kein Zugriff".into()
+                                tr!(
+                                    "Repository not found or no access",
+                                    "Repository nicht gefunden oder kein Zugriff"
+                                )
+                                .into()
                             });
                         snapshot.repos.push(RepoInfo::unavailable(full, msg));
                     }
@@ -904,7 +948,7 @@ mod tests {
         // Fehler des Device Flows bei 4xx bleiben endgültig
         let err = poll_with(400, r#"{"error":"access_denied"}"#).unwrap_err();
         assert!(!Transient::matches(&err), "{err:#}");
-        assert!(err.to_string().contains("abgelehnt"), "{err:#}");
+        assert!(err.to_string().contains("declined"), "{err:#}");
         assert_eq!(
             poll_with(200, r#"{"error":"authorization_pending"}"#).unwrap(),
             oauth::PollStep::Pending
@@ -926,7 +970,10 @@ mod tests {
                 Some(&TimedOut(Duration::from_millis(50))),
                 "{err:#}"
             );
-            assert!(format!("{err:#}").contains("nicht innerhalb"), "{err:#}");
+            assert!(
+                format!("{err:#}").contains("did not respond within"),
+                "{err:#}"
+            );
         }
     }
 
@@ -936,9 +983,9 @@ mod tests {
         let err = futures::executor::block_on(gh.merge("PR_1", MergeMethod::Squash, "abc"))
             .expect_err("hängende Aktion darf nicht gelingen");
         let msg = err.to_string();
-        assert!(msg.contains("nicht innerhalb"), "{msg}");
-        assert!(msg.contains("nächste Aktualisierung"), "{msg}");
-        assert!(!msg.contains("Neuer Versuch"), "{msg}");
+        assert!(msg.contains("did not respond within"), "{msg}");
+        assert!(msg.contains("next refresh"), "{msg}");
+        assert!(!msg.contains("Retrying"), "{msg}");
     }
 
     #[test]
@@ -1094,8 +1141,16 @@ mod tests {
             403,
             r#"{"message":"Resource not accessible by integration"}"#,
         );
-        assert!(msg.contains("Rechte"), "{msg}");
+        assert!(msg.contains("permissions"), "{msg}");
         assert!(msg.contains("Resource not accessible"), "{msg}");
+        let msg = crate::l10n::with_lang(crate::l10n::Lang::De, || {
+            describe_http_error(
+                403,
+                r#"{"message":"Resource not accessible by integration"}"#,
+            )
+        });
+        assert!(msg.contains("Rechte"), "{msg}");
+        assert!(msg.contains("„Resource not accessible"), "{msg}");
 
         let msg = describe_http_error(400, "kein json");
         assert!(!msg.contains("kein json"), "{msg}");
@@ -1115,14 +1170,14 @@ mod tests {
             "Resource not accessible by personal access token",
             Some("FORBIDDEN"),
         )]);
-        assert!(msg.contains("Keine Schreibrechte"), "{msg}");
+        assert!(msg.contains("No write access"), "{msg}");
         assert!(!msg.contains("Resource not accessible"), "{msg}");
 
         let msg = describe_mutation_errors(&[gql_error(
             "octocat does not have the correct permissions to execute `MergePullRequest`",
             None,
         )]);
-        assert!(msg.contains("Keine Schreibrechte"), "{msg}");
+        assert!(msg.contains("No write access"), "{msg}");
 
         // Andere Fehler bleiben, wie sie sind – „Base branch was modified“ wird erneut versucht.
         let msg = describe_mutation_errors(&[
@@ -1144,7 +1199,7 @@ mod tests {
                    organization has enabled OAuth App access restrictions, meaning that data access \
                    to third-parties is limited.";
         let msg = explain_access_error(raw, Some("FORBIDDEN")).unwrap();
-        assert!(msg.contains("„acme“"), "{msg}");
+        assert!(msg.contains("“acme”"), "{msg}");
         assert_eq!(explain_oauth_restriction(raw), Some(msg.clone()));
         assert!(msg.contains("Third-party access"), "{msg}");
         assert_eq!(

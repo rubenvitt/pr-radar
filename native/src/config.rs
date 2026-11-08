@@ -102,9 +102,10 @@ impl Config {
 
     pub fn save(&self) -> Result<()> {
         if self.read_only {
-            anyhow::bail!(
+            anyhow::bail!(tr!(
+                "Settings are not saved while the broken config.json has not been backed up",
                 "Konfiguration wird nicht gespeichert, solange die defekte config.json nicht gesichert ist"
-            );
+            ));
         }
         save_to(&path(), self)
     }
@@ -168,15 +169,23 @@ impl Config {
 
 fn save_to(path: &Path, cfg: &Config) -> Result<()> {
     if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).context("Konfigurationsordner nicht anlegbar")?;
+        std::fs::create_dir_all(dir).context(tr!(
+            "Could not create the settings folder",
+            "Konfigurationsordner nicht anlegbar"
+        ))?;
     }
     // Erst in eine Nachbardatei schreiben und dann umbenennen, damit ein Absturz
     // mitten im Schreiben keine halbe config.json hinterlässt.
     // Je Prozess eine eigene Nachbardatei, damit sich zwei Instanzen nicht in die Quere kommen.
     let tmp = path.with_extension(format!("json.tmp-{}", std::process::id()));
-    std::fs::write(&tmp, serde_json::to_string_pretty(cfg)? + "\n")
-        .context("Konfiguration nicht speicherbar")?;
-    std::fs::rename(&tmp, path).context("Konfiguration nicht speicherbar")
+    std::fs::write(&tmp, serde_json::to_string_pretty(cfg)? + "\n").context(tr!(
+        "Could not save the settings",
+        "Konfiguration nicht speicherbar"
+    ))?;
+    std::fs::rename(&tmp, path).context(tr!(
+        "Could not save the settings",
+        "Konfiguration nicht speicherbar"
+    ))
 }
 
 fn first_start(env_repos: &str) -> Config {
@@ -195,7 +204,10 @@ fn load_from(path: &Path, env_repos: &str, now: chrono::DateTime<chrono::Local>)
                     warning: None,
                 };
             }
-            Err(e) => (format!("ungültiges JSON ({e})"), Some(bytes)),
+            Err(e) => (
+                trf!("invalid JSON ({e})", "ungültiges JSON ({e})"),
+                Some(bytes),
+            ),
         },
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             let config = first_start(env_repos);
@@ -205,7 +217,7 @@ fn load_from(path: &Path, env_repos: &str, now: chrono::DateTime<chrono::Local>)
                 warning: None,
             };
         }
-        Err(e) => (format!("nicht lesbar ({e})"), None),
+        Err(e) => (trf!("unreadable ({e})", "nicht lesbar ({e})"), None),
     };
 
     match backup(path, now, bytes.as_deref()) {
@@ -215,14 +227,17 @@ fn load_from(path: &Path, env_repos: &str, now: chrono::DateTime<chrono::Local>)
             // spätere Saves bleiben möglich und dürfen es erneut versuchen.
             let unsaved = match save_to(path, &config) {
                 Ok(()) => String::new(),
-                Err(e) => format!(
+                Err(e) => trf!(
+                    " The defaults could not be saved ({e:#}) and only apply until you quit.",
                     " Die Standardwerte ließen sich nicht speichern ({e:#}), \
                      sie gelten nur bis zum Beenden."
                 ),
             };
             Loaded {
                 config,
-                warning: Some(format!(
+                warning: Some(trf!(
+                    "The settings file was {problem}. PR Radar starts with defaults; \
+                     the old file is at {}.{unsaved}",
                     "Die Konfiguration war {problem}. PR Radar startet mit Standardwerten; \
                      die alte Datei liegt unter {}.{unsaved}",
                     backup.display()
@@ -234,7 +249,10 @@ fn load_from(path: &Path, env_repos: &str, now: chrono::DateTime<chrono::Local>)
                 read_only: true,
                 ..Default::default()
             },
-            warning: Some(format!(
+            warning: Some(trf!(
+                "The settings file at {} was {problem} and could not be backed up ({e}). \
+                 PR Radar starts with defaults and saves no changes \
+                 until the file is repaired or removed.",
                 "Die Konfiguration unter {} war {problem} und ließ sich nicht sichern ({e}). \
                  PR Radar startet mit Standardwerten und speichert keine Änderungen, \
                  bis die Datei repariert oder entfernt ist.",
@@ -292,7 +310,10 @@ fn backup(
     }
     Err(std::io::Error::new(
         ErrorKind::AlreadyExists,
-        "kein freier Name für die Sicherung",
+        tr!(
+            "no free name for the backup",
+            "kein freier Name für die Sicherung"
+        ),
     ))
 }
 
@@ -401,6 +422,12 @@ mod tests {
         let loaded = load_from(&path, "", now());
 
         let warning = loaded.warning.expect("Hinweis erwartet");
+        assert!(warning.contains("could not be saved"), "{warning}");
+        let warning = crate::l10n::with_lang(crate::l10n::Lang::De, || {
+            load_from(&path, "", now())
+                .warning
+                .expect("Hinweis erwartet")
+        });
         assert!(warning.contains("nicht speichern"), "{warning}");
         assert!(!loaded.config.read_only, "spätere Saves bleiben möglich");
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "kaputt");

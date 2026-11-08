@@ -1,5 +1,7 @@
 //! PR Radar – native Desktop-App für Pull Requests, Pipelines, Auto-Merge, Merges und Releases.
 
+#[macro_use]
+mod l10n;
 mod config;
 mod demo;
 mod github;
@@ -56,6 +58,7 @@ impl AssetSource for AppAssets {
 }
 
 fn main() {
+    l10n::init();
     logging::init();
     let demo = demo::Options::from_env();
     if demo.enabled {
@@ -79,7 +82,13 @@ fn main() {
         // Ein Client für GraphQL und Avatare (img(url) braucht einen registrierten Client).
         let http = match reqwest_client::ReqwestClient::user_agent("pr-radar-native") {
             Ok(client) => Arc::new(client),
-            Err(e) => logging::fatal("Netzwerkzugriff nicht möglich", e),
+            Err(e) => logging::fatal(
+                tr!(
+                    "Network access unavailable",
+                    "Netzwerkzugriff nicht möglich"
+                ),
+                e,
+            ),
         };
         cx.set_http_client(http.clone());
         let github = Arc::new(GitHub::new(http));
@@ -98,7 +107,13 @@ fn main() {
             return;
         }
         if let Err(e) = ui::open_main_window(radar, cx) {
-            logging::fatal("Fenster konnte nicht geöffnet werden", e);
+            logging::fatal(
+                tr!(
+                    "Could not open the window",
+                    "Fenster konnte nicht geöffnet werden"
+                ),
+                e,
+            );
         }
         cx.activate(true);
     });

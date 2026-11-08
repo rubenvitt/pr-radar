@@ -248,12 +248,16 @@ impl Radar {
     /// „Mit GitHub anmelden“: Code anfordern, Browser öffnen, Code in die Zwischenablage, dann
     /// warten, bis der Nutzer bestätigt. Danach gilt der neue Token sofort.
     pub fn start_login(&mut self, cx: &mut Context<Self>) {
-        if self.demo_only("Bei GitHub anmelden", cx) {
+        if self.demo_only(tr!("Signing in to GitHub", "Bei GitHub anmelden"), cx) {
             return;
         }
         let Some(client_id) = oauth::client_id() else {
             self.login = Login::Failed(
-                "Die Anmeldung ist in diesem Build nicht eingerichtet (keine Client-ID).".into(),
+                tr!(
+                    "Sign-in is not set up in this build (no client ID).",
+                    "Die Anmeldung ist in diesem Build nicht eingerichtet (keine Client-ID)."
+                )
+                .into(),
             );
             cx.notify();
             return;
@@ -421,7 +425,10 @@ impl Radar {
 
     pub fn add_repo(&mut self, input: &str, cx: &mut Context<Self>) -> Result<()> {
         if self.demo {
-            bail!("Im Demo-Modus lassen sich keine Repositories ändern.");
+            bail!(tr!(
+                "Repositories can’t be changed in demo mode.",
+                "Im Demo-Modus lassen sich keine Repositories ändern."
+            ));
         }
         self.config.add_repo(input)?;
         self.refresh(cx);
@@ -430,8 +437,11 @@ impl Radar {
 
     pub fn remove_repo(&mut self, full: &str, cx: &mut Context<Self>) -> Result<()> {
         // Die Einstellungen verwerfen das Ergebnis, daher zusätzlich als Hinweis zeigen.
-        if self.demo_only("Repository entfernen", cx) {
-            bail!("Im Demo-Modus lassen sich keine Repositories ändern.");
+        if self.demo_only(tr!("Removing a repository", "Repository entfernen"), cx) {
+            bail!(tr!(
+                "Repositories can’t be changed in demo mode.",
+                "Im Demo-Modus lassen sich keine Repositories ändern."
+            ));
         }
         self.config.remove_repo(full)?;
         self.refresh(cx);
@@ -470,7 +480,7 @@ impl Radar {
     /// Jetzt mergen. Lehnt GitHub vorübergehend ab (z. B. weil gerade ein anderer PR in den
     /// Ziel-Branch gemergt wurde), wird erneut versucht bzw. Auto-Merge aktiviert.
     pub fn merge(&mut self, pr_id: &str, method: MergeMethod, cx: &mut Context<Self>) {
-        if self.demo_only(&format!("Mergen ({})", method.label()), cx) {
+        if self.demo_only(&trf!("Merging ({})", "Mergen ({})", method.label()), cx) {
             return;
         }
         if let Err(e) = self.check_method(pr_id, method) {
@@ -499,7 +509,7 @@ impl Radar {
     /// Mergt mehrere PRs: je Repo und Ziel-Branch nacheinander (parallele Merges in denselben
     /// Branch lehnt GitHub ab), verschiedene Ziele parallel. Ein Fehlschlag stoppt die anderen nicht.
     pub fn merge_all(&mut self, items: Vec<(String, MergeMethod)>, cx: &mut Context<Self>) {
-        if self.demo_only(&format!("{} PRs mergen", items.len()), cx) {
+        if self.demo_only(&trf!("Merging {} PRs", "{} PRs mergen", items.len()), cx) {
             return;
         }
         let Some(snapshot) = self.snapshot.clone() else {
@@ -617,18 +627,24 @@ impl Radar {
         let snapshot = self
             .snapshot
             .as_ref()
-            .ok_or_else(|| anyhow!("Noch keine Daten geladen."))?;
+            .ok_or_else(|| anyhow!(tr!("No data loaded yet.", "Noch keine Daten geladen.")))?;
         let pr = snapshot
             .open
             .iter()
             .find(|p| p.id == pr_id)
-            .ok_or_else(|| anyhow!("Pull Request nicht mehr offen."))?;
+            .ok_or_else(|| {
+                anyhow!(tr!(
+                    "Pull request is no longer open.",
+                    "Pull Request nicht mehr offen."
+                ))
+            })?;
         if !snapshot.allowed_methods(pr).contains(&method) {
-            bail!(
+            bail!(trf!(
+                "Merge method {} is not allowed in {}.",
                 "Merge-Methode {} ist in {} nicht erlaubt.",
                 method.label(),
                 pr.repo
-            );
+            ));
         }
         Ok(())
     }
@@ -697,13 +713,19 @@ fn next_round(snapshot: &Snapshot, pr_id: &str, head: &str) -> Round {
         return Round::Done(MergeOutcome::Merged);
     };
     if pr.head_oid != head {
-        return Round::Abort("Seit dem Klick wurden neue Commits gepusht – Merge abgebrochen.");
+        return Round::Abort(tr!(
+            "New commits were pushed since the click – merge cancelled.",
+            "Seit dem Klick wurden neue Commits gepusht – Merge abgebrochen."
+        ));
     }
     if let Some(am) = &pr.auto_merge {
         return Round::Done(MergeOutcome::AutoMerge(am.method));
     }
     if pr.has_conflict() {
-        return Round::Abort("Merge-Konflikt – Branch muss erst aktualisiert werden.");
+        return Round::Abort(tr!(
+            "Merge conflict – the branch needs to be updated first.",
+            "Merge-Konflikt – Branch muss erst aktualisiert werden."
+        ));
     }
     Round::Attempt {
         auto_merge_allowed: snapshot
@@ -763,7 +785,8 @@ async fn merge_until_done(
         }
 
         if started.elapsed() + delay > MERGE_DEADLINE {
-            return Err(error.context(format!(
+            return Err(error.context(trf!(
+                "GitHub has not allowed the merge for {} min",
                 "GitHub lässt den Merge seit {} min nicht zu",
                 MERGE_DEADLINE.as_secs() / 60
             )));
@@ -781,7 +804,11 @@ async fn merge_until_done(
 /// folgt automatisch“ – die Anmeldung ist dann aber beendet und muss neu gestartet werden.
 fn login_failure(e: &anyhow::Error) -> String {
     if Transient::matches(e) {
-        "GitHub ist gerade nicht erreichbar. Bitte erneut anmelden.".into()
+        tr!(
+            "GitHub can’t be reached right now. Please sign in again.",
+            "GitHub ist gerade nicht erreichbar. Bitte erneut anmelden."
+        )
+        .into()
     } else {
         format!("{e:#}")
     }
@@ -1049,10 +1076,10 @@ mod tests {
         )
         .into();
         let msg = login_failure(&transient);
-        assert!(msg.contains("erneut anmelden"), "{msg}");
+        assert!(msg.contains("sign in again"), "{msg}");
         assert!(!msg.contains("Neuer Versuch"), "{msg}");
         let timed_out: anyhow::Error = crate::github::TimedOut(Duration::from_secs(30)).into();
-        assert!(login_failure(&timed_out).contains("erneut anmelden"));
+        assert!(login_failure(&timed_out).contains("sign in again"));
         // Endgültige Fehler behalten ihren Text
         let denied = anyhow!("Die Anmeldung wurde auf GitHub abgelehnt.");
         assert_eq!(

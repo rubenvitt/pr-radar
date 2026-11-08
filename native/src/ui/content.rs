@@ -224,16 +224,21 @@ impl Workspace {
     ) -> AnyElement {
         let radar = self.radar.read(cx);
         if radar.repos().is_empty() {
-            return EmptyState::new(Lucide::GitPullRequest, "Noch keine Repositories")
-                .hint(
-                    "PR Radar zeigt offene Pull Requests, Pipelines, Merges und Releases \
-                     aus deinen GitHub-Repositories an einem Ort. Wähle aus, welche du beobachten willst.",
-                )
+            return EmptyState::new(
+                Lucide::GitPullRequest,
+                tr!("No repositories yet", "Noch keine Repositories"),
+            )
+            .hint(tr!(
+                "PR Radar shows open pull requests, pipelines, merges and releases \
+                 from your GitHub repositories in one place. Choose which ones to watch.",
+                "PR Radar zeigt offene Pull Requests, Pipelines, Merges und Releases \
+                 aus deinen GitHub-Repositories an einem Ort. Wähle aus, welche du beobachten willst."
+            ))
                 .action(
                     Button::new("add-repos")
                         .primary()
                         .icon(IconName::Plus)
-                        .label("Repositories hinzufügen…")
+                        .label(tr!("Add Repositories…", "Repositories hinzufügen…"))
                         .on_click(cx.listener(|this, _, window, cx| {
                             this.open_settings(&OpenSettings, window, cx)
                         })),
@@ -242,15 +247,18 @@ impl Workspace {
         }
         let Some(d) = d else {
             if radar.status().needs_login {
-                let mut state = EmptyState::new(Lucide::CircleUser, "Nicht bei GitHub angemeldet")
-                    .action(
-                        Button::new("sign-in")
-                            .primary()
-                            .label("Anmelden…")
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.open_settings(&OpenSettings, window, cx)
-                            })),
-                    );
+                let mut state = EmptyState::new(
+                    Lucide::CircleUser,
+                    tr!("Not signed in to GitHub", "Nicht bei GitHub angemeldet"),
+                )
+                .action(
+                    Button::new("sign-in")
+                        .primary()
+                        .label(tr!("Sign In…", "Anmelden…"))
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.open_settings(&OpenSettings, window, cx)
+                        })),
+                );
                 if let Some(e) = radar.status().error.clone() {
                     state = state.hint(e);
                 }
@@ -258,20 +266,23 @@ impl Workspace {
             }
             let polling = radar.status().state == PollState::Polling;
             return match radar.status().error.clone() {
-                Some(e) => EmptyState::new(Lucide::CircleX, "GitHub nicht erreichbar")
-                    .color(cx.theme().danger)
-                    .hint(e)
-                    .action(
-                        Button::new("retry")
-                            .primary()
-                            .icon(IconName::RefreshCw)
-                            .label("Erneut versuchen")
-                            .loading(polling)
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.refresh(&Refresh, window, cx)
-                            })),
-                    )
-                    .into_any_element(),
+                Some(e) => EmptyState::new(
+                    Lucide::CircleX,
+                    tr!("GitHub unreachable", "GitHub nicht erreichbar"),
+                )
+                .color(cx.theme().danger)
+                .hint(e)
+                .action(
+                    Button::new("retry")
+                        .primary()
+                        .icon(IconName::RefreshCw)
+                        .label(tr!("Try Again", "Erneut versuchen"))
+                        .loading(polling)
+                        .on_click(
+                            cx.listener(|this, _, window, cx| this.refresh(&Refresh, window, cx)),
+                        ),
+                )
+                .into_any_element(),
                 None => v_flex()
                     .flex_1()
                     .items_center()
@@ -279,7 +290,7 @@ impl Workspace {
                     .gap_3()
                     .text_color(cx.theme().muted_foreground)
                     .child(Spinner::new().large())
-                    .child("Lade Daten von GitHub …")
+                    .child(tr!("Loading data from GitHub…", "Lade Daten von GitHub …"))
                     .into_any_element(),
             };
         };
@@ -333,25 +344,26 @@ impl Workspace {
         let filters = active_filters(&d.prefs, &self.query);
         if !filters.is_empty() {
             let what = match d.prefs.tab {
-                Tab::Open => "Keine offenen Pull Requests",
-                Tab::Merged => "Keine gemergten Pull Requests",
-                Tab::Releases => "Keine Releases",
+                Tab::Open => tr!("No open pull requests", "Keine offenen Pull Requests"),
+                Tab::Merged => tr!("No merged pull requests", "Keine gemergten Pull Requests"),
+                Tab::Releases => tr!("No releases", "Keine Releases"),
             };
             let filters = filters.join(" · ");
             let hint = if d.prefs.tab == Tab::Open && failed > 0 {
-                format!(
+                trf!(
+                    "{what} for {filters}, but {} – see the sidebar.",
                     "{what} für {filters}, aber {} – siehe Seitenleiste.",
                     not_loaded(failed)
                 )
             } else {
-                format!("{what} für {filters}.")
+                trf!("{what} for {filters}.", "{what} für {filters}.")
             };
-            return EmptyState::new(IconName::Search, "Keine Treffer")
+            return EmptyState::new(IconName::Search, tr!("No matches", "Keine Treffer"))
                 .hint(hint)
                 .action(
                     Button::new("reset-filters")
                         .primary()
-                        .label("Filter zurücksetzen")
+                        .label(tr!("Reset Filters", "Filter zurücksetzen"))
                         .on_click(
                             cx.listener(|this, _, window, cx| this.reset_filters(window, cx)),
                         ),
@@ -368,24 +380,43 @@ impl Workspace {
         let state = match d.prefs.tab {
             // Dann kein Erfolg melden.
             Tab::Open if failed > 0 => {
-                EmptyState::new(IconName::Inbox, "Nichts offen").hint(format!(
+                EmptyState::new(IconName::Inbox, tr!("Nothing open", "Nichts offen")).hint(trf!(
+                    "No pull request is open {repos}, but {} – see the sidebar.",
                     "{repos} ist kein Pull Request offen, aber {} – siehe Seitenleiste.",
                     not_loaded(failed)
                 ))
             }
-            Tab::Open => EmptyState::new(Lucide::CircleCheck, "Alles erledigt")
+            Tab::Open => EmptyState::new(Lucide::CircleCheck, tr!("All done", "Alles erledigt"))
                 .color(cx.theme().success)
-                .hint(format!("{repos} ist gerade kein Pull Request offen.")),
-            Tab::Merged => EmptyState::new(Lucide::GitMerge, "Noch nichts gemergt")
-                .hint(format!("{repos} wurde bisher kein Pull Request gemergt.")),
-            Tab::Releases => EmptyState::new(Lucide::Tag, "Keine Releases")
-                .hint(format!("{repos} gibt es noch kein Release.")),
+                .hint(trf!(
+                    "No pull requests are open {repos} right now.",
+                    "{repos} ist gerade kein Pull Request offen."
+                )),
+            Tab::Merged => EmptyState::new(
+                Lucide::GitMerge,
+                tr!("Nothing merged yet", "Noch nichts gemergt"),
+            )
+            .hint(trf!(
+                "No pull requests have been merged {repos} yet.",
+                "{repos} wurde bisher kein Pull Request gemergt."
+            )),
+            Tab::Releases => EmptyState::new(Lucide::Tag, tr!("No releases", "Keine Releases"))
+                .hint(trf!(
+                    "There are no releases {repos} yet.",
+                    "{repos} gibt es noch kein Release."
+                )),
         };
         let action = match d.prefs.tab {
-            Tab::Open => to_tab("show-merged", "Zuletzt gemergt ansehen", Tab::Merged),
-            Tab::Merged | Tab::Releases => {
-                to_tab("show-open", "Offene Pull Requests ansehen", Tab::Open)
-            }
+            Tab::Open => to_tab(
+                "show-merged",
+                tr!("View Recently Merged", "Zuletzt gemergt ansehen"),
+                Tab::Merged,
+            ),
+            Tab::Merged | Tab::Releases => to_tab(
+                "show-open",
+                tr!("View Open Pull Requests", "Offene Pull Requests ansehen"),
+                Tab::Open,
+            ),
         };
         state.action(action).into_any_element()
     }
@@ -512,7 +543,8 @@ impl Workspace {
 fn active_filters(prefs: &Prefs, query: &str) -> Vec<String> {
     let mut parts = Vec::new();
     if prefs.tab == Tab::Open && prefs.quick != Quick::All {
-        parts.push(format!("„{}“", quick_label(prefs.quick)));
+        let label = quick_label(prefs.quick);
+        parts.push(trf!("“{label}”", "„{label}“"));
     }
     if !prefs.repo_filter.is_empty() {
         let names: Vec<String> = prefs
@@ -520,7 +552,7 @@ fn active_filters(prefs: &Prefs, query: &str) -> Vec<String> {
             .iter()
             .map(|r| {
                 let name = r.split_once('/').map_or(r.as_str(), |(_, n)| n);
-                format!("„{name}“")
+                trf!("“{name}”", "„{name}“")
             })
             .collect();
         let noun = if names.len() == 1 { "Repo" } else { "Repos" };
@@ -528,26 +560,33 @@ fn active_filters(prefs: &Prefs, query: &str) -> Vec<String> {
     }
     let query = query.trim();
     if !query.is_empty() {
-        parts.push(format!("Suche „{query}“"));
+        parts.push(trf!("search “{query}”", "Suche „{query}“"));
     }
     parts
 }
 
-/// „In deinem Repository“ / „In deinen 3 Repositories“
+/// „In deinem Repository“ / „In deinen 3 Repositories“ (englisch klein: „in your repository“)
 fn in_repos(n: usize) -> String {
     if n == 1 {
-        "In deinem Repository".into()
+        tr!("in your repository", "In deinem Repository").into()
     } else {
-        format!("In deinen {n} Repositories")
+        trf!("in your {n} repositories", "In deinen {n} Repositories")
     }
 }
 
 /// „eins konnte nicht abgefragt werden“ / „2 konnten nicht abgefragt werden“
 fn not_loaded(n: usize) -> String {
     if n == 1 {
-        "eins konnte nicht abgefragt werden".into()
+        tr!(
+            "one could not be fetched",
+            "eins konnte nicht abgefragt werden"
+        )
+        .into()
     } else {
-        format!("{n} konnten nicht abgefragt werden")
+        trf!(
+            "{n} could not be fetched",
+            "{n} konnten nicht abgefragt werden"
+        )
     }
 }
 
@@ -556,6 +595,7 @@ mod tests {
     // Kein `use super::*`: Der Glob aus gpui_kit bringt ein eigenes `test`-Makro mit.
     use super::{active_filters, in_repos, not_loaded};
     use crate::config::{Prefs, Quick, Tab};
+    use crate::l10n::{Lang, with_lang};
 
     fn prefs(tab: Tab, quick: Quick, repos: &[&str]) -> Prefs {
         Prefs {
@@ -575,11 +615,18 @@ mod tests {
     fn nennt_schnellfilter_repos_und_suche() {
         let p = prefs(Tab::Open, Quick::Conflict, &["acme/infra"]);
         assert_eq!(
-            active_filters(&p, " fix "),
+            with_lang(Lang::De, || active_filters(&p, " fix ")),
             ["„Konflikt“", "Repo „infra“", "Suche „fix“"]
         );
+        assert_eq!(
+            with_lang(Lang::En, || active_filters(&p, " fix ")),
+            ["“Conflict”", "Repo “infra”", "search “fix”"]
+        );
         let p = prefs(Tab::Open, Quick::All, &["acme/infra", "acme/api"]);
-        assert_eq!(active_filters(&p, ""), ["Repos „infra“, „api“"]);
+        assert_eq!(
+            with_lang(Lang::De, || active_filters(&p, "")),
+            ["Repos „infra“, „api“"]
+        );
     }
 
     #[test]
@@ -590,9 +637,15 @@ mod tests {
 
     #[test]
     fn repo_anzahl_im_satz() {
-        assert_eq!(in_repos(1), "In deinem Repository");
-        assert_eq!(in_repos(3), "In deinen 3 Repositories");
-        assert_eq!(not_loaded(1), "eins konnte nicht abgefragt werden");
-        assert_eq!(not_loaded(2), "2 konnten nicht abgefragt werden");
+        with_lang(Lang::De, || {
+            assert_eq!(in_repos(1), "In deinem Repository");
+            assert_eq!(in_repos(3), "In deinen 3 Repositories");
+            assert_eq!(not_loaded(1), "eins konnte nicht abgefragt werden");
+            assert_eq!(not_loaded(2), "2 konnten nicht abgefragt werden");
+        });
+        with_lang(Lang::En, || {
+            assert_eq!(in_repos(3), "in your 3 repositories");
+            assert_eq!(not_loaded(2), "2 could not be fetched");
+        });
     }
 }

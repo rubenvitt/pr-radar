@@ -20,6 +20,9 @@ version=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
 app="dist/PR Radar.app"
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+# Leere Sprachordner: macOS bietet die App dann unter „Sprache pro App“ an und
+# übersetzt System-Menüeinträge (z. B. Dienste) passend zur gewählten Sprache.
+mkdir -p "$app/Contents/Resources/en.lproj" "$app/Contents/Resources/de.lproj"
 cp "$target_dir/release/pr-radar" "$app/Contents/MacOS/pr-radar"
 [ -f assets/AppIcon.icns ] && cp assets/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
 # Menü Hilfe → „Drittanbieter-Lizenzen“ öffnet diese Datei (src/notices.rs).
@@ -33,6 +36,8 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <key>CFBundleName</key><string>PR Radar</string>
   <key>CFBundleDisplayName</key><string>PR Radar</string>
   <key>CFBundleIdentifier</key><string>dev.rubeen.pr-radar</string>
+  <key>CFBundleDevelopmentRegion</key><string>en</string>
+  <key>CFBundleLocalizations</key><array><string>en</string><string>de</string></array>
   <key>CFBundleExecutable</key><string>pr-radar</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
