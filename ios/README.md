@@ -36,6 +36,8 @@ Token-Rechte wie bei der macOS-App: Fine-grained PAT mit Metadata, Contents, Com
 | `Packages/PRRadarCore/` | Plattformunabhängiger Kern: GraphQL-Queries, Client, Normalisierung, Rulesets, Poll-Zyklus, Merge/Auto-Merge inkl. Wiederholung, Filter und Flow-Stufen – portiert aus `native/src` |
 | `PRRadar/Views/` | SwiftUI: Tabs, Liste, Flow, Detail, Gemergt, Releases, Einstellungen |
 | `PRRadar/Support/` | Schlüsselbund, Benachrichtigungen, App-Zustand |
+| `PRRadarTests/` | App-Tests im Simulator (Schlüsselbund über `TokenStore`) |
+| `PRRadarUITests/` | UI-Smoke: Start, alle Tabs, Weg vom leeren Zustand zum Token |
 
 Der Kern hat keine UI-Abhängigkeit und läuft auch unter macOS und Linux:
 
@@ -44,7 +46,7 @@ cd ios/Packages/PRRadarCore
 swift test
 ```
 
-In Xcode laufen dieselben Tests mit `⌘U`. Die CI (`.github/workflows/ios.yml`) testet den Kern unter Linux und baut die App für den iOS-Simulator.
+In Xcode laufen mit `⌘U` die Kern-Tests, die App-Tests und der UI-Smoke. Die CI (`.github/workflows/ios.yml`) testet den Kern unter Linux und macOS, baut die App und führt App- und UI-Tests auf einem iPhone-Simulator aus. Der UI-Smoke prüft deutsche Texte (Start mit `-AppleLanguages (de)`) und erwartet einen Simulator ohne Token; mit hinterlegtem Token prüft er stattdessen die Einstellungen.
 
 ## Datenschutz
 

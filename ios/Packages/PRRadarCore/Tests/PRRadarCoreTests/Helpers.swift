@@ -103,3 +103,45 @@ final class FakeClock: @unchecked Sendable {
             })
     }
 }
+
+/// Antwortet über eine Funktion je Request und protokolliert alle Requests – für Fehlerpfade.
+final class ScriptedTransport: HTTPTransport, @unchecked Sendable {
+    typealias Reply = (Data, Int, [String: String])
+
+    private let lock = NSLock()
+    private let respond: @Sendable (URLRequest) throws -> Reply
+    private var log: [URLRequest] = []
+
+    init(_ respond: @escaping @Sendable (URLRequest) throws -> Reply) {
+        self.respond = respond
+    }
+
+    /// Jeder Request bekommt dieselbe Antwort.
+    convenience init(status: Int, body: String, headers: [String: String] = [:]) {
+        self.init { _ in (Data(body.utf8), status, headers) }
+    }
+
+    var requests: [URLRequest] { lock.withLock { log } }
+
+    func send(_ request: URLRequest) async throws -> (Data, Int) {
+        let (data, status, _) = try await sendWithHeaders(request)
+        return (data, status)
+    }
+
+    func sendWithHeaders(_ request: URLRequest) async throws -> (Data, Int, [String: String]) {
+        lock.withLock { log.append(request) }
+        return try respond(request)
+    }
+}
+
+extension URLRequest {
+    /// Der GraphQL-Body als JSON-Objekt (`query`, `variables`).
+    var graphQLBody: [String: Any] {
+        guard let body = httpBody, let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any] else {
+            return [:]
+        }
+        return json
+    }
+
+    var isGraphQL: Bool { url?.absoluteString.hasSuffix("/graphql") == true }
+}
