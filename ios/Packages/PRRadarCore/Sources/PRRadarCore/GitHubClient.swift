@@ -81,15 +81,40 @@ func gitHubMessage(_ data: Data) -> String {
     return (try? JSONDecoder().decode(Body.self, from: data))?.message ?? ""
 }
 
-/// Erkennt eine Drosselung anhand von Status und Headern (Header-Namen klein geschrieben).
-func rateLimitError(status: Int, headers: [String: String], now: Date) -> GitHubError? {
+/// Ab wann ein neuer Versuch laut Headern sinnvoll ist (Header-Namen klein geschrieben).
+/// `x-ratelimit-reset` zählt nur bei leerem Kontingent.
+func headerRetryAt(_ headers: [String: String], now: Date) -> Date? {
     let retryAfter = headers["retry-after"].flatMap { TimeInterval($0.trimmingCharacters(in: .whitespaces)) }
     let exhausted = headers["x-ratelimit-remaining"]?.trimmingCharacters(in: .whitespaces) == "0"
     let reset = headers["x-ratelimit-reset"].flatMap { TimeInterval($0.trimmingCharacters(in: .whitespaces)) }
         .map { Date(timeIntervalSince1970: $0) }
-    guard status == 429 || (status == 403 && (exhausted || retryAfter != nil)) else { return nil }
-    let candidates = [exhausted ? reset : nil, retryAfter.map { now.addingTimeInterval($0) }].compactMap { $0 }
-    return .rateLimited(retryAt: candidates.max())
+    return [exhausted ? reset : nil, retryAfter.map { now.addingTimeInterval($0) }].compactMap { $0 }.max()
+}
+
+/// Meldet GitHub im Body ein sekundäres Limit („secondary rate limit“, früher „abuse detection“)?
+func mentionsSecondaryLimit(_ body: Data) -> Bool {
+    let text = String(decoding: body, as: UTF8.self).lowercased()
+    return text.contains("secondary rate limit") || text.contains("abuse detection")
+}
+
+/// Erkennt eine Drosselung anhand von Status, Headern (Namen klein geschrieben) und Body.
+/// Ein sekundäres Limit ohne Zeitangabe bleibt ohne `retryAt`: `waitAfterError` wartet dann
+/// `unknownRateLimitWait` und verlängert bei Wiederholung exponentiell, wie GitHub es verlangt.
+func rateLimitError(status: Int, headers: [String: String], body: Data = Data(), now: Date) -> GitHubError? {
+    let hasRetryAfter = headers["retry-after"].flatMap { TimeInterval($0.trimmingCharacters(in: .whitespaces)) } != nil
+    let exhausted = headers["x-ratelimit-remaining"]?.trimmingCharacters(in: .whitespaces) == "0"
+    let secondary = status == 403 && mentionsSecondaryLimit(body)
+    guard status == 429 || (status == 403 && (exhausted || hasRetryAfter || secondary)) else { return nil }
+    return .rateLimited(retryAt: headerRetryAt(headers, now: now))
+}
+
+/// Unter allen gedrosselten Chunks der mit der längsten Wartezeit (ohne Zeitangabe: `unknownRateLimitWait`).
+func longestRateLimit(_ errors: [Error], now: Date) -> GitHubError? {
+    errors.compactMap { error -> (GitHubError, Date)? in
+        guard case let .rateLimited(retryAt)? = error as? GitHubError else { return nil }
+        return (.rateLimited(retryAt: retryAt), retryAt ?? now.addingTimeInterval(unknownRateLimitWait))
+    }
+    .max { $0.1 < $1.1 }?.0
 }
 
 /// Was die App von GitHub braucht – als Protokoll, damit `Radar` ohne Netz testbar ist.
@@ -206,7 +231,7 @@ public final class GitHubClient: GitHubAPI {
         } catch {
             throw GitHubError.unreachable(error.localizedDescription)
         }
-        if let limited = rateLimitError(status: status, headers: headers, now: Date()) { throw limited }
+        if let limited = rateLimitError(status: status, headers: headers, body: data, now: Date()) { throw limited }
         if status == 401 { throw GitHubError.unauthorized }
         guard (200..<300).contains(status) else {
             throw GitHubError.http(status, gitHubMessage(data))
@@ -217,9 +242,10 @@ public final class GitHubClient: GitHubAPI {
         } catch {
             throw GitHubError.unreadable(String(describing: error))
         }
-        // GraphQL meldet das erschöpfte Kontingent mit HTTP 200 und Fehlertyp RATE_LIMITED.
+        // GraphQL meldet das erschöpfte Kontingent mit HTTP 200 und Fehlertyp RATE_LIMITED;
+        // die Reset-Zeit steht dann trotzdem in den Headern.
         if response.errors.contains(where: { $0.type == "RATE_LIMITED" }) {
-            throw GitHubError.rateLimited(retryAt: nil)
+            throw GitHubError.rateLimited(retryAt: headerRetryAt(headers, now: Date()))
         }
         return response
     }
@@ -261,9 +287,11 @@ public final class GitHubClient: GitHubAPI {
         }
         // Ein Rate-Limit in irgendeinem Chunk zählt vor anderen Fehlern, damit der
         // Backoff bis zum Reset wartet statt zu früh erneut anzufragen.
-        for case .failure(let error)? in results {
-            if case GitHubError.rateLimited = error { throw error }
+        let failures = results.compactMap { result -> Error? in
+            if case let .failure(error)? = result { return error }
+            return nil
         }
+        if let limited = longestRateLimit(failures, now: Date()) { throw limited }
         // Sonst Fehler in Chunk-Reihenfolge melden – wie die macOS-App
         let responses = try results.map { try $0!.get() }
 

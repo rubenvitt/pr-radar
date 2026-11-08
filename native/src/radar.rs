@@ -9,7 +9,7 @@ use chrono::{DateTime, Utc};
 use gpui_kit::{AppContext as _, AsyncApp, Context, EventEmitter, Task, WeakEntity};
 
 use crate::config::{Config, Prefs, parse_repo};
-use crate::github::{GitHub, RateLimit, RateLimited, TokenSource};
+use crate::github::{GitHub, RateLimit, RateLimited, TokenSource, UNKNOWN_RATE_LIMIT_WAIT};
 use crate::model::{AutoMerge, MergeMethod, Snapshot, Transition, diff_snapshots};
 
 /// So lange wird ein Merge bei vorübergehenden GitHub-Fehlern wiederholt.
@@ -55,8 +55,6 @@ const ACTIVE: Duration = Duration::from_secs(10);
 const MAX_BACKOFF: Duration = Duration::from_secs(300);
 /// Längste Pause bei Drosselung (GitHub setzt das Kontingent stündlich zurück)
 const MAX_RATE_LIMIT_WAIT: Duration = Duration::from_secs(3600);
-/// Drosselung ohne Zeitangabe: so lange warten
-const UNKNOWN_RATE_LIMIT_WAIT: Duration = Duration::from_secs(120);
 /// Puffer nach `reset_at`, damit der erste Versuch nicht knapp davor landet
 const RESET_SLACK: Duration = Duration::from_secs(5);
 
@@ -636,22 +634,23 @@ fn reconcile_optimistic(
 }
 
 /// Wartezeit nach einem fehlgeschlagenen Poll: bei Drosselung bis GitHub wieder Anfragen
-/// annimmt, sonst exponentiell steigend (30 s, 60 s, 120 s … bis 5 min).
+/// annimmt (ohne Zeitangabe 2 min, bei Wiederholung verdoppelt bis 1 h), sonst exponentiell
+/// steigend (30 s, 60 s, 120 s … bis 5 min).
 fn wait_after_error(
     error: &anyhow::Error,
     failures: u32,
     base: Duration,
     now: DateTime<Utc>,
 ) -> Duration {
+    let factor = 1u32 << failures.saturating_sub(1).min(8);
     if let Some(limited) = error.downcast_ref::<RateLimited>() {
         return match limited.retry_at(now) {
             Some(at) => until(at, now) + RESET_SLACK,
-            None => UNKNOWN_RATE_LIMIT_WAIT,
+            None => UNKNOWN_RATE_LIMIT_WAIT.saturating_mul(factor),
         }
         .clamp(NORMAL, MAX_RATE_LIMIT_WAIT);
     }
     let base = base.max(NORMAL);
-    let factor = 1u32 << failures.saturating_sub(1).min(8);
     (base * factor).min(MAX_BACKOFF)
 }
 
@@ -715,6 +714,11 @@ mod tests {
             wait_after_error(&e, 1, NORMAL, at(0)),
             UNKNOWN_RATE_LIMIT_WAIT
         );
+        // Wiederholte Drosselung ohne Zeitangabe: Pause verdoppelt sich bis 1 h
+        let waits: Vec<u64> = (1..=7)
+            .map(|n| wait_after_error(&e, n, NORMAL, at(0)).as_secs())
+            .collect();
+        assert_eq!(waits, [120, 240, 480, 960, 1920, 3600, 3600]);
         // Höchstens eine Stunde
         let e = anyhow::Error::new(RateLimited {
             reset_at: Some(at(100_000)),

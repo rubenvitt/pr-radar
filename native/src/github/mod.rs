@@ -77,6 +77,13 @@ pub struct RateLimited {
 }
 
 impl RateLimited {
+    /// Wie lange bis zum nächsten sinnvollen Versuch; ohne Zeitangabe `UNKNOWN_RATE_LIMIT_WAIT`.
+    pub fn wait(&self, now: DateTime<Utc>) -> Duration {
+        self.retry_at(now).map_or(UNKNOWN_RATE_LIMIT_WAIT, |at| {
+            (at - now).to_std().unwrap_or_default()
+        })
+    }
+
     /// Zeitpunkt, ab dem ein neuer Versuch sinnvoll ist.
     pub fn retry_at(&self, now: DateTime<Utc>) -> Option<DateTime<Utc>> {
         let after = self
@@ -108,24 +115,60 @@ impl std::fmt::Display for RateLimited {
 
 impl std::error::Error for RateLimited {}
 
-/// Liest die Drossel-Angaben aus einer Antwort, falls GitHub drosselt.
+/// Drosselung ohne Zeitangabe (z. B. sekundäres Limit ohne `Retry-After`): so lange warten,
+/// bei wiederholter Drosselung verdoppelt der Radar die Pause.
+pub const UNKNOWN_RATE_LIMIT_WAIT: Duration = Duration::from_secs(120);
+
+/// Drossel-Angaben aus den Antwort-Headern.
+struct LimitHeaders {
+    /// `x-ratelimit-remaining: 0`
+    exhausted: bool,
+    reset_at: Option<DateTime<Utc>>,
+    retry_after: Option<Duration>,
+}
+
+impl LimitHeaders {
+    fn read(headers: &gpui_kit::http_client::http::HeaderMap) -> Self {
+        let header = |name: &str| headers.get(name).and_then(|v| v.to_str().ok());
+        Self {
+            exhausted: header("x-ratelimit-remaining").is_some_and(|v| v.trim() == "0"),
+            reset_at: header("x-ratelimit-reset")
+                .and_then(|v| v.trim().parse::<i64>().ok())
+                .and_then(|secs| DateTime::from_timestamp(secs, 0)),
+            retry_after: header("retry-after")
+                .and_then(|v| v.trim().parse::<u64>().ok())
+                .map(Duration::from_secs),
+        }
+    }
+
+    /// Drosselung mit den Zeitangaben aus den Headern; `reset_at` gilt nur bei leerem Kontingent.
+    fn limited(&self) -> RateLimited {
+        RateLimited {
+            reset_at: if self.exhausted { self.reset_at } else { None },
+            retry_after: self.retry_after,
+        }
+    }
+}
+
+/// Meldet GitHub im Body ein sekundäres Limit („secondary rate limit“, früher „abuse detection“)?
+fn mentions_secondary_limit(body: &str) -> bool {
+    let body = body.to_lowercase();
+    body.contains("secondary rate limit") || body.contains("abuse detection")
+}
+
+/// Liest die Drossel-Angaben aus einer Antwort, falls GitHub drosselt. Ein sekundäres Limit
+/// ohne Zeitangabe bleibt ohne Zeit: Der Radar wartet dann `UNKNOWN_RATE_LIMIT_WAIT` und
+/// verlängert bei Wiederholung exponentiell, wie GitHub es verlangt.
 fn rate_limited(
     status: u16,
     headers: &gpui_kit::http_client::http::HeaderMap,
+    body: &str,
 ) -> Option<RateLimited> {
-    let header = |name: &str| headers.get(name).and_then(|v| v.to_str().ok());
-    let retry_after = header("retry-after")
-        .and_then(|v| v.trim().parse::<u64>().ok())
-        .map(Duration::from_secs);
-    let exhausted = header("x-ratelimit-remaining").is_some_and(|v| v.trim() == "0");
-    let reset_at = header("x-ratelimit-reset")
-        .and_then(|v| v.trim().parse::<i64>().ok())
-        .and_then(|secs| DateTime::from_timestamp(secs, 0));
-    let throttled = status == 429 || (status == 403 && (exhausted || retry_after.is_some()));
-    throttled.then_some(RateLimited {
-        reset_at: if exhausted { reset_at } else { None },
-        retry_after,
-    })
+    let h = LimitHeaders::read(headers);
+    let secondary = status == 403 && mentions_secondary_limit(body);
+    let throttled =
+        status == 429 || (status == 403 && (h.exhausted || h.retry_after.is_some() || secondary));
+    throttled.then(|| h.limited())
 }
 
 /// Verständlicher Text für einen HTTP-Fehler statt des rohen Antwort-Bodys.
@@ -258,11 +301,18 @@ impl GitHub {
             .await
             .context("GitHub nicht erreichbar")?;
         let status = res.status();
-        if let Some(limited) = rate_limited(status.as_u16(), res.headers()) {
+        let headers = res.headers().clone();
+        // Was schon Status und Header als Drosselung zeigen, geht ohne Body an den Poller:
+        // Ein hängender oder nicht lesbarer Body darf die Wartezeit nicht verschlucken.
+        if let Some(limited) = rate_limited(status.as_u16(), &headers, "") {
             return Err(limited.into());
         }
         let mut text = String::new();
         res.body_mut().read_to_string(&mut text).await?;
+        // Sekundäres Limit ohne Header-Hinweis erkennt man nur an GitHubs Meldung im Body.
+        if let Some(limited) = rate_limited(status.as_u16(), &headers, &text) {
+            return Err(limited.into());
+        }
         if status.as_u16() == 401 {
             self.forget_token();
             bail!("GitHub lehnt den Token ab (401). Token prüfen.");
@@ -272,17 +322,14 @@ impl GitHub {
         }
         let res: GqlResponse =
             serde_json::from_str(&text).context("Unerwartete Antwort von GitHub")?;
-        // GraphQL meldet das erschöpfte Kontingent mit HTTP 200 und Fehlertyp RATE_LIMITED.
+        // GraphQL meldet das erschöpfte Kontingent mit HTTP 200 und Fehlertyp RATE_LIMITED;
+        // die Reset-Zeit steht dann trotzdem in den Headern.
         if res
             .errors
             .iter()
             .any(|e| e.kind.as_deref() == Some("RATE_LIMITED"))
         {
-            return Err(RateLimited {
-                reset_at: None,
-                retry_after: None,
-            }
-            .into());
+            return Err(LimitHeaders::read(&headers).limited().into());
         }
         Ok(res)
     }
@@ -339,15 +386,12 @@ impl GitHub {
         let mut snapshot = Snapshot::default();
         let mut rate_limit = None;
         let chunks: Vec<&[String]> = repos.chunks(CHUNK).collect();
-        let mut results =
+        let results =
             futures::future::join_all(chunks.iter().map(|c| self.request_dashboard(c))).await;
         // Ein Rate-Limit in irgendeinem Chunk zählt vor anderen Fehlern, damit der
         // Backoff bis zum Reset wartet statt zu früh erneut anzufragen.
-        if let Some(i) = results.iter().position(|r| {
-            r.as_ref()
-                .is_err_and(|e| e.downcast_ref::<RateLimited>().is_some())
-        }) {
-            results.swap_remove(i)?;
+        if let Some(limited) = longest_rate_limit(&results, Utc::now()) {
+            return Err(limited.into());
         }
 
         for (chunk, res) in chunks.into_iter().zip(results) {
@@ -489,6 +533,15 @@ impl GitHub {
     }
 }
 
+/// Unter allen gedrosselten Chunks der mit der längsten Wartezeit.
+fn longest_rate_limit<T>(results: &[Result<T>], now: DateTime<Utc>) -> Option<RateLimited> {
+    results
+        .iter()
+        .filter_map(|r| r.as_ref().err()?.downcast_ref::<RateLimited>())
+        .max_by_key(|l| l.wait(now))
+        .cloned()
+}
+
 fn find_token() -> Option<Token> {
     for key in ["GITHUB_TOKEN", "GH_TOKEN"] {
         if let Ok(v) = std::env::var(key) {
@@ -548,23 +601,95 @@ mod tests {
             ("x-ratelimit-remaining", "0"),
             ("x-ratelimit-reset", "1793988000"),
         ]);
-        let limited = rate_limited(403, &h).expect("gedrosselt");
+        let limited = rate_limited(403, &h, "").expect("gedrosselt");
         assert_eq!(limited.reset_at, DateTime::from_timestamp(1_793_988_000, 0));
         assert_eq!(limited.retry_after, None);
     }
 
     #[test]
     fn erkennt_sekundaeres_limit_mit_retry_after() {
-        let limited = rate_limited(403, &headers(&[("retry-after", "60")])).unwrap();
+        let limited = rate_limited(403, &headers(&[("retry-after", "60")]), "").unwrap();
         assert_eq!(limited.retry_after, Some(Duration::from_secs(60)));
-        assert!(rate_limited(429, &headers(&[])).is_some());
+        assert!(rate_limited(429, &headers(&[]), "").is_some());
     }
 
     #[test]
     fn normales_403_ist_keine_drosselung() {
         let h = headers(&[("x-ratelimit-remaining", "4000")]);
-        assert_eq!(rate_limited(403, &h), None);
-        assert_eq!(rate_limited(502, &headers(&[])), None);
+        assert_eq!(rate_limited(403, &h, ""), None);
+        let denied = r#"{"message":"Resource not accessible by integration"}"#;
+        assert_eq!(rate_limited(403, &h, denied), None);
+        assert_eq!(rate_limited(502, &headers(&[]), ""), None);
+    }
+
+    #[test]
+    fn sekundaeres_limit_ohne_retry_after_ist_drosselung_ohne_zeit() {
+        let h = headers(&[("x-ratelimit-remaining", "4000")]);
+        let body = r#"{"message":"You have exceeded a secondary rate limit. Please wait a few minutes before you try again."}"#;
+        let limited = rate_limited(403, &h, body).expect("gedrosselt");
+        assert_eq!(limited.reset_at, None);
+        assert_eq!(limited.retry_after, None);
+        // Ohne Zeitangabe mindestens eine Minute (GitHub-Vorgabe)
+        let now = DateTime::from_timestamp(1_000, 0).unwrap();
+        assert!(limited.wait(now) >= Duration::from_secs(60));
+        // Ältere Formulierung
+        let body = r#"{"message":"You have triggered an abuse detection mechanism."}"#;
+        assert!(rate_limited(403, &h, body).is_some());
+        // Ein mitgeliefertes Retry-After hat Vorrang
+        let h = headers(&[("retry-after", "120")]);
+        let limited = rate_limited(403, &h, body).unwrap();
+        assert_eq!(limited.retry_after, Some(Duration::from_secs(120)));
+    }
+
+    #[test]
+    fn graphql_drosselung_uebernimmt_reset_header() {
+        let h = headers(&[
+            ("x-ratelimit-remaining", "0"),
+            ("x-ratelimit-reset", "1793988000"),
+        ]);
+        let limited = LimitHeaders::read(&h).limited();
+        assert_eq!(limited.reset_at, DateTime::from_timestamp(1_793_988_000, 0));
+        // Reset ohne leeres Kontingent ist kein Wartegrund
+        let h = headers(&[
+            ("x-ratelimit-remaining", "12"),
+            ("x-ratelimit-reset", "1793988000"),
+        ]);
+        assert_eq!(LimitHeaders::read(&h).limited().reset_at, None);
+        assert_eq!(
+            LimitHeaders::read(&headers(&[])).limited(),
+            RateLimited {
+                reset_at: None,
+                retry_after: None,
+            }
+        );
+    }
+
+    #[test]
+    fn meldet_den_chunk_mit_der_laengsten_wartezeit() {
+        let now = DateTime::from_timestamp(1_000, 0).unwrap();
+        let limit = |reset: Option<i64>, retry: Option<u64>| -> Result<()> {
+            Err(RateLimited {
+                reset_at: reset.and_then(|s| DateTime::from_timestamp(s, 0)),
+                retry_after: retry.map(Duration::from_secs),
+            }
+            .into())
+        };
+        let results = vec![
+            Ok(()),
+            limit(None, Some(60)),
+            Err(anyhow!("anderer Fehler")),
+            limit(Some(1_000 + 900), None),
+            limit(None, None),
+        ];
+        let longest = longest_rate_limit(&results, now).expect("gedrosselt");
+        assert_eq!(longest.reset_at, DateTime::from_timestamp(1_900, 0));
+        // Ohne Zeitangabe zählt die Standardwartezeit (120 s) – länger als 60 s Retry-After
+        let results = vec![limit(None, Some(60)), limit(None, None)];
+        let longest = longest_rate_limit(&results, now).unwrap();
+        assert_eq!(longest.retry_after, None);
+        // Kein Rate-Limit dabei
+        let results: Vec<Result<()>> = vec![Ok(()), Err(anyhow!("x"))];
+        assert_eq!(longest_rate_limit(&results, now), None);
     }
 
     #[test]
