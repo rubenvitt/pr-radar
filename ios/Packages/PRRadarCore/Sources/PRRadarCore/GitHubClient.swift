@@ -77,14 +77,26 @@ func describeHTTPError(_ status: Int, message: String) -> String {
 
 /// Klartext für fehlende Rechte statt GitHubs Rohmeldung; `nil`, wenn es kein Rechtefehler ist.
 func explainAccessError(_ message: String, type: String? = nil) -> String? {
-    let lower = message.lowercased()
-    if lower.contains("oauth app access restrictions") {
+    explainOAuthRestriction(message) ?? explainMissingWrite(message, type: type)
+}
+
+/// Klartext, wenn eine Org OAuth-Apps einschränkt und PR Radar nicht freigegeben hat. Gilt für
+/// Lesen und Schreiben, daher auch beim Abruf der Repos.
+func explainOAuthRestriction(_ message: String) -> String? {
+    if message.lowercased().contains("oauth app access restrictions") {
         // „… the `acme` organization has enabled OAuth App access restrictions …“
         let parts = message.split(separator: "`", omittingEmptySubsequences: false)
         let org = parts.count > 2 ? String(parts[1]) : ""
         let who = org.isEmpty || org.contains(" ") ? "Die Organisation" : "Die Organisation „\(org)“"
         return "\(who) hat PR Radar noch nicht freigegeben. Ein Owner kann das unter Settings → Third-party access → OAuth app policy erlauben."
     }
+    return nil
+}
+
+/// Klartext für fehlende Schreibrechte – nur für Mutationen: Beim Lesen bedeutet `FORBIDDEN`
+/// etwas anderes (z. B. SAML oder ein Token ohne Zugriff aufs Repo).
+func explainMissingWrite(_ message: String, type: String?) -> String? {
+    let lower = message.lowercased()
     let patterns = [
         "resource not accessible by", "does not have the correct permissions", "does not have permission",
         "must have push access", "must have write access", "not authorized",
@@ -337,7 +349,7 @@ public final class GitHubClient: GitHubAPI {
                     snapshot.repos.append(.unavailable(full, error: "Antwort nicht lesbar: \(message)"))
                 case .null?, nil:
                     let err = res.errors.first { $0.path.first == alias }
-                    let message = err.map { explainAccessError($0.message, type: $0.type) ?? $0.message }
+                    let message = err.map { explainOAuthRestriction($0.message) ?? $0.message }
                     snapshot.repos.append(
                         .unavailable(full, error: message ?? "Repository nicht gefunden oder kein Zugriff"))
                 }

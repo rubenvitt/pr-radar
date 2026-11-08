@@ -28,7 +28,7 @@ Unter *Signing & Capabilities* das eigene Team wählen, dann auf Gerät oder Sim
 Anmelden geht unter **Einstellungen → Mit GitHub anmelden** (OAuth Device Flow: Code auf github.com/login/device eingeben).
 Alternativ trägt man unter **Erweitert** einen Personal Access Token ein. Beides liegt nur im Schlüsselbund des Geräts.
 Die Client-ID der OAuth App steht in `PRRadarCore/DeviceFlow.swift` (`builtInClientID`); zum Ausprobieren geht auch `PR_RADAR_GITHUB_CLIENT_ID` im Scheme.
-Für die Entwicklung kann man ihn alternativ im Scheme als Umgebungsvariable `GITHUB_TOKEN` setzen (ist vorbereitet, aber deaktiviert).
+Für die Entwicklung kann man den Token alternativ im Scheme als Umgebungsvariable `GITHUB_TOKEN` setzen (ist vorbereitet, aber deaktiviert).
 
 Token-Rechte wie bei der macOS-App: Fine-grained PAT mit Metadata, Contents, Commit statuses, Actions/Checks (read) und Pull requests (**write** für Merge und Auto-Merge).
 
