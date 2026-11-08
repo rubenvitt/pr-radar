@@ -7,9 +7,10 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 # Ohne Drittanbieter-Hinweise darf die App nicht raus (MIT/Apache verlangen sie).
-if ! command -v cargo-about >/dev/null 2>&1; then
-  echo "cargo-about fehlt: cargo install --locked --features cli cargo-about" >&2
-  exit 1
+# cargo-about erzeugt sie; fehlt es, wird es einmalig nach ~/.cargo/bin installiert.
+if ! cargo about --version >/dev/null 2>&1; then
+  echo "→ cargo-about fehlt, wird installiert (einmalig)"
+  cargo install --locked --features cli cargo-about
 fi
 
 cargo build --release
