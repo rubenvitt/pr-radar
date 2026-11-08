@@ -20,6 +20,8 @@ jobs:
         working-directory: ios/Packages/PRRadarCore
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - run: swift test
 
   app-build:
@@ -27,6 +29,8 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Xcode
         run: xcodebuild -version
       - name: Core-Tests (macOS)
