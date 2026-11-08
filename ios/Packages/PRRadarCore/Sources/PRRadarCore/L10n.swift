@@ -29,6 +29,12 @@ enum L10n {
         return bundle.localizedString(forKey: key, value: key, table: nil)
     }
 
+    /// Gibt es diese Sprache übersetzt? Englisch immer; Deutsch nur, wenn der Catalog
+    /// kompiliert wurde (Xcode, nicht `swift test`).
+    static func isAvailable(_ language: String) -> Bool {
+        language == "en" || Bundle.module.path(forResource: language, ofType: "lproj") != nil
+    }
+
     /// Mit Platzhaltern (`%@`, `%lld`) wie bei `String(format:)`.
     static func tr(_ key: String, _ args: CVarArg...) -> String {
         String(format: tr(key), locale: locale, arguments: args)

@@ -76,11 +76,14 @@ import Testing
 
     @Test func festeSprache() {
         #expect(L10n.tr("No checks", language: "en") == "No checks")
-        #if canImport(Darwin)
-            // Nur auf Apple-Plattformen kompiliert SwiftPM den Catalog zu de.lproj.
-            #expect(L10n.tr("No checks", language: "de") == "Keine Checks")
-            #expect(L10n.tr("%lld/%lld passed", language: "de") == "%lld/%lld grün")
-        #endif
+    }
+
+    /// `swift test` kopiert den Catalog nur; übersetzt liegt er erst im Xcode-Build vor
+    /// (dort prüft ihn `LocalizationTests` der App).
+    @Test(.enabled(if: L10n.isAvailable("de"), "Catalog nicht kompiliert"))
+    func deutscheUebersetzung() {
+        #expect(L10n.tr("No checks", language: "de") == "Keine Checks")
+        #expect(L10n.tr("%lld/%lld passed", language: "de") == "%lld/%lld grün")
     }
 
     @Test func kernSchluesselStehenImCatalog() throws {
