@@ -30,6 +30,22 @@ jobs:
           components: rustfmt
       - run: cargo fmt --check
 
+  deny:
+    name: Lizenzen und Sicherheitsmeldungen
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          manifest-path: native/Cargo.toml
+          arguments: --locked
+      # Dieselbe Erzeugung wie in scripts/bundle.sh, damit das Bündeln nicht erst lokal scheitert.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-about
+      - name: Drittanbieter-Hinweise erzeugen
+        run: cargo about generate --locked --fail about.hbs -o ThirdPartyNotices.html
+
   check:
     name: Tests und Clippy (macOS)
     runs-on: macos-15

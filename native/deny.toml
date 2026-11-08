@@ -1,0 +1,57 @@
+# cargo-deny: Lizenzen, Sicherheitsmeldungen und Quellen der Abhängigkeiten.
+#   cargo install --locked cargo-deny && cargo deny check
+# Läuft in der CI (.github/workflows/native.yml). Dieselbe Lizenzliste nutzt
+# cargo-about (about.toml) für die Drittanbieter-Hinweise im App-Bundle.
+
+[graph]
+# Ausgeliefert wird nur die macOS-App; Windows-/Linux-Abhängigkeiten von GPUI zählen nicht.
+targets = ["aarch64-apple-darwin", "x86_64-apple-darwin"]
+
+[advisories]
+version = 2
+yanked = "deny"
+# Nur „nicht mehr gepflegt“, keine bekannten Lücken, alle transitiv über GPUI/GPUI Kit
+# und ohne Ausweichversion. Beim nächsten gpui-kit-Update prüfen, ob sie wegfallen.
+ignore = [
+    { id = "RUSTSEC-2024-0384", reason = "instant: über gpui-base" },
+    { id = "RUSTSEC-2024-0436", reason = "paste: über gpui-component" },
+    { id = "RUSTSEC-2025-0134", reason = "rustls-pemfile: über gpui-pre-reqwest" },
+    { id = "RUSTSEC-2026-0192", reason = "ttf-parser: über usvg/fontdb in gpui-pre" },
+    { id = "RUSTSEC-2026-0206", reason = "rustybuzz: über usvg in gpui-pre" },
+]
+
+[licenses]
+version = 2
+# Nur freizügige Lizenzen, die eine geschlossene, kommerzielle Auslieferung erlauben.
+# MPL-2.0 ist dateibasiert: Unveränderte Crates einbinden ist ohne Folgen für den eigenen Code.
+allow = [
+    "0BSD",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "bzip2-1.0.6",
+    "CC0-1.0",
+    "CDLA-Permissive-2.0",
+    "ISC",
+    "MIT",
+    "MIT-0",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Zlib",
+]
+confidence-threshold = 0.93
+
+[licenses.private]
+# Das eigene Crate (publish = false, FSL-1.1-ALv2) nicht gegen die Liste prüfen.
+ignore = true
+
+[bans]
+multiple-versions = "allow"
+wildcards = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

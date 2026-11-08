@@ -6,6 +6,12 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# Ohne Drittanbieter-Hinweise darf die App nicht raus (MIT/Apache verlangen sie).
+if ! command -v cargo-about >/dev/null 2>&1; then
+  echo "cargo-about fehlt: cargo install --locked --features cli cargo-about" >&2
+  exit 1
+fi
+
 cargo build --release
 target_dir=$(cargo metadata --format-version 1 --no-deps | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')
 version=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
@@ -15,6 +21,8 @@ rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$target_dir/release/pr-radar" "$app/Contents/MacOS/pr-radar"
 [ -f assets/AppIcon.icns ] && cp assets/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
+# Menü Hilfe → „Drittanbieter-Lizenzen“ öffnet diese Datei (src/notices.rs).
+cargo about generate --locked --fail about.hbs -o "$app/Contents/Resources/ThirdPartyNotices.html"
 
 cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
