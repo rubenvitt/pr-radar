@@ -84,7 +84,7 @@
     <details>
       <summary>How do I remove all my data?</summary>
       <p><strong>iPhone and iPad:</strong> remove the token in the app and delete the app.</p>
-      <p><strong>Mac:</strong> delete the app and the folders <code>~/Library/Application Support/pr-radar/</code> and <code>~/Library/Logs/PR Radar/</code>. If the app ever used a fallback log, <em>Help → Show log in Finder</em> shows where it is (in the temporary folder). The Mac app reads your token from <code>GITHUB_TOKEN</code>, <code>GH_TOKEN</code> or the GitHub CLI and does not store it itself, so remove it there (for example with <code>gh auth logout</code>).</p>
+      <p><strong>Mac:</strong> delete the app and the folders <code>~/Library/Application Support/pr-radar/</code> and <code>~/Library/Logs/PR Radar/</code>. If the app ever used a fallback log, also delete the folder that <code>open "$TMPDIR/pr-radar"</code> opens in Terminal. The Mac app reads your token from <code>GITHUB_TOKEN</code>, <code>GH_TOKEN</code> or the GitHub CLI and does not store it itself, so remove it there (for example with <code>gh auth logout</code>).</p>
       <p>If you no longer need the token at all, revoke it on GitHub under <a href="https://github.com/settings/tokens">Settings → Developer settings → Tokens</a>. The apps send nothing to us. We only keep what you send us yourself (support emails) and, for direct purchases, the order details from the reseller. To have those deleted, write to us, see the <a href="/privacy/#rights">privacy policy</a>.</p>
     </details>
 
