@@ -88,6 +88,7 @@ fn main() {
     app.on_reopen(ui::show_main_window);
     app.run(|cx| {
         gpui_kit::init(cx);
+        ui::theme::init(cx);
         Theme::sync_system_appearance(None, cx);
 
         // Ein Client für GraphQL und Avatare (img(url) braucht einen registrierten Client).

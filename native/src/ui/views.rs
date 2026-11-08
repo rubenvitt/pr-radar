@@ -15,6 +15,7 @@ use gpui_kit::*;
 
 use super::Workspace;
 use super::parts::{avatar, card_segment, meta_row, repo_name};
+use super::theme;
 use crate::model::{MergedPr, Release};
 use crate::time::{ago, clock, full};
 
@@ -41,7 +42,7 @@ impl Workspace {
                     .child(
                         Icon::new(Lucide::GitMerge)
                             .small()
-                            .text_color(cx.theme().primary),
+                            .text_color(theme::merged(cx)),
                     )
                     .child(
                         v_flex()

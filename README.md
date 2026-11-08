@@ -6,7 +6,7 @@ Geschrieben in Rust mit [GPUI Kit](https://gpui-kit.com); spricht GitHub direkt 
 Dazu gibt es eine **iOS-/iPadOS-App** mit denselben Funktionen in SwiftUI – siehe [`ios/`](ios/README.md).
 
 - **Offene PRs** gebündelt (gruppiert nach Repo oder flach), mit Review-Status, Konflikten, Labels, Branch, Diff-Größe – als Liste oder Flow
-- **Pipelines** pro PR: läuft (gelb, dreht) · rot · grün – aufklappbar mit allen Checks und direkten Links
+- **Pipelines** pro PR: läuft (amber, dreht) · rot · grün – aufklappbar mit allen Checks und direkten Links
 - **Auto-Merge** mit einem Klick an/aus bzw. direkt mergen – angeboten werden nur Methoden, die Repo-Einstellungen **und** Rulesets des Ziel-Branches erlauben
 - **Alle mergen** für alle sichtbaren, sofort mergebaren PRs (je Repo und Ziel-Branch nacheinander)
 - Lehnt GitHub einen Merge vorübergehend ab (z. B. „Base branch was modified“ direkt nach einem anderen Merge), versucht die App es bis zu 3 min erneut bzw. aktiviert Auto-Merge – immer nur auf dem Commit, der beim Klick zu sehen war
@@ -19,7 +19,7 @@ Dazu gibt es eine **iOS-/iPadOS-App** mit denselben Funktionen in SwiftUI – si
 - Systembenachrichtigungen, wenn eine Pipeline rot/grün wird oder ein PR gemergt wurde, auch bei geschlossenem Fenster; Klick öffnet den PR (nur aus dem App-Bundle, nicht unter `cargo run`)
 - Tastatur: `/` bzw. `⌘F` Suche, `r` neu laden, `v` Liste/Flow, `g` gruppieren, `1–3` bzw. `⌘1–3` Ansichten, `⌘B` Seitenleiste
 - macOS-Standards: `⌘W` schließt Sheet bzw. Fenster (die App läuft weiter, Dock-Klick öffnet es wieder), `⌘M` Dock, `⌘H`/`⌥⌘H` ausblenden, `⌃⌘F` Vollbild; Menüs Ablage, Bearbeiten (Widerrufen, Ausschneiden, Kopieren, Einsetzen, Alles auswählen), Fenster und Hilfe
-- Folgt Hell/Dunkel des Systems; Animationen entfallen bei „Bewegung reduzieren“
+- Eigenes Farbschema (Akzent Blau, „gemergt“ Lila, Statusfarben mit mind. 4,5:1, gestaffelte Flächen im Dunkelmodus), folgt Hell/Dunkel des Systems; Animationen entfallen bei „Bewegung reduzieren“
 
 ## Start
 
