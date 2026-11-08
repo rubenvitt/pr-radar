@@ -208,8 +208,9 @@ fn install_panic_hook() {
         log::logger().flush();
         previous(info);
         show_alert(
-            "PR Radar ist abgestürzt",
-            &format!(
+            tr!("PR Radar crashed", "PR Radar ist abgestürzt"),
+            &trf!(
+                "{message}\n\nDetails are in the log:\n{}",
                 "{message}\n\nDetails stehen im Protokoll:\n{}",
                 log_path().display()
             ),
@@ -232,7 +233,8 @@ pub fn fatal(title: &str, error: impl std::fmt::Display) -> ! {
     eprintln!("{title}: {error:#}");
     show_alert(
         title,
-        &format!(
+        &trf!(
+            "{error:#}\n\nDetails are in the log:\n{}",
             "{error:#}\n\nDetails stehen im Protokoll:\n{}",
             log_path().display()
         ),

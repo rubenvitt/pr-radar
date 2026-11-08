@@ -45,21 +45,28 @@ impl MergeAction {
             };
         }
         let Some(repo) = snapshot.repo(&pr.repo) else {
-            return Self::Unavailable("Repository nicht geladen");
+            return Self::Unavailable(tr!("Repository not loaded", "Repository nicht geladen"));
         };
         let methods = pr.merge_methods.clone();
         if methods.is_empty() {
-            Self::Unavailable("Keine Merge-Methode erlaubt (Repo-Einstellungen und Rulesets)")
+            Self::Unavailable(tr!(
+                "No merge method allowed (repo settings and rulesets)",
+                "Keine Merge-Methode erlaubt (Repo-Einstellungen und Rulesets)"
+            ))
         } else if !repo.viewer_can_merge {
-            Self::Unavailable("Keine Schreibrechte")
+            Self::Unavailable(tr!("No write access", "Keine Schreibrechte"))
         } else if pr.is_draft {
-            Self::Unavailable("Draft-PRs können nicht gemergt werden")
+            Self::Unavailable(tr!(
+                "Draft PRs cannot be merged",
+                "Draft-PRs können nicht gemergt werden"
+            ))
         } else if pr.ready_to_merge() {
             Self::MergeNow(methods)
         } else if !repo.auto_merge_allowed {
-            Self::Unavailable(
-                "Auto-Merge ist in diesem Repo nicht erlaubt (Settings → Allow auto-merge)",
-            )
+            Self::Unavailable(tr!(
+                "Auto-merge is not allowed in this repo (Settings → Allow auto-merge)",
+                "Auto-Merge ist in diesem Repo nicht erlaubt (Settings → Allow auto-merge)"
+            ))
         } else {
             Self::Enable(methods)
         }
@@ -122,12 +129,17 @@ impl Workspace {
                         h_flex()
                             .gap_1()
                             .child(Icon::new(IconName::TriangleAlert).xsmall())
-                            .child("Konflikt"),
+                            .child(tr!("Conflict", "Konflikt")),
                     ),
                 )
             })
             .when(pr.requests_review_from(viewer), |this| {
-                this.child(Tag::primary().xsmall().text_small().child("Dein Review"))
+                this.child(
+                    Tag::primary()
+                        .xsmall()
+                        .text_small()
+                        .child(tr!("Your review", "Dein Review")),
+                )
             })
             .children(pr.labels.iter().map(label_tag));
 
@@ -185,7 +197,7 @@ impl Workspace {
                     h_flex()
                         .gap_1()
                         .child(Icon::new(Lucide::MessageSquareWarning).xsmall())
-                        .child("Änderungen"),
+                        .child(tr!("Changes", "Änderungen")),
                 ),
             ),
             _ => None,
@@ -272,13 +284,10 @@ impl Workspace {
             .pb_3()
             .gap_0p5()
             .when(pr.pipeline.checks.is_empty(), |this| {
-                this.child(
-                    div()
-                        .text_small()
-                        .text_color(muted)
-                        .py_1()
-                        .child("Keine Checks für den letzten Commit."),
-                )
+                this.child(div().text_small().text_color(muted).py_1().child(tr!(
+                    "No checks for the latest commit.",
+                    "Keine Checks für den letzten Commit."
+                )))
             })
             .children(pr.pipeline.checks.iter().enumerate().map(|(i, c)| {
                 let url = c.url.clone();
@@ -308,7 +317,12 @@ impl Workspace {
                         this.child(div().text_small().text_color(muted).child(g))
                     })
                     .when(matches!(c.state, CheckState::Skipped), |this| {
-                        this.child(div().text_small().text_color(muted).child("übersprungen"))
+                        this.child(
+                            div()
+                                .text_small()
+                                .text_color(muted)
+                                .child(tr!("skipped", "übersprungen")),
+                        )
                     })
                     .child(div().flex_1())
                     .when(url.is_some(), |this| {
@@ -342,12 +356,15 @@ impl Workspace {
                 .label(format!("Auto · {}", method.label()))
                 .loading(busy)
                 .tooltip(if busy {
-                    "Auto-Merge wird geändert …".to_string()
+                    tr!("Changing auto-merge…", "Auto-Merge wird geändert …").to_string()
                 } else {
-                    format!(
-                        "Auto-Merge aktiv ({}{}) – klicken zum Deaktivieren",
-                        method.label(),
-                        by.map(|b| format!(", von {b}")).unwrap_or_default()
+                    let by = by
+                        .map(|b| trf!(", by {b}", ", von {b}"))
+                        .unwrap_or_default();
+                    trf!(
+                        "Auto-merge on ({}{by}) – click to turn off",
+                        "Auto-Merge aktiv ({}{by}) – klicken zum Deaktivieren",
+                        method.label()
                     )
                 })
                 .when(!busy, |b| {
@@ -361,19 +378,28 @@ impl Workspace {
                 let button = Button::new(button_id)
                     .small()
                     .outline()
-                    .when(now, |b| b.success().icon(Lucide::GitMerge).label("Mergen"))
-                    .when(!now, |b| b.icon(Lucide::Zap).label("Auto-Merge"));
+                    .when(now, |b| {
+                        b.success()
+                            .icon(Lucide::GitMerge)
+                            .label(tr!("Merge", "Mergen"))
+                    })
+                    .when(!now, |b| {
+                        b.icon(Lucide::Zap).label(tr!("Auto-merge", "Auto-Merge"))
+                    });
 
                 // Läuft: gleiche Optik, Spinner statt Symbol, keine weiteren Klicks.
                 if busy {
                     return button
                         .loading(true)
                         .tooltip(if retrying {
-                            "GitHub lässt den Merge noch nicht zu – neuer Versuch gleich …"
+                            tr!(
+                                "GitHub does not allow the merge yet – retrying shortly…",
+                                "GitHub lässt den Merge noch nicht zu – neuer Versuch gleich …"
+                            )
                         } else if now {
-                            "Wird gemergt …"
+                            tr!("Merging…", "Wird gemergt …")
                         } else {
-                            "Auto-Merge wird aktiviert …"
+                            tr!("Turning on auto-merge…", "Auto-Merge wird aktiviert …")
                         })
                         .into_any_element();
                 }
@@ -395,9 +421,13 @@ impl Workspace {
                 if let [m] = methods[..] {
                     return button
                         .tooltip(if now {
-                            format!("Jetzt mergen ({})", m.label())
+                            trf!("Merge now ({})", "Jetzt mergen ({})", m.label())
                         } else {
-                            format!("Auto-Merge aktivieren ({})", m.label())
+                            trf!(
+                                "Turn on auto-merge ({})",
+                                "Auto-Merge aktivieren ({})",
+                                m.label()
+                            )
                         })
                         .on_click(move |_, _, cx| run(&radar, &id, m, cx))
                         .into_any_element();
@@ -405,12 +435,16 @@ impl Workspace {
                 button
                     .dropdown_caret(true)
                     .tooltip(if now {
-                        "Jetzt mergen …"
+                        tr!("Merge now…", "Jetzt mergen …")
                     } else {
-                        "Auto-Merge aktivieren …"
+                        tr!("Turn on auto-merge…", "Auto-Merge aktivieren …")
                     })
                     .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
-                        let menu = menu.label(if now { "Jetzt mergen" } else { "Merge-Methode" });
+                        let menu = menu.label(if now {
+                            tr!("Merge now", "Jetzt mergen")
+                        } else {
+                            tr!("Merge method", "Merge-Methode")
+                        });
                         methods.iter().fold(menu, |menu, &m| {
                             let radar = radar.clone();
                             let id = id.clone();
@@ -426,7 +460,7 @@ impl Workspace {
                 .small()
                 .outline()
                 .icon(Lucide::Zap)
-                .label("Auto-Merge")
+                .label(tr!("Auto-merge", "Auto-Merge"))
                 .disabled(true)
                 .tooltip(reason)
                 .into_any_element(),

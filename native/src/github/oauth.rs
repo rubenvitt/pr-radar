@@ -100,14 +100,23 @@ pub fn parse_device_code(body: &str) -> Result<DeviceCode> {
             describe_error(&code, error_description.as_deref())
         ));
     }
-    serde_json::from_str(body).map_err(|_| anyhow!("Unerwartete Antwort von GitHub beim Anmelden"))
+    serde_json::from_str(body).map_err(|_| {
+        anyhow!(tr!(
+            "Unexpected response from GitHub during sign-in",
+            "Unerwartete Antwort von GitHub beim Anmelden"
+        ))
+    })
 }
 
 /// Liest die Antwort auf eine Token-Abfrage. `current`: bisheriger Abstand, für `slow_down`
 /// ohne neue Angabe (dann laut GitHub 5 s mehr).
 pub fn parse_token_response(body: &str, current: Duration) -> Result<PollStep> {
-    let res: OAuthResponse = serde_json::from_str(body)
-        .map_err(|_| anyhow!("Unerwartete Antwort von GitHub beim Anmelden"))?;
+    let res: OAuthResponse = serde_json::from_str(body).map_err(|_| {
+        anyhow!(tr!(
+            "Unexpected response from GitHub during sign-in",
+            "Unerwartete Antwort von GitHub beim Anmelden"
+        ))
+    })?;
     if let Some(token) = res.access_token.filter(|t| !t.trim().is_empty()) {
         return Ok(PollStep::Token(token.trim().to_string()));
     }
@@ -123,28 +132,45 @@ pub fn parse_token_response(body: &str, current: Duration) -> Result<PollStep> {
             "{}",
             describe_error(code, res.error_description.as_deref())
         )),
-        None => Err(anyhow!("Unerwartete Antwort von GitHub beim Anmelden")),
+        None => Err(anyhow!(tr!(
+            "Unexpected response from GitHub during sign-in",
+            "Unerwartete Antwort von GitHub beim Anmelden"
+        ))),
     }
 }
 
 /// Klartext für die Fehlercodes des Device Flows.
 fn describe_error(code: &str, description: Option<&str>) -> String {
     match code {
-        "expired_token" => "Der Anmeldecode ist abgelaufen. Bitte erneut anmelden.".into(),
-        "access_denied" => "Die Anmeldung wurde auf GitHub abgelehnt.".into(),
-        "device_flow_disabled" => {
-            "Für PR Radar ist die Anmeldung per Code bei GitHub nicht freigeschaltet.".into()
-        }
-        "incorrect_client_credentials" => {
+        "expired_token" => tr!(
+            "The sign-in code has expired. Please sign in again.",
+            "Der Anmeldecode ist abgelaufen. Bitte erneut anmelden."
+        )
+        .into(),
+        "access_denied" => tr!(
+            "Sign-in was declined on GitHub.",
+            "Die Anmeldung wurde auf GitHub abgelehnt."
+        )
+        .into(),
+        "device_flow_disabled" => tr!(
+            "Sign-in with a code is not enabled for PR Radar on GitHub.",
+            "Für PR Radar ist die Anmeldung per Code bei GitHub nicht freigeschaltet."
+        )
+        .into(),
+        "incorrect_client_credentials" => tr!(
+            "GitHub does not know PR Radar’s client ID. Sign-in is misconfigured.",
             "GitHub kennt die Client-ID von PR Radar nicht. Die Anmeldung ist falsch eingerichtet."
-                .into()
-        }
+        )
+        .into(),
         _ => {
             let detail = description
                 .map(str::trim)
                 .filter(|d| !d.is_empty())
                 .unwrap_or(code);
-            format!("GitHub lehnt die Anmeldung ab: {detail}")
+            trf!(
+                "GitHub rejects the sign-in: {detail}",
+                "GitHub lehnt die Anmeldung ab: {detail}"
+            )
         }
     }
 }
@@ -170,7 +196,7 @@ mod tests {
     #[test]
     fn geraetecode_fehler_im_klartext() {
         let err = parse_device_code(r#"{"error":"device_flow_disabled"}"#).unwrap_err();
-        assert!(err.to_string().contains("nicht freigeschaltet"), "{err}");
+        assert!(err.to_string().contains("not enabled"), "{err}");
         let err = parse_device_code(
             r#"{"error":"unauthorized_client","error_description":"Bad client"}"#,
         )
@@ -210,9 +236,9 @@ mod tests {
     fn token_abfrage_fehler() {
         let five = Duration::from_secs(5);
         let err = parse_token_response(r#"{"error":"expired_token"}"#, five).unwrap_err();
-        assert!(err.to_string().contains("abgelaufen"), "{err}");
+        assert!(err.to_string().contains("expired"), "{err}");
         let err = parse_token_response(r#"{"error":"access_denied"}"#, five).unwrap_err();
-        assert!(err.to_string().contains("abgelehnt"), "{err}");
+        assert!(err.to_string().contains("declined"), "{err}");
         assert!(parse_token_response("{}", five).is_err());
         assert!(parse_token_response(r#"{"access_token":"  "}"#, five).is_err());
     }

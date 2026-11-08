@@ -118,21 +118,21 @@ fn enum_value<T: DeserializeOwned>(v: &str) -> Option<T> {
     serde_json::from_value(serde_json::Value::String(v.trim().to_ascii_lowercase())).ok()
 }
 
-/// Beobachtete Repos; `Some` = Fehlermeldung (Repo nicht erreichbar).
-const REPOS: [(&str, Option<&str>); 5] = [
-    ("acme/web", None),
-    ("acme/api", None),
-    ("acme/mobile", None),
-    ("acme/infra", None),
-    (
-        "acme/legacy-billing",
-        Some("Repository nicht gefunden oder kein Zugriff mit diesem Token."),
-    ),
+/// Beobachtete Repos; `true` = nicht erreichbar (Fehlermeldung in [`snapshot`]).
+const REPOS: [(&str, bool); 5] = [
+    ("acme/web", false),
+    ("acme/api", false),
+    ("acme/mobile", false),
+    ("acme/infra", false),
+    ("acme/legacy-billing", true),
 ];
 
 /// Hinweis, wenn im Demo-Modus eine Aktion ausgelöst wird, die GitHub ändern würde.
 pub fn action_notice(what: &str) -> String {
-    format!("{what} – im Demo-Modus passiert nichts. Starte PR Radar ohne --demo für echte Daten.")
+    trf!(
+        "{what} – nothing happens in demo mode. Start PR Radar without --demo for real data.",
+        "{what} – im Demo-Modus passiert nichts. Starte PR Radar ohne --demo für echte Daten."
+    )
 }
 
 fn person(login: &str) -> Person {
@@ -241,13 +241,20 @@ pub fn snapshot(now: DateTime<Utc>) -> Snapshot {
 
     let repos = REPOS
         .iter()
-        .map(|(name, error)| match error {
-            Some(e) => RepoInfo::unavailable(name, e.to_string()),
-            None => RepoInfo {
+        .map(|&(name, unavailable)| match unavailable {
+            true => RepoInfo::unavailable(
+                name,
+                tr!(
+                    "Repository not found or no access with this token.",
+                    "Repository nicht gefunden oder kein Zugriff mit diesem Token."
+                )
+                .into(),
+            ),
+            false => RepoInfo {
                 full_name: name.to_string(),
                 url: format!("https://github.com/{name}"),
                 default_branch: Some("main".into()),
-                default_branch_pipeline: if *name == "acme/api" {
+                default_branch_pipeline: if name == "acme/api" {
                     PipelineState::Running
                 } else {
                     PipelineState::Passed
@@ -264,7 +271,10 @@ pub fn snapshot(now: DateTime<Utc>) -> Snapshot {
     let mut ready = Pr {
         repo: "acme/web",
         number: 412,
-        title: "Checkout: Adressformular validiert Postleitzahlen",
+        title: tr!(
+            "Checkout: address form validates postcodes",
+            "Checkout: Adressformular validiert Postleitzahlen"
+        ),
         author: "kim",
         head_ref: "feat/plz-validierung",
         minutes_ago: 12,
@@ -280,7 +290,10 @@ pub fn snapshot(now: DateTime<Utc>) -> Snapshot {
     let mut failing = Pr {
         repo: "acme/web",
         number: 409,
-        title: "Navigation auf neue Routing-API umstellen",
+        title: tr!(
+            "Move navigation to the new routing API",
+            "Navigation auf neue Routing-API umstellen"
+        ),
         author: VIEWER,
         head_ref: "refactor/router",
         minutes_ago: 47,
@@ -295,7 +308,10 @@ pub fn snapshot(now: DateTime<Utc>) -> Snapshot {
     let mut auto = Pr {
         repo: "acme/api",
         number: 1288,
-        title: "Rate-Limit pro API-Schlüssel statt pro IP",
+        title: tr!(
+            "Rate limit per API key instead of per IP",
+            "Rate-Limit pro API-Schlüssel statt pro IP"
+        ),
         author: "jo",
         head_ref: "feat/rate-limit-key",
         minutes_ago: 3,
@@ -320,7 +336,10 @@ pub fn snapshot(now: DateTime<Utc>) -> Snapshot {
     let mut review = Pr {
         repo: "acme/api",
         number: 1291,
-        title: "Webhook-Zustellung mit Wiederholung und Dead-Letter-Queue",
+        title: tr!(
+            "Webhook delivery with retries and dead-letter queue",
+            "Webhook-Zustellung mit Wiederholung und Dead-Letter-Queue"
+        ),
         author: "sam",
         head_ref: "feat/webhook-retry",
         minutes_ago: 95,
@@ -336,7 +355,10 @@ pub fn snapshot(now: DateTime<Utc>) -> Snapshot {
     let mut conflict = Pr {
         repo: "acme/mobile",
         number: 77,
-        title: "Push-Benachrichtigungen: Einstellungen pro Kanal",
+        title: tr!(
+            "Push notifications: settings per channel",
+            "Push-Benachrichtigungen: Einstellungen pro Kanal"
+        ),
         author: "lee",
         head_ref: "feat/push-kanaele",
         minutes_ago: 60 * 26,
@@ -352,7 +374,10 @@ pub fn snapshot(now: DateTime<Utc>) -> Snapshot {
     let mut draft = Pr {
         repo: "acme/mobile",
         number: 79,
-        title: "Offline-Modus für die Auftragsliste (Entwurf)",
+        title: tr!(
+            "Offline mode for the order list (draft)",
+            "Offline-Modus für die Auftragsliste (Entwurf)"
+        ),
         author: VIEWER,
         head_ref: "spike/offline",
         minutes_ago: 60 * 5,
@@ -371,7 +396,10 @@ pub fn snapshot(now: DateTime<Utc>) -> Snapshot {
     let mut infra = Pr {
         repo: "acme/infra",
         number: 58,
-        title: "Terraform: Postgres auf 17 heben",
+        title: tr!(
+            "Terraform: upgrade Postgres to 17",
+            "Terraform: Postgres auf 17 heben"
+        ),
         author: "dependabot[bot]",
         head_ref: "dependabot/terraform/postgres-17",
         minutes_ago: 60 * 3,
@@ -390,49 +418,61 @@ pub fn snapshot(now: DateTime<Utc>) -> Snapshot {
         (
             "acme/web",
             410,
-            "Footer: Links auf neue Hilfeseiten",
+            tr!(
+                "Footer: links to the new help pages",
+                "Footer: Links auf neue Hilfeseiten"
+            ),
             "kim",
             25,
         ),
         (
             "acme/api",
             1285,
-            "Logging: Request-ID in allen Antworten",
+            tr!(
+                "Logging: request ID in every response",
+                "Logging: Request-ID in allen Antworten"
+            ),
             "jo",
             80,
         ),
         (
             "acme/api",
             1284,
-            "Abhängigkeiten aktualisieren",
+            tr!("Update dependencies", "Abhängigkeiten aktualisieren"),
             "dependabot[bot]",
             190,
         ),
         (
             "acme/mobile",
             75,
-            "Login: Face ID als Option",
+            tr!("Login: Face ID as an option", "Login: Face ID als Option"),
             "lee",
             60 * 22,
         ),
         (
             "acme/web",
             405,
-            "Dunkelmodus für das Dashboard",
+            tr!(
+                "Dark mode for the dashboard",
+                "Dunkelmodus für das Dashboard"
+            ),
             VIEWER,
             60 * 27,
         ),
         (
             "acme/infra",
             56,
-            "CDN-Cache für Bilder auf 7 Tage",
+            tr!(
+                "CDN cache for images set to 7 days",
+                "CDN-Cache für Bilder auf 7 Tage"
+            ),
             "sam",
             60 * 30,
         ),
         (
             "acme/api",
             1279,
-            "Pagination für /v2/orders",
+            tr!("Pagination for /v2/orders", "Pagination für /v2/orders"),
             "sam",
             60 * 50,
         ),
@@ -469,10 +509,15 @@ pub fn snapshot(now: DateTime<Utc>) -> Snapshot {
             is_prerelease: false,
             is_latest: true,
             author: Some("jo".into()),
-            description_html: "<h2>Neu</h2><ul><li>Pagination für <code>/v2/orders</code></li>\
+            description_html: tr!(
+                "<h2>New</h2><ul><li>Pagination for <code>/v2/orders</code></li>\
+                <li>Request ID in every response</li></ul>\
+                <h2>Fixed</h2><ul><li>Time zones in exports</li></ul>",
+                "<h2>Neu</h2><ul><li>Pagination für <code>/v2/orders</code></li>\
                 <li>Request-ID in allen Antworten</li></ul>\
                 <h2>Behoben</h2><ul><li>Zeitzonen bei Exporten</li></ul>"
-                .into(),
+            )
+            .into(),
         },
         Release {
             id: "demo-release-mobile-3.0.0-beta.2".into(),
@@ -484,9 +529,13 @@ pub fn snapshot(now: DateTime<Utc>) -> Snapshot {
             is_prerelease: true,
             is_latest: false,
             author: Some("lee".into()),
-            description_html: "<p>Zweite Beta mit Face ID und überarbeiteter Auftragsliste.</p>\
+            description_html: tr!(
+                "<p>Second beta with Face ID and a reworked order list.</p>\
+                <h3>Known issues</h3><ul><li>Push settings are not synced yet.</li></ul>",
+                "<p>Zweite Beta mit Face ID und überarbeiteter Auftragsliste.</p>\
                 <h3>Bekannte Probleme</h3><ul><li>Push-Einstellungen werden noch nicht synchronisiert.</li></ul>"
-                .into(),
+            )
+            .into(),
         },
     ];
 

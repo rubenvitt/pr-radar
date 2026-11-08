@@ -91,7 +91,9 @@ impl Workspace {
                                         m.merged_by.clone().filter(|b| {
                                             Some(b) != m.author.as_ref().map(|a| &a.login)
                                         }),
-                                        |this, by| this.child(format!("gemergt von {by}")),
+                                        |this, by| {
+                                            this.child(trf!("merged by {by}", "gemergt von {by}"))
+                                        },
                                     )
                                     .child(
                                         div()
@@ -183,7 +185,7 @@ impl Workspace {
                                 meta_row(cx)
                                     .child(repo_name(&r.repo, cx))
                                     .when_some(r.author.clone(), |this, a| {
-                                        this.child(format!("von {a}"))
+                                        this.child(trf!("by {a}", "von {a}"))
                                     })
                                     .child(
                                         div()
@@ -212,7 +214,7 @@ impl Workspace {
                                     .ghost()
                                     .small()
                                     .icon(IconName::ExternalLink)
-                                    .tooltip("Auf GitHub öffnen")
+                                    .tooltip(tr!("Open on GitHub", "Auf GitHub öffnen"))
                                     .on_click(move |_, _, cx| cx.open_url(&url)),
                             ),
                     )
@@ -353,9 +355,9 @@ fn notes(
                         .ghost()
                         .xsmall()
                         .label(if full {
-                            "Weniger anzeigen"
+                            tr!("Show Less", "Weniger anzeigen")
                         } else {
-                            "Mehr anzeigen"
+                            tr!("Show More", "Mehr anzeigen")
                         })
                         .on_click(on_toggle),
                 ),

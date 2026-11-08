@@ -29,8 +29,12 @@ pub struct RepoSettings {
 
 impl RepoSettings {
     pub fn new(radar: Entity<Radar>, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let input =
-            cx.new(|cx| InputState::new(window, cx).placeholder("owner/repo oder GitHub-URL"));
+        let input = cx.new(|cx| {
+            InputState::new(window, cx).placeholder(tr!(
+                "owner/repo or GitHub URL",
+                "owner/repo oder GitHub-URL"
+            ))
+        });
         let subscriptions = vec![
             cx.subscribe_in(&input, window, |this, _, event, window, cx| {
                 if let InputEvent::PressEnter { .. } = event {
@@ -83,11 +87,15 @@ impl RepoSettings {
         let configured = oauth::client_id().is_some();
 
         let state = match (source, viewer) {
-            (Some(TokenSource::OAuth), Some(v)) => format!("Angemeldet als {v}"),
-            (Some(TokenSource::OAuth), None) => "Angemeldet".into(),
-            (Some(TokenSource::Env), _) => "Token aus GITHUB_TOKEN".into(),
-            (Some(TokenSource::GhCli), _) => "Token aus der GitHub-CLI".into(),
-            (None, _) => "Nicht angemeldet".into(),
+            (Some(TokenSource::OAuth), Some(v)) => trf!("Signed in as {v}", "Angemeldet als {v}"),
+            (Some(TokenSource::OAuth), None) => tr!("Signed in", "Angemeldet").into(),
+            (Some(TokenSource::Env), _) => {
+                tr!("Token from GITHUB_TOKEN", "Token aus GITHUB_TOKEN").into()
+            }
+            (Some(TokenSource::GhCli), _) => {
+                tr!("Token from the GitHub CLI", "Token aus der GitHub-CLI").into()
+            }
+            (None, _) => tr!("Not signed in", "Nicht angemeldet").into(),
         };
 
         let error = match &login {
@@ -100,11 +108,10 @@ impl RepoSettings {
                 verification_uri,
             } => v_flex()
                 .gap_2()
-                .child(
-                    div()
-                        .text_body()
-                        .child("Gib diesen Code auf GitHub ein (liegt in der Zwischenablage):"),
-                )
+                .child(div().text_body().child(tr!(
+                    "Enter this code on GitHub (it’s on the clipboard):",
+                    "Gib diesen Code auf GitHub ein (liegt in der Zwischenablage):"
+                )))
                 .child(
                     div()
                         .text_2xl()
@@ -118,7 +125,10 @@ impl RepoSettings {
                             Button::new("open-device")
                                 .primary()
                                 .small()
-                                .label("Code kopieren und GitHub öffnen")
+                                .label(tr!(
+                                    "Copy Code and Open GitHub",
+                                    "Code kopieren und GitHub öffnen"
+                                ))
                                 .on_click(move |_, _, cx| {
                                     cx.write_to_clipboard(ClipboardItem::new_string(
                                         user_code.clone(),
@@ -134,14 +144,21 @@ impl RepoSettings {
                         .text_small()
                         .text_color(muted)
                         .child(Spinner::new().small())
-                        .child("Warte auf die Bestätigung auf GitHub …"),
+                        .child(tr!(
+                            "Waiting for confirmation on GitHub…",
+                            "Warte auf die Bestätigung auf GitHub …"
+                        )),
                 )
                 .into_any_element(),
             Login::Starting => h_flex()
                 .gap_2()
                 .text_body()
                 .child(Spinner::new().small())
-                .child(div().flex_1().child("Verbinde mit GitHub …"))
+                .child(
+                    div()
+                        .flex_1()
+                        .child(tr!("Connecting to GitHub…", "Verbinde mit GitHub …")),
+                )
                 .child(self.cancel_button(cx))
                 .into_any_element(),
             Login::Idle | Login::Failed(_) => {
@@ -154,10 +171,13 @@ impl RepoSettings {
                             Button::new("sign-in")
                                 .primary()
                                 .small()
-                                .label("Mit GitHub anmelden")
+                                .label(tr!("Sign In with GitHub", "Mit GitHub anmelden"))
                                 .disabled(!configured)
                                 .when(!configured, |b| {
-                                    b.tooltip("In diesem Build ist keine OAuth-App hinterlegt")
+                                    b.tooltip(tr!(
+                                        "No OAuth app is configured in this build",
+                                        "In diesem Build ist keine OAuth-App hinterlegt"
+                                    ))
                                 })
                                 .on_click(move |_, _, cx| {
                                     radar.update(cx, |r, cx| r.start_login(cx));
@@ -173,15 +193,22 @@ impl RepoSettings {
             .pb_3()
             .border_b_1()
             .border_color(cx.theme().border)
-            .child(div().text_heading().text_color(muted).child("GitHub-Konto"))
+            .child(
+                div()
+                    .text_heading()
+                    .text_color(muted)
+                    .child(tr!("GitHub Account", "GitHub-Konto")),
+            )
             .child(body)
             .when_some(error, |this, e| {
                 this.child(div().text_body().text_color(cx.theme().danger).child(e))
             })
-            .child(div().text_small().text_color(muted).child(
+            .child(div().text_small().text_color(muted).child(tr!(
+                "Advanced: Without signing in, PR Radar uses GITHUB_TOKEN/GH_TOKEN or the \
+                     GitHub CLI (gh auth login). Sign-in lasts until you quit the app.",
                 "Erweitert: Ohne Anmeldung nutzt PR Radar GITHUB_TOKEN/GH_TOKEN oder die \
-                 GitHub-CLI (gh auth login). Die Anmeldung gilt bis zum Beenden der App.",
-            ))
+                     GitHub-CLI (gh auth login). Die Anmeldung gilt bis zum Beenden der App."
+            )))
             .into_any_element()
     }
 
@@ -190,7 +217,7 @@ impl RepoSettings {
         Button::new("cancel-login")
             .ghost()
             .small()
-            .label("Abbrechen")
+            .label(tr!("Cancel", "Abbrechen"))
             .on_click(move |_, _, cx| radar.update(cx, |r, cx| r.cancel_login(cx)))
     }
 }
@@ -219,7 +246,7 @@ impl Render for RepoSettings {
                             .child(
                                 Button::new("add-repo")
                                     .icon(Icon::new(gpui_kit::component::IconName::Plus))
-                                    .label("Hinzufügen")
+                                    .label(tr!("Add", "Hinzufügen"))
                                     .disabled(empty_input)
                                     .on_click(
                                         cx.listener(|this, _, window, cx| this.add(window, cx)),
@@ -241,7 +268,10 @@ impl Render for RepoSettings {
                                 .text_small()
                                 .text_color(muted)
                                 .text_center()
-                                .child("Noch keine Repos – füge oben eins hinzu."),
+                                .child(tr!(
+                                    "No repos yet – add one above.",
+                                    "Noch keine Repos – füge oben eins hinzu."
+                                )),
                         )
                     })
                     .children(repos.into_iter().map(|full| {
@@ -249,15 +279,15 @@ impl Render for RepoSettings {
                         let detail = match &info {
                             Some(i) if i.error.is_some() => None,
                             Some(i) => Some(format!(
-                                "{} · Auto-Merge {}",
+                                "{} · {}",
                                 i.default_branch.clone().unwrap_or_else(|| "–".into()),
                                 if i.auto_merge_allowed {
-                                    "erlaubt"
+                                    tr!("Auto-merge allowed", "Auto-Merge erlaubt")
                                 } else {
-                                    "aus"
+                                    tr!("Auto-merge off", "Auto-Merge aus")
                                 }
                             )),
-                            None => Some("wird geladen …".into()),
+                            None => Some(tr!("loading…", "wird geladen …").into()),
                         };
                         let error = info.as_ref().and_then(|i| i.error.clone());
                         let state = info
@@ -294,7 +324,7 @@ impl Render for RepoSettings {
                                     .ghost()
                                     .small()
                                     .icon(Icon::new(Lucide::Trash))
-                                    .tooltip(format!("{full} entfernen"))
+                                    .tooltip(trf!("Remove {full}", "{full} entfernen"))
                                     .on_click(move |_, _, cx| {
                                         let _ = radar.update(cx, |r, cx| r.remove_repo(&key, cx));
                                     }),
@@ -313,24 +343,30 @@ impl Render for RepoSettings {
                         "Token: {}",
                         status.token_source.map_or("–", |t| t.label())
                     ))
-                    .child(format!(
+                    .child(trf!(
+                        "Updates every {} · last {}",
                         "Aktualisierung alle {} · zuletzt {}",
                         interval_label(status.interval),
                         ago(status.last_success)
                     ))
                     .when_some(status.rate_limit, |this, rl| {
-                        this.child(format!("API-Kontingent: {} / {}", rl.remaining, rl.limit))
+                        this.child(trf!(
+                            "API quota: {} / {}",
+                            "API-Kontingent: {} / {}",
+                            rl.remaining,
+                            rl.limit
+                        ))
                     }),
             )
     }
 }
 
-/// „30 s“ bzw. bei längeren Pausen (Backoff, Drosselung) „5 Min.“
+/// „30 s“ bzw. bei längeren Pausen (Backoff, Drosselung) „5 min“ / „5 Min.“
 fn interval_label(interval: std::time::Duration) -> String {
     let secs = interval.as_secs();
     if secs < 120 {
         format!("{secs} s")
     } else {
-        format!("{} Min.", secs.div_ceil(60))
+        trf!("{} min", "{} Min.", secs.div_ceil(60))
     }
 }

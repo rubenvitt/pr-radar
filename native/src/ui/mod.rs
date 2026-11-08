@@ -164,79 +164,111 @@ pub fn init(radar: Entity<Radar>, cx: &mut App) {
 pub fn refresh_menus(cx: &mut App) {
     cx.set_menus(vec![
         Menu::new("PR Radar").items([
-            MenuItem::action("Über PR Radar", About),
+            MenuItem::action(tr!("About PR Radar", "Über PR Radar"), About),
             MenuItem::separator(),
-            MenuItem::action("Repositories…", OpenSettings),
+            MenuItem::action(tr!("Repositories…", "Repositories…"), OpenSettings),
             login_menu_item(),
             MenuItem::separator(),
-            MenuItem::os_submenu("Dienste", SystemMenuType::Services),
+            MenuItem::os_submenu(tr!("Services", "Dienste"), SystemMenuType::Services),
             MenuItem::separator(),
-            MenuItem::action("PR Radar ausblenden", Hide),
-            MenuItem::action("Andere ausblenden", HideOthers),
-            MenuItem::action("Alle einblenden", ShowAll),
+            MenuItem::action(tr!("Hide PR Radar", "PR Radar ausblenden"), Hide),
+            MenuItem::action(tr!("Hide Others", "Andere ausblenden"), HideOthers),
+            MenuItem::action(tr!("Show All", "Alle einblenden"), ShowAll),
             MenuItem::separator(),
-            MenuItem::action("PR Radar beenden", Quit),
+            MenuItem::action(tr!("Quit PR Radar", "PR Radar beenden"), Quit),
         ]),
-        Menu::new("Ablage").items([
-            MenuItem::action("Aktualisieren", Refresh),
+        Menu::new(tr!("File", "Ablage")).items([
+            MenuItem::action(tr!("Refresh", "Aktualisieren"), Refresh),
             MenuItem::separator(),
-            MenuItem::action("Schließen", CloseWindow),
+            MenuItem::action(tr!("Close", "Schließen"), CloseWindow),
         ]),
-        Menu::new("Bearbeiten").items([
-            MenuItem::os_action("Widerrufen", input::Undo, OsAction::Undo),
-            MenuItem::os_action("Wiederholen", input::Redo, OsAction::Redo),
+        Menu::new(tr!("Edit", "Bearbeiten")).items([
+            MenuItem::os_action(tr!("Undo", "Widerrufen"), input::Undo, OsAction::Undo),
+            MenuItem::os_action(tr!("Redo", "Wiederholen"), input::Redo, OsAction::Redo),
             MenuItem::separator(),
-            MenuItem::os_action("Ausschneiden", input::Cut, OsAction::Cut),
-            MenuItem::os_action("Kopieren", input::Copy, OsAction::Copy),
-            MenuItem::os_action("Einsetzen", input::Paste, OsAction::Paste),
-            MenuItem::os_action("Alles auswählen", input::SelectAll, OsAction::SelectAll),
+            MenuItem::os_action(tr!("Cut", "Ausschneiden"), input::Cut, OsAction::Cut),
+            MenuItem::os_action(tr!("Copy", "Kopieren"), input::Copy, OsAction::Copy),
+            MenuItem::os_action(tr!("Paste", "Einsetzen"), input::Paste, OsAction::Paste),
+            MenuItem::os_action(
+                tr!("Select All", "Alles auswählen"),
+                input::SelectAll,
+                OsAction::SelectAll,
+            ),
             MenuItem::separator(),
-            MenuItem::action("Suchen", FocusSearch),
+            MenuItem::action(tr!("Find", "Suchen"), FocusSearch),
         ]),
-        Menu::new("Ansicht").items([
-            MenuItem::action("Seitenleiste ein-/ausblenden", ToggleSidebar),
+        Menu::new(tr!("View", "Ansicht")).items([
+            MenuItem::action(
+                tr!("Show/Hide Sidebar", "Seitenleiste ein-/ausblenden"),
+                ToggleSidebar,
+            ),
             MenuItem::separator(),
-            MenuItem::action("Offen", ShowOpen),
-            MenuItem::action("Gemergt", ShowMerged),
-            MenuItem::action("Releases", ShowReleases),
+            MenuItem::action(tr!("Open", "Offen"), ShowOpen),
+            MenuItem::action(tr!("Merged", "Gemergt"), ShowMerged),
+            MenuItem::action(tr!("Releases", "Releases"), ShowReleases),
             MenuItem::separator(),
-            MenuItem::action("Liste / Flow umschalten", ToggleView),
-            MenuItem::action("Nach Repo gruppieren", ToggleGrouped),
+            MenuItem::action(
+                tr!("Toggle List / Flow", "Liste / Flow umschalten"),
+                ToggleView,
+            ),
+            MenuItem::action(tr!("Group by Repo", "Nach Repo gruppieren"), ToggleGrouped),
             MenuItem::separator(),
-            MenuItem::action("Vollbildmodus ein/aus", ToggleFullScreen),
+            MenuItem::action(
+                tr!("Enter/Exit Full Screen", "Vollbildmodus ein/aus"),
+                ToggleFullScreen,
+            ),
         ]),
-        Menu::new("Fenster").items([
-            MenuItem::action("Im Dock ablegen", Minimize),
-            MenuItem::action("Zoomen", Zoom),
+        Menu::new(tr!("Window", "Fenster")).items([
+            MenuItem::action(tr!("Minimize", "Im Dock ablegen"), Minimize),
+            MenuItem::action(tr!("Zoom", "Zoomen"), Zoom),
             MenuItem::separator(),
             MenuItem::action("PR Radar", ShowMainWindow),
         ]),
-        Menu::new("Hilfe").items([
-            MenuItem::action("PR-Radar-Website", OpenWebsite),
-            MenuItem::action("Support", OpenSupport),
+        Menu::new(tr!("Help", "Hilfe")).items([
+            MenuItem::action(tr!("PR Radar Website", "PR-Radar-Website"), OpenWebsite),
+            MenuItem::action(tr!("Support", "Support"), OpenSupport),
             MenuItem::separator(),
-            MenuItem::action("Datenschutz", OpenPrivacy),
-            MenuItem::action("Lizenzvereinbarung (EULA)", OpenTerms),
-            MenuItem::action("Impressum", OpenImprint),
+            MenuItem::action(tr!("Privacy Policy", "Datenschutz"), OpenPrivacy),
+            MenuItem::action(
+                tr!("License Agreement (EULA)", "Lizenzvereinbarung (EULA)"),
+                OpenTerms,
+            ),
+            MenuItem::action(tr!("Legal Notice", "Impressum"), OpenImprint),
             MenuItem::separator(),
-            MenuItem::action("PR Radar auf GitHub", OpenHelp),
-            MenuItem::action("Lizenz des Quellcodes", OpenLicense),
-            MenuItem::action("Drittanbieter-Lizenzen", OpenThirdPartyNotices),
+            MenuItem::action(tr!("PR Radar on GitHub", "PR Radar auf GitHub"), OpenHelp),
+            MenuItem::action(
+                tr!("Source Code License", "Lizenz des Quellcodes"),
+                OpenLicense,
+            ),
+            MenuItem::action(
+                tr!("Third-Party Licenses", "Drittanbieter-Lizenzen"),
+                OpenThirdPartyNotices,
+            ),
             MenuItem::separator(),
-            MenuItem::action("Protokoll im Finder zeigen", RevealLog),
+            MenuItem::action(
+                tr!("Show Log in Finder", "Protokoll im Finder zeigen"),
+                RevealLog,
+            ),
         ]),
     ]);
 }
 
 #[cfg(target_os = "macos")]
 fn login_menu_item() -> MenuItem {
-    MenuItem::action("Beim Anmelden starten", ToggleLoginItem)
-        .checked(crate::menubar::login_item_checked())
+    MenuItem::action(
+        tr!("Open at Login", "Beim Anmelden starten"),
+        ToggleLoginItem,
+    )
+    .checked(crate::menubar::login_item_checked())
 }
 
 #[cfg(not(target_os = "macos"))]
 fn login_menu_item() -> MenuItem {
-    MenuItem::action("Beim Anmelden starten", ToggleLoginItem).disabled(true)
+    MenuItem::action(
+        tr!("Open at Login", "Beim Anmelden starten"),
+        ToggleLoginItem,
+    )
+    .disabled(true)
 }
 
 /// Zeigt einen Fehler im Hauptfenster (öffnet es bei Bedarf).
@@ -328,7 +360,9 @@ fn open_about(window: &mut Window, cx: &mut App) {
     window.open_alert_dialog(cx, |dialog, _, _| {
         dialog
             .title("PR Radar")
-            .description(format!(
+            .description(trf!(
+                "Version {}\n\nPull requests, pipelines, auto-merge, merges and releases across \
+                 multiple GitHub repos.\n\nLicense: Functional Source License 1.1, ALv2 Future License.",
                 "Version {}\n\nPull Requests, Pipelines, Auto-Merge, Merges und Releases über \
                  mehrere GitHub-Repos.\n\nLizenz: Functional Source License 1.1, ALv2 Future License.",
                 env!("CARGO_PKG_VERSION")
@@ -443,14 +477,14 @@ impl Derived {
 /// Name eines Schnellfilters, wie er in der Seitenleiste steht.
 fn quick_label(quick: Quick) -> &'static str {
     match quick {
-        Quick::All => "Alle",
-        Quick::Running => "Pipeline läuft",
-        Quick::Failed => "Rot",
-        Quick::Passed => "Grün",
-        Quick::Auto => "Auto-Merge",
-        Quick::Conflict => "Konflikt",
-        Quick::Review => "Dein Review",
-        Quick::Mine => "Von dir",
+        Quick::All => tr!("All", "Alle"),
+        Quick::Running => tr!("Pipeline running", "Pipeline läuft"),
+        Quick::Failed => tr!("Failed", "Rot"),
+        Quick::Passed => tr!("Passed", "Grün"),
+        Quick::Auto => tr!("Auto-merge", "Auto-Merge"),
+        Quick::Conflict => tr!("Conflict", "Konflikt"),
+        Quick::Review => tr!("Your review", "Dein Review"),
+        Quick::Mine => tr!("By you", "Von dir"),
     }
 }
 
@@ -471,7 +505,7 @@ impl Workspace {
     pub fn new(radar: Entity<Radar>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let search = cx.new(|cx| {
             InputState::new(window, cx)
-                .placeholder("Suchen …")
+                .placeholder(tr!("Search…", "Suchen …"))
                 .clean_on_escape()
         });
         let settings = cx.new(|cx| RepoSettings::new(radar.clone(), window, cx));
@@ -502,7 +536,7 @@ impl Workspace {
                     .unwrap_or(0);
                 window.set_window_title(&match failed {
                     0 => "PR Radar".to_string(),
-                    n => format!("PR Radar – {n} rot"),
+                    n => trf!("PR Radar – {n} failed", "PR Radar – {n} rot"),
                 });
                 cx.notify();
             }),
@@ -524,7 +558,7 @@ impl Workspace {
             cx.defer_in(window, move |_, window, cx| {
                 window.push_notification(
                     Notification::warning(warning)
-                        .title("Konfiguration zurückgesetzt")
+                        .title(tr!("Settings reset", "Konfiguration zurückgesetzt"))
                         .autohide(false),
                     cx,
                 );
@@ -594,12 +628,15 @@ impl Workspace {
                 cx.notify();
             }
             RadarEvent::DemoNotice(message) => {
-                window
-                    .push_notification(Notification::info(message.clone()).title("Demo-Modus"), cx);
+                window.push_notification(
+                    Notification::info(message.clone()).title(tr!("Demo Mode", "Demo-Modus")),
+                    cx,
+                );
             }
             RadarEvent::ActionFailed(message) => {
                 window.push_notification(
-                    Notification::error(message.clone()).title("Aktion fehlgeschlagen"),
+                    Notification::error(message.clone())
+                        .title(tr!("Action failed", "Aktion fehlgeschlagen")),
                     cx,
                 );
             }
@@ -610,13 +647,16 @@ impl Workspace {
             } => {
                 let mut parts = Vec::new();
                 if *merged > 0 {
-                    parts.push(format!("{merged} gemergt"));
+                    parts.push(trf!("{merged} merged", "{merged} gemergt"));
                 }
                 if *auto_merge > 0 {
-                    parts.push(format!("{auto_merge} per Auto-Merge"));
+                    parts.push(trf!(
+                        "{auto_merge} via auto-merge",
+                        "{auto_merge} per Auto-Merge"
+                    ));
                 }
                 if !failed.is_empty() {
-                    parts.push(format!("{} fehlgeschlagen", failed.len()));
+                    parts.push(trf!("{} failed", "{} fehlgeschlagen", failed.len()));
                 }
                 let summary = parts.join(" · ");
                 let notification = if failed.is_empty() {
@@ -624,7 +664,7 @@ impl Workspace {
                 } else {
                     Notification::error(format!("{summary}\n{}", failed.join("\n")))
                 };
-                window.push_notification(notification.title("Alle mergen"), cx);
+                window.push_notification(notification.title(tr!("Merge all", "Alle mergen")), cx);
             }
             RadarEvent::Transitions(transitions) => {
                 if !self.radar.read(cx).prefs().notify {
@@ -733,7 +773,7 @@ impl Workspace {
             let settings = settings.clone();
             move |sheet, window, _| {
                 sheet
-                    .title("Repositories")
+                    .title(tr!("Repositories", "Repositories"))
                     .size(SHEET_W.min(window.viewport_size().width - px(16.)))
                     .child(settings.clone())
             }
@@ -761,28 +801,42 @@ impl Workspace {
         let demo = radar.is_demo();
 
         let (dot, label) = match status.state {
-            _ if demo => (cx.theme().info, "Beispieldaten".to_string()),
+            _ if demo => (
+                cx.theme().info,
+                tr!("Sample data", "Beispieldaten").to_string(),
+            ),
             _ if no_repos => (
                 cx.theme().muted_foreground,
-                "Keine Repositories".to_string(),
+                tr!("No repositories", "Keine Repositories").to_string(),
             ),
-            PollState::Error => (cx.theme().danger, "Fehler".to_string()),
-            PollState::Polling if loading => (cx.theme().warning, "Lädt …".to_string()),
+            PollState::Error => (cx.theme().danger, tr!("Error", "Fehler").to_string()),
+            PollState::Polling if loading => {
+                (cx.theme().warning, tr!("Loading…", "Lädt …").to_string())
+            }
             _ => (
                 cx.theme().success,
-                format!("Live · {}", ago(status.last_success)),
+                trf!("Live · {}", "Live · {}", ago(status.last_success)),
             ),
         };
         let tooltip: SharedString = match status.last_success {
-            _ if demo => "Demo-Modus: feste Beispieldaten, keine Verbindung zu GitHub".into(),
-            _ if no_repos => "Füge Repositories hinzu, damit PR Radar sie beobachtet".into(),
-            Some(t) => format!(
+            _ if demo => tr!(
+                "Demo mode: fixed sample data, no connection to GitHub",
+                "Demo-Modus: feste Beispieldaten, keine Verbindung zu GitHub"
+            )
+            .into(),
+            _ if no_repos => tr!(
+                "Add repositories for PR Radar to watch",
+                "Füge Repositories hinzu, damit PR Radar sie beobachtet"
+            )
+            .into(),
+            Some(t) => trf!(
+                "Last updated {} · every {} s",
                 "Letzte Aktualisierung {} · alle {} s",
                 crate::time::clock(t),
                 status.interval.as_secs()
             )
             .into(),
-            None => "Noch nicht aktualisiert".into(),
+            None => tr!("Not updated yet", "Noch nicht aktualisiert").into(),
         };
 
         let collapsed = self.sidebar_collapsed(radar.prefs());
@@ -803,9 +857,9 @@ impl Workspace {
                         })
                         .tooltip_with_action(
                             if collapsed {
-                                "Seitenleiste einblenden"
+                                tr!("Show Sidebar", "Seitenleiste einblenden")
                             } else {
-                                "Seitenleiste ausblenden"
+                                tr!("Hide Sidebar", "Seitenleiste ausblenden")
                             },
                             &ToggleSidebar,
                             Some(CONTEXT),
@@ -859,7 +913,11 @@ impl Workspace {
                         .icon(IconName::RefreshCw)
                         // Hintergrund-Polls drehen keinen Spinner – jeder Animationsframe baut das Fenster neu auf.
                         .loading(self.manual_refresh && status.state == PollState::Polling)
-                        .tooltip_with_action("Aktualisieren", &Refresh, Some(CONTEXT))
+                        .tooltip_with_action(
+                            tr!("Refresh", "Aktualisieren"),
+                            &Refresh,
+                            Some(CONTEXT),
+                        )
                         .on_click(
                             cx.listener(|this, _, window, cx| this.refresh(&Refresh, window, cx)),
                         ),
@@ -875,9 +933,12 @@ impl Workspace {
                         })
                         .selected(notify)
                         .tooltip(if notify {
-                            "Benachrichtigungen aus"
+                            tr!("Turn off notifications", "Benachrichtigungen aus")
                         } else {
-                            "Benachrichtigen bei roter/grüner Pipeline und Merge"
+                            tr!(
+                                "Notify when a pipeline fails or passes and on merge",
+                                "Benachrichtigen bei roter/grüner Pipeline und Merge"
+                            )
                         })
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.update_prefs(cx, |p| p.notify = !p.notify)
@@ -888,7 +949,11 @@ impl Workspace {
                         .ghost()
                         .small()
                         .icon(IconName::Settings2)
-                        .tooltip_with_action("Repositories…", &OpenSettings, Some(CONTEXT))
+                        .tooltip_with_action(
+                            tr!("Repositories…", "Repositories…"),
+                            &OpenSettings,
+                            Some(CONTEXT),
+                        )
                         .on_click(cx.listener(|this, _, window, cx| {
                             this.open_settings(&OpenSettings, window, cx)
                         })),
@@ -922,19 +987,19 @@ impl Workspace {
         };
         let views = SidebarMenu::new().children([
             tab_item(
-                "Offen",
+                tr!("Open", "Offen"),
                 Lucide::GitPullRequest.into(),
                 Tab::Open,
                 d.map_or(0, |d| d.open_list.len()),
             ),
             tab_item(
-                "Gemergt",
+                tr!("Merged", "Gemergt"),
                 Lucide::GitMerge.into(),
                 Tab::Merged,
                 d.map_or(0, |d| d.merged.len()),
             ),
             tab_item(
-                "Releases",
+                tr!("Releases", "Releases"),
                 Lucide::Tag.into(),
                 Tab::Releases,
                 d.map_or(0, |d| d.releases.len()),
@@ -969,14 +1034,14 @@ impl Workspace {
         let snapshot = d.map(|d| d.snapshot.clone());
         let mut repos =
             vec![if no_repos {
-                SidebarMenuItem::new("Hinzufügen…")
+                SidebarMenuItem::new(tr!("Add…", "Hinzufügen…"))
                     .text_body()
                     .icon(IconName::Plus)
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.open_settings(&OpenSettings, window, cx)
                     }))
             } else {
-                SidebarMenuItem::new("Alle Repositories")
+                SidebarMenuItem::new(tr!("All Repositories", "Alle Repositories"))
                     .text_body()
                     .icon(Lucide::LayoutDashboard)
                     .active(prefs.repo_filter.is_empty())
@@ -1043,12 +1108,12 @@ impl Workspace {
             .w(SIDEBAR_W)
             .collapsible(SidebarCollapsible::Offcanvas)
             .collapsed(collapsed)
-            .child(SidebarSection::new("Ansicht", views))
+            .child(SidebarSection::new(tr!("View", "Ansicht"), views))
             .when(!no_repos, |this| {
-                this.child(SidebarSection::new("Filter", filters))
+                this.child(SidebarSection::new(tr!("Filter", "Filter"), filters))
             })
             .child(SidebarSection::new(
-                "Repositories",
+                tr!("Repositories", "Repositories"),
                 SidebarMenu::new().children(repos),
             ))
             .footer(
@@ -1113,7 +1178,7 @@ impl Workspace {
         };
 
         let compact = self.compact;
-        let label = format!("Alle mergen ({count})");
+        let label = trf!("Merge all ({count})", "Alle mergen ({count})");
         let button = Button::new("merge-all")
             .small()
             .outline()
@@ -1124,7 +1189,8 @@ impl Workspace {
         if !choice {
             return Some(
                 button
-                    .tooltip(format!(
+                    .tooltip(trf!(
+                        "Merge {count} visible PRs now – retried if GitHub is still waiting",
                         "{count} sichtbare PRs jetzt mergen – wartet GitHub noch, wird erneut versucht"
                     ))
                     .on_click(move |_, _, cx| run(None, cx))
@@ -1137,7 +1203,7 @@ impl Workspace {
                 .dropdown_caret(true)
                 .tooltip(label)
                 .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
-                    let menu = menu.label(format!("{count} PRs mergen mit"));
+                    let menu = menu.label(trf!("Merge {count} PRs with", "{count} PRs mergen mit"));
                     offered.iter().fold(menu, |menu, &m| {
                         let run = run.clone();
                         menu.item(
@@ -1157,9 +1223,9 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let title = match prefs.tab {
-            Tab::Open => "Offene Pull Requests",
-            Tab::Merged => "Zuletzt gemergt",
-            Tab::Releases => "Releases",
+            Tab::Open => tr!("Open Pull Requests", "Offene Pull Requests"),
+            Tab::Merged => tr!("Recently Merged", "Zuletzt gemergt"),
+            Tab::Releases => tr!("Releases", "Releases"),
         };
         let compact = self.compact;
         let search = div()
@@ -1185,8 +1251,8 @@ impl Workspace {
                         .child(
                             Button::new("view-list")
                                 .icon(Lucide::List)
-                                .when(!compact, |b| b.label("Liste"))
-                                .when(compact, |b| b.tooltip("Liste"))
+                                .when(!compact, |b| b.label(tr!("List", "Liste")))
+                                .when(compact, |b| b.tooltip(tr!("List", "Liste")))
                                 .selected(!flow),
                         )
                         .child(
@@ -1213,9 +1279,9 @@ impl Workspace {
                         .selected(prefs.grouped)
                         .tooltip_with_action(
                             if prefs.grouped {
-                                "Flache Liste"
+                                tr!("Flat List", "Flache Liste")
                             } else {
-                                "Nach Repo gruppieren"
+                                tr!("Group by Repo", "Nach Repo gruppieren")
                             },
                             &ToggleGrouped,
                             Some(CONTEXT),
@@ -1323,7 +1389,10 @@ impl Render for Workspace {
                                 this.child(
                                     div().px_4().pt_4().child(
                                         gpui_kit::component::alert::Alert::error("sync-error", e)
-                                            .title("Aktualisierung fehlgeschlagen"),
+                                            .title(tr!(
+                                                "Update failed",
+                                                "Aktualisierung fehlgeschlagen"
+                                            )),
                                     ),
                                 )
                             })

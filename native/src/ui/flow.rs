@@ -78,8 +78,8 @@ fn check_nodes(pr: &OpenPr) -> Vec<CheckNode> {
     if groups.is_empty() {
         return vec![CheckNode {
             key: "none".into(),
-            label: "Keine Checks".into(),
-            sub: "letzter Commit".into(),
+            label: tr!("No checks", "Keine Checks").into(),
+            sub: tr!("latest commit", "letzter Commit").into(),
             state: PipelineState::None,
             url: None,
         }];
@@ -93,7 +93,7 @@ fn check_nodes(pr: &OpenPr) -> Vec<CheckNode> {
                 .filter(|c| c.state.pipeline() == PipelineState::Passed)
                 .count();
             let sub = if checks.len() > 1 {
-                format!("{passed}/{} grün", checks.len())
+                trf!("{passed}/{} passed", "{passed}/{} grün", checks.len())
             } else if checks[0].group.is_some() {
                 checks[0].name.clone()
             } else {
@@ -122,7 +122,7 @@ fn check_nodes(pr: &OpenPr) -> Vec<CheckNode> {
     let state = worst(rest.iter().map(|n| n.state));
     nodes.push(CheckNode {
         key: "more".into(),
-        label: format!("+{} weitere", rest.len()),
+        label: trf!("+{} more", "+{} weitere", rest.len()),
         sub: state.label().into(),
         state,
         url: Some(pr.url.clone()),
@@ -145,32 +145,45 @@ fn review_stage(pr: &OpenPr, viewer: Option<&str>) -> Stage {
         sub: sub.into(),
     };
     if pr.requests_review_from(viewer) && pr.review_decision != Some(ReviewDecision::Approved) {
-        return stage(Tone::Accent, Lucide::UserCheck, "Dein Review", "angefragt");
+        return stage(
+            Tone::Accent,
+            Lucide::UserCheck,
+            tr!("Your review", "Dein Review"),
+            tr!("requested", "angefragt"),
+        );
     }
     match pr.review_decision {
-        Some(ReviewDecision::Approved) => {
-            stage(Tone::Pass, Lucide::ShieldCheck, "Approved", "Review ok")
-        }
+        Some(ReviewDecision::Approved) => stage(
+            Tone::Pass,
+            Lucide::ShieldCheck,
+            tr!("Approved", "Approved"),
+            tr!("Review ok", "Review ok"),
+        ),
         Some(ReviewDecision::ChangesRequested) => stage(
             Tone::Fail,
             Lucide::MessageSquareWarning,
-            "Änderungen",
-            "angefordert",
+            tr!("Changes", "Änderungen"),
+            tr!("requested", "angefordert"),
         ),
         Some(ReviewDecision::ReviewRequired) => {
             let who = if pr.review_requests.is_empty() {
-                "ausstehend".into()
+                tr!("pending", "ausstehend").into()
             } else {
                 pr.review_requests.join(", ")
             };
             Stage {
                 tone: Tone::Idle,
                 icon: Icon::new(IconName::Eye),
-                title: "Review offen".into(),
+                title: tr!("Review pending", "Review offen").into(),
                 sub: who,
             }
         }
-        None => stage(Tone::Idle, Lucide::Eye, "Review", "nicht erforderlich"),
+        None => stage(
+            Tone::Idle,
+            Lucide::Eye,
+            tr!("Review", "Review"),
+            tr!("not required", "nicht erforderlich"),
+        ),
     }
 }
 
@@ -185,43 +198,43 @@ fn merge_stage(pr: &OpenPr) -> Stage {
         stage(
             Tone::Fail,
             Lucide::TriangleAlert,
-            "Konflikt",
-            "nicht mergebar".into(),
+            tr!("Conflict", "Konflikt"),
+            tr!("not mergeable", "nicht mergebar").into(),
         )
     } else if pr.is_draft {
         stage(
             Tone::Idle,
             Lucide::GitPullRequestDraft,
-            "Draft",
-            "noch nicht bereit".into(),
+            tr!("Draft", "Draft"),
+            tr!("not ready yet", "noch nicht bereit").into(),
         )
     } else if let Some(am) = &pr.auto_merge {
         stage(
             Tone::Accent,
             Lucide::Zap,
-            "Auto-Merge",
-            format!("{} · wenn grün", am.method.label()),
+            tr!("Auto-merge", "Auto-Merge"),
+            trf!("{} · when green", "{} · wenn grün", am.method.label()),
         )
     } else if pr.ready_to_merge() {
         stage(
             Tone::Pass,
             Lucide::GitMerge,
-            "Bereit",
-            "kann gemergt werden".into(),
+            tr!("Ready", "Bereit"),
+            tr!("can be merged", "kann gemergt werden").into(),
         )
     } else if pr.merge_state_status == "BEHIND" {
         stage(
             Tone::Run,
             Lucide::GitMerge,
-            "Veraltet",
-            "Base ist weiter".into(),
+            tr!("Behind", "Veraltet"),
+            tr!("base has moved on", "Base ist weiter").into(),
         )
     } else if pr.merge_state_status == "BLOCKED" {
         stage(
             Tone::Idle,
             Lucide::GitMerge,
-            "Blockiert",
-            "wartet auf Regeln".into(),
+            tr!("Blocked", "Blockiert"),
+            tr!("waiting for rules", "wartet auf Regeln").into(),
         )
     } else {
         stage(
@@ -561,7 +574,7 @@ impl Workspace {
                                 if on_default {
                                     format!("Pipeline {}", base_state.label())
                                 } else {
-                                    "Ziel-Branch".into()
+                                    tr!("Target branch", "Ziel-Branch").into()
                                 },
                                 (true, false),
                                 cx,

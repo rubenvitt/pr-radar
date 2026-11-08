@@ -1,7 +1,6 @@
 //! Links auf die Produktseite (`site/` im Repo, ausgeliefert über Cloudflare Pages).
 //!
-//! Die Oberfläche ist derzeit deutsch, also zeigen die Links auf die deutschen
-//! Seiten. Mit der englischen Lokalisierung (PRR-11) wählt `url` die Sprache.
+//! Die Links folgen der Sprache der Oberfläche (`l10n`): Englisch oder Deutsch.
 
 /// Basis-URL der Produktseite, ohne abschließenden Schrägstrich.
 pub const BASE_URL: &str = "https://pr-radar.rubeen.dev";
@@ -44,7 +43,8 @@ impl Page {
 
 /// Vollständige URL einer Seite in der Sprache der Oberfläche.
 pub fn url(page: Page) -> String {
-    format!("{BASE_URL}{}", page.path(true))
+    let german = crate::l10n::lang() == crate::l10n::Lang::De;
+    format!("{BASE_URL}{}", page.path(german))
 }
 
 #[cfg(test)]
@@ -60,6 +60,14 @@ mod tests {
             assert!(u.ends_with('/'), "{u}");
             assert!(!u["https://".len()..].contains("//"), "{u}");
         }
+    }
+
+    #[test]
+    fn url_folgt_der_sprache() {
+        use crate::l10n::{Lang, with_lang};
+        let privacy = |lang| with_lang(lang, || url(Page::Privacy));
+        assert_eq!(privacy(Lang::En), format!("{BASE_URL}/privacy/"));
+        assert_eq!(privacy(Lang::De), format!("{BASE_URL}/de/datenschutz/"));
     }
 
     /// Jeder Link der App zeigt auf eine Seite, die es in `site/public` gibt.

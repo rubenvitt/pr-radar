@@ -13,10 +13,10 @@ pub enum PipelineState {
 impl PipelineState {
     pub fn label(self) -> &'static str {
         match self {
-            Self::Running => "läuft",
-            Self::Failed => "rot",
-            Self::Passed => "grün",
-            Self::None => "ohne Ergebnis",
+            Self::Running => tr!("running", "läuft"),
+            Self::Failed => tr!("failed", "rot"),
+            Self::Passed => tr!("passed", "grün"),
+            Self::None => tr!("no result", "ohne Ergebnis"),
         }
     }
 

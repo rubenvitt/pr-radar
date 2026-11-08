@@ -20,6 +20,7 @@ log = "0.4"
 rust-embed = "8"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sys-locale = "0.3"
 
 # Menüleisten-Symbol, Dock-Badge und „Beim Anmelden starten“ (GPUI kennt beides nicht).
 [target.'cfg(target_os = "macos")'.dependencies]
