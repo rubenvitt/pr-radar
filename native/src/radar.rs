@@ -8,7 +8,7 @@ use anyhow::{Result, anyhow, bail};
 use chrono::{DateTime, Utc};
 use gpui_kit::{AppContext as _, AsyncApp, Context, EventEmitter, Task, WeakEntity};
 
-use crate::config::{Config, Prefs, parse_repo};
+use crate::config::{Config, Prefs};
 use crate::github::{GitHub, RateLimit, RateLimited, TokenSource, UNKNOWN_RATE_LIMIT_WAIT};
 use crate::model::{AutoMerge, MergeMethod, Snapshot, Transition, diff_snapshots};
 
@@ -257,27 +257,13 @@ impl Radar {
     }
 
     pub fn add_repo(&mut self, input: &str, cx: &mut Context<Self>) -> Result<()> {
-        let full = parse_repo(input).ok_or_else(|| {
-            anyhow!("Ungültiges Repo – erwartet owner/name oder eine GitHub-URL.")
-        })?;
-        if self
-            .config
-            .repos
-            .iter()
-            .any(|r| r.eq_ignore_ascii_case(&full))
-        {
-            bail!("{full} ist schon in der Liste.");
-        }
-        self.config.repos.push(full);
-        self.config.save()?;
+        self.config.add_repo(input)?;
         self.refresh(cx);
         Ok(())
     }
 
     pub fn remove_repo(&mut self, full: &str, cx: &mut Context<Self>) -> Result<()> {
-        self.config.repos.retain(|r| r != full);
-        self.config.prefs.repo_filter.retain(|r| r != full);
-        self.config.save()?;
+        self.config.remove_repo(full)?;
         self.refresh(cx);
         Ok(())
     }
