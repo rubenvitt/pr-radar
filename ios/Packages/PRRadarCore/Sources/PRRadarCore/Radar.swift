@@ -18,13 +18,14 @@ let unknownRateLimitWait: TimeInterval = 120
 let resetSlack: TimeInterval = 5
 
 /// Wartezeit nach einem fehlgeschlagenen Poll: bei Drosselung bis GitHub wieder Anfragen
-/// annimmt, sonst exponentiell steigend (30 s, 60 s, 120 s … bis 5 min).
+/// annimmt (ohne Zeitangabe 2 min, bei Wiederholung verdoppelt bis 1 h), sonst exponentiell
+/// steigend (30 s, 60 s, 120 s … bis 5 min).
 func waitAfterError(_ error: Error, failures: Int, base: TimeInterval, now: Date) -> TimeInterval {
+    let factor = pow(2, Double(min(max(failures - 1, 0), 8)))
     if case let .rateLimited(retryAt)? = error as? GitHubError {
-        let wait = retryAt.map { $0.timeIntervalSince(now) + resetSlack } ?? unknownRateLimitWait
+        let wait = retryAt.map { $0.timeIntervalSince(now) + resetSlack } ?? unknownRateLimitWait * factor
         return min(max(wait, normalInterval), maxRateLimitWait)
     }
-    let factor = pow(2, Double(min(max(failures - 1, 0), 8)))
     return min(max(base, normalInterval) * factor, maxBackoff)
 }
 

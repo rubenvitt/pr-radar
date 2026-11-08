@@ -81,9 +81,6 @@ func gitHubMessage(_ data: Data) -> String {
     return (try? JSONDecoder().decode(Body.self, from: data))?.message ?? ""
 }
 
-/// Sekundäres Limit ohne `Retry-After`: GitHub empfiehlt mindestens eine Minute Pause.
-let secondaryRateLimitWait: TimeInterval = 60
-
 /// Ab wann ein neuer Versuch laut Headern sinnvoll ist (Header-Namen klein geschrieben).
 /// `x-ratelimit-reset` zählt nur bei leerem Kontingent.
 func headerRetryAt(_ headers: [String: String], now: Date) -> Date? {
@@ -101,16 +98,14 @@ func mentionsSecondaryLimit(_ body: Data) -> Bool {
 }
 
 /// Erkennt eine Drosselung anhand von Status, Headern (Namen klein geschrieben) und Body.
+/// Ein sekundäres Limit ohne Zeitangabe bleibt ohne `retryAt`: `waitAfterError` wartet dann
+/// `unknownRateLimitWait` und verlängert bei Wiederholung exponentiell, wie GitHub es verlangt.
 func rateLimitError(status: Int, headers: [String: String], body: Data = Data(), now: Date) -> GitHubError? {
     let hasRetryAfter = headers["retry-after"].flatMap { TimeInterval($0.trimmingCharacters(in: .whitespaces)) } != nil
     let exhausted = headers["x-ratelimit-remaining"]?.trimmingCharacters(in: .whitespaces) == "0"
     let secondary = status == 403 && mentionsSecondaryLimit(body)
     guard status == 429 || (status == 403 && (exhausted || hasRetryAfter || secondary)) else { return nil }
-    let retryAt = headerRetryAt(headers, now: now)
-    if secondary && retryAt == nil {
-        return .rateLimited(retryAt: now.addingTimeInterval(secondaryRateLimitWait))
-    }
-    return .rateLimited(retryAt: retryAt)
+    return .rateLimited(retryAt: headerRetryAt(headers, now: now))
 }
 
 /// Unter allen gedrosselten Chunks der mit der längsten Wartezeit (ohne Zeitangabe: `unknownRateLimitWait`).

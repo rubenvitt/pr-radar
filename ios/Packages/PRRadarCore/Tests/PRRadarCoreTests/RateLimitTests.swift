@@ -44,14 +44,12 @@ private struct FixedTransport: HTTPTransport {
         #expect(rateLimitError(status: 502, headers: [:], now: now) == nil)
     }
 
-    @Test func sekundaeresLimitOhneRetryAfterWartetEineMinute() {
+    @Test func sekundaeresLimitOhneRetryAfterIstDrosselungOhneZeit() {
         let headers = ["x-ratelimit-remaining": "4000"]
         let body = Data(
             #"{"message":"You have exceeded a secondary rate limit. Please wait a few minutes before you try again."}"#
                 .utf8)
-        #expect(
-            rateLimitError(status: 403, headers: headers, body: body, now: now)
-                == .rateLimited(retryAt: Date(timeIntervalSince1970: 1_060)))
+        #expect(rateLimitError(status: 403, headers: headers, body: body, now: now) == .rateLimited(retryAt: nil))
         // Ältere Formulierung
         let abuse = Data(#"{"message":"You have triggered an abuse detection mechanism."}"#.utf8)
         #expect(rateLimitError(status: 403, headers: headers, body: abuse, now: now) != nil)
@@ -126,8 +124,8 @@ private struct FixedTransport: HTTPTransport {
         do {
             _ = try await GitHubClient(transport: secondary, token: { "t" }).fetch(repos: ["a/b"])
             Issue.record("Drosselung erwartet")
-        } catch let GitHubError.rateLimited(retryAt?) {
-            #expect(retryAt > Date())
+        } catch GitHubError.rateLimited(retryAt: nil) {
+            // erwartet: ohne Zeitangabe, der Radar wartet mit wachsendem Backoff
         } catch {
             Issue.record("Unerwarteter Fehler: \(error)")
         }
@@ -145,6 +143,11 @@ private struct FixedTransport: HTTPTransport {
         #expect(waitAfterError(reset, failures: 1, base: normalInterval, now: now) == 605)
         #expect(waitAfterError(reset, failures: 1, base: normalInterval, now: now.addingTimeInterval(5_000)) == normalInterval)
         #expect(waitAfterError(GitHubError.rateLimited(retryAt: nil), failures: 1, base: normalInterval, now: now) == unknownRateLimitWait)
+        // Wiederholte Drosselung ohne Zeitangabe: Pause verdoppelt sich bis 1 h
+        let unknown = (1...7).map {
+            waitAfterError(GitHubError.rateLimited(retryAt: nil), failures: $0, base: normalInterval, now: now)
+        }
+        #expect(unknown == [120, 240, 480, 960, 1920, 3600, 3600])
         let far = GitHubError.rateLimited(retryAt: now.addingTimeInterval(100_000))
         #expect(waitAfterError(far, failures: 1, base: normalInterval, now: now) == maxRateLimitWait)
     }

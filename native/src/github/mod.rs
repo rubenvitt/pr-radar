@@ -115,10 +115,9 @@ impl std::fmt::Display for RateLimited {
 
 impl std::error::Error for RateLimited {}
 
-/// Drosselung ohne Zeitangabe: so lange warten.
+/// Drosselung ohne Zeitangabe (z. B. sekundäres Limit ohne `Retry-After`): so lange warten,
+/// bei wiederholter Drosselung verdoppelt der Radar die Pause.
 pub const UNKNOWN_RATE_LIMIT_WAIT: Duration = Duration::from_secs(120);
-/// Sekundäres Limit ohne `Retry-After`: GitHub empfiehlt mindestens eine Minute Pause.
-const SECONDARY_RATE_LIMIT_WAIT: Duration = Duration::from_secs(60);
 
 /// Drossel-Angaben aus den Antwort-Headern.
 struct LimitHeaders {
@@ -157,7 +156,9 @@ fn mentions_secondary_limit(body: &str) -> bool {
     body.contains("secondary rate limit") || body.contains("abuse detection")
 }
 
-/// Liest die Drossel-Angaben aus einer Antwort, falls GitHub drosselt.
+/// Liest die Drossel-Angaben aus einer Antwort, falls GitHub drosselt. Ein sekundäres Limit
+/// ohne Zeitangabe bleibt ohne Zeit: Der Radar wartet dann `UNKNOWN_RATE_LIMIT_WAIT` und
+/// verlängert bei Wiederholung exponentiell, wie GitHub es verlangt.
 fn rate_limited(
     status: u16,
     headers: &gpui_kit::http_client::http::HeaderMap,
@@ -167,14 +168,7 @@ fn rate_limited(
     let secondary = status == 403 && mentions_secondary_limit(body);
     let throttled =
         status == 429 || (status == 403 && (h.exhausted || h.retry_after.is_some() || secondary));
-    if !throttled {
-        return None;
-    }
-    let mut limited = h.limited();
-    if secondary && limited.retry_after.is_none() && limited.reset_at.is_none() {
-        limited.retry_after = Some(SECONDARY_RATE_LIMIT_WAIT);
-    }
-    Some(limited)
+    throttled.then(|| h.limited())
 }
 
 /// Verständlicher Text für einen HTTP-Fehler statt des rohen Antwort-Bodys.
@@ -629,12 +623,15 @@ mod tests {
     }
 
     #[test]
-    fn sekundaeres_limit_ohne_retry_after_wartet_eine_minute() {
+    fn sekundaeres_limit_ohne_retry_after_ist_drosselung_ohne_zeit() {
         let h = headers(&[("x-ratelimit-remaining", "4000")]);
         let body = r#"{"message":"You have exceeded a secondary rate limit. Please wait a few minutes before you try again."}"#;
         let limited = rate_limited(403, &h, body).expect("gedrosselt");
         assert_eq!(limited.reset_at, None);
-        assert_eq!(limited.retry_after, Some(SECONDARY_RATE_LIMIT_WAIT));
+        assert_eq!(limited.retry_after, None);
+        // Ohne Zeitangabe mindestens eine Minute (GitHub-Vorgabe)
+        let now = DateTime::from_timestamp(1_000, 0).unwrap();
+        assert!(limited.wait(now) >= Duration::from_secs(60));
         // Ältere Formulierung
         let body = r#"{"message":"You have triggered an abuse detection mechanism."}"#;
         assert!(rate_limited(403, &h, body).is_some());
