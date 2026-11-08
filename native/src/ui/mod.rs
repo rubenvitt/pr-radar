@@ -24,6 +24,7 @@ use gpui_kit::component::{
     menu::{DropdownMenu as _, PopupMenuItem},
     notification::Notification,
     sidebar::{Sidebar, SidebarCollapsible, SidebarFooter, SidebarMenu, SidebarMenuItem},
+    tag::Tag,
     v_flex,
 };
 use gpui_kit::prelude::FluentBuilder as _;
@@ -254,12 +255,18 @@ pub fn open_main_window(radar: Entity<Radar>, cx: &mut App) -> anyhow::Result<()
         window_min_size: Some(size(px(360.), px(480.))),
         ..TitleBar::window_options()
     };
-    gpui_kit::open_window(options, cx, |window, cx| {
-        window
-            .observe_window_appearance(|window, cx| {
-                gpui_kit::component::Theme::sync_system_appearance(Some(window), cx)
-            })
-            .detach();
+    // Demo mit --dark/--light: Erscheinungsbild bleibt fest, statt dem System zu folgen.
+    let forced = cx
+        .try_global::<crate::demo::Options>()
+        .is_some_and(|d| d.appearance.is_some());
+    gpui_kit::open_window(options, cx, move |window, cx| {
+        if !forced {
+            window
+                .observe_window_appearance(|window, cx| {
+                    gpui_kit::component::Theme::sync_system_appearance(Some(window), cx)
+                })
+                .detach();
+        }
         cx.new(|cx| Workspace::new(radar, window, cx))
     })?;
     Ok(())
@@ -586,6 +593,10 @@ impl Workspace {
                 .detach();
                 cx.notify();
             }
+            RadarEvent::DemoNotice(message) => {
+                window
+                    .push_notification(Notification::info(message.clone()).title("Demo-Modus"), cx);
+            }
             RadarEvent::ActionFailed(message) => {
                 window.push_notification(
                     Notification::error(message.clone()).title("Aktion fehlgeschlagen"),
@@ -747,8 +758,10 @@ impl Workspace {
         let loading = radar.snapshot().is_none();
         // Ohne Repos fragt PR Radar nichts ab – dann auch kein „Live“.
         let no_repos = radar.repos().is_empty();
+        let demo = radar.is_demo();
 
         let (dot, label) = match status.state {
+            _ if demo => (cx.theme().info, "Beispieldaten".to_string()),
             _ if no_repos => (
                 cx.theme().muted_foreground,
                 "Keine Repositories".to_string(),
@@ -761,6 +774,7 @@ impl Workspace {
             ),
         };
         let tooltip: SharedString = match status.last_success {
+            _ if demo => "Demo-Modus: feste Beispieldaten, keine Verbindung zu GitHub".into(),
             _ if no_repos => "Füge Repositories hinzu, damit PR Radar sie beobachtet".into(),
             Some(t) => format!(
                 "Letzte Aktualisierung {} · alle {} s",
@@ -800,6 +814,16 @@ impl Workspace {
                             this.toggle_sidebar(&ToggleSidebar, window, cx)
                         })),
                 )
+                .when(demo, |this| {
+                    this.child(
+                        Tag::info()
+                            .xsmall()
+                            .text_small()
+                            .rounded_full()
+                            .flex_none()
+                            .child("Demo"),
+                    )
+                })
                 .child(
                     h_flex()
                         .id("live-status")

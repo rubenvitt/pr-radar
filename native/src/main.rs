@@ -1,6 +1,7 @@
 //! PR Radar – native Desktop-App für Pull Requests, Pipelines, Auto-Merge, Merges und Releases.
 
 mod config;
+mod demo;
 mod github;
 mod logging;
 #[cfg(target_os = "macos")]
@@ -56,13 +57,21 @@ impl AssetSource for AppAssets {
 
 fn main() {
     logging::init();
+    let demo = demo::Options::from_env();
+    if demo.enabled {
+        log::info!("Demo-Modus: Beispieldaten, kein GitHub-Zugriff");
+    }
     let app = gpui_kit::application().with_assets(AppAssets);
     // Klick aufs Dock-Symbol, nachdem das Fenster mit ⌘W geschlossen wurde.
     app.on_reopen(ui::show_main_window);
     app.run(|cx| {
         gpui_kit::init(cx);
         ui::theme::init(cx);
-        Theme::sync_system_appearance(None, cx);
+        // Danach die passende Hälfte des eigenen Schemas laden: erzwungen (Demo) oder vom System.
+        match demo.appearance {
+            Some(mode) => Theme::change(mode, None, cx),
+            None => Theme::sync_system_appearance(None, cx),
+        }
         // macOS-Maß statt der 16 px von gpui-component; Hell/Dunkel-Wechsel lassen das stehen,
         // weil die mitgelieferten Themes keine Schriftgröße setzen.
         Theme::update(cx, |theme| theme.font_size = ui::typography::BASE);
@@ -74,7 +83,8 @@ fn main() {
         };
         cx.set_http_client(http.clone());
         let github = Arc::new(GitHub::new(http));
-        let radar = cx.new(|cx| Radar::new(github, cx));
+        let radar = cx.new(|cx| Radar::new(github, &demo, cx));
+        cx.set_global(demo);
 
         ui::init(radar.clone(), cx);
         #[cfg(target_os = "macos")]
