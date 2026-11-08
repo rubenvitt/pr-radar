@@ -128,10 +128,16 @@ impl Config {
         save: impl FnOnce(&Config) -> Result<()>,
     ) -> Result<String> {
         let full = parse_repo(input).ok_or_else(|| {
-            anyhow::anyhow!("Ungültiges Repo – erwartet owner/name oder eine GitHub-URL.")
+            anyhow::anyhow!(tr!(
+                "Invalid repo – expected owner/name or a GitHub URL.",
+                "Ungültiges Repo – erwartet owner/name oder eine GitHub-URL."
+            ))
         })?;
         if self.repos.iter().any(|r| r.eq_ignore_ascii_case(&full)) {
-            anyhow::bail!("{full} ist schon in der Liste.");
+            anyhow::bail!(trf!(
+                "{full} is already in the list.",
+                "{full} ist schon in der Liste."
+            ));
         }
         self.commit(|next| next.repos.push(full.clone()), save)?;
         Ok(full)
@@ -463,7 +469,7 @@ mod tests {
         assert_eq!(cfg, before, "add_repo");
         // Ein erneuter Versuch meldet nicht „schon in der Liste“, sondern wieder den Schreibschutz.
         let err = cfg.add_repo("c/d").unwrap_err().to_string();
-        assert!(!err.contains("schon in der Liste"), "{err}");
+        assert!(!err.contains("already in the list"), "{err}");
 
         assert!(cfg.remove_repo("a/b").is_err());
         assert_eq!(cfg, before, "remove_repo");
@@ -499,7 +505,7 @@ mod tests {
         assert_eq!(cfg.repos, ["a/b", "c/d"]);
         assert_eq!(load_from(&path, "", now()).config, cfg);
         let err = cfg.add_repo_with("C/D", |_| unreachable!()).unwrap_err();
-        assert!(err.to_string().contains("schon in der Liste"), "{err}");
+        assert!(err.to_string().contains("already in the list"), "{err}");
 
         cfg.remove_repo_with("a/b", |c| save_to(&path, c)).unwrap();
         assert_eq!(cfg.repos, ["c/d"]);

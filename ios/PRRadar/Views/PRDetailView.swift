@@ -13,8 +13,8 @@ struct PRDetailView: View {
             detail(pr, snapshot)
         } else {
             ContentUnavailableView(
-                "Nicht mehr offen", systemImage: "arrow.triangle.merge",
-                description: Text("Der Pull Request wurde gemergt oder geschlossen."))
+                "No Longer Open", systemImage: "arrow.triangle.merge",
+                description: Text("The pull request was merged or closed."))
         }
     }
 
@@ -62,7 +62,7 @@ struct PRDetailView: View {
 
             Section {
                 if pr.pipeline.checks.isEmpty {
-                    Text("Keine Checks für den letzten Commit.").foregroundStyle(.secondary)
+                    Text("No checks for the latest commit.").foregroundStyle(.secondary)
                 }
                 ForEach(Array(pr.pipeline.checks.enumerated()), id: \.offset) { _, check in
                     CheckRow(check: check)
@@ -72,21 +72,21 @@ struct PRDetailView: View {
                     Text("Checks")
                     Spacer()
                     if pr.pipeline.total > 0 {
-                        Text("\(pr.pipeline.passed)/\(pr.pipeline.total) grün")
+                        Text("\(pr.pipeline.passed)/\(pr.pipeline.total) passed")
                             .foregroundStyle(pr.pipeline.state.color)
                     }
                 }
             }
         }
         .listStyle(.insetGrouped)
-        .navigationTitle("#\(pr.number)")
+        .navigationTitle(Text(verbatim: "#\(pr.number)"))
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await radar.refreshNow() }
         .toolbar {
             if let url = URL(string: pr.url) {
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     ShareLink(item: url)
-                    Button("Auf GitHub öffnen", systemImage: "safari") { openURL(url) }
+                    Button("Open on GitHub", systemImage: "safari") { openURL(url) }
                 }
             }
         }
@@ -111,21 +111,28 @@ struct PRDetailView: View {
             case let .unavailable(reason):
                 Text(reason).font(.footnote).foregroundStyle(.secondary)
             case let .disable(method, by):
-                Text("Auto-Merge aktiv (\(method.label)\(by.map { ", von \($0)" } ?? "")) – mergt, sobald alles grün ist.")
-                    .font(.footnote).foregroundStyle(.secondary)
+                Group {
+                    if let by {
+                        Text("Auto-merge is on (\(method.label), by \(by)) – merges as soon as everything is green.")
+                    } else {
+                        Text("Auto-merge is on (\(method.label)) – merges as soon as everything is green.")
+                    }
+                }
+                .font(.footnote).foregroundStyle(.secondary)
             default:
                 EmptyView()
             }
             if radar.isRetrying(pr.id) {
-                Label("GitHub lässt den Merge noch nicht zu – neuer Versuch gleich …", systemImage: "clock.arrow.circlepath")
+                Label("GitHub isn’t allowing the merge yet – retrying shortly…", systemImage: "clock.arrow.circlepath")
                     .font(.footnote)
                     .foregroundStyle(.orange)
             }
         } header: {
-            Text("Merge")
+            // „Merge“ ist in beiden Sprachen gleich; als Schlüssel würde es mit dem Button „Merge“ (de: „Mergen“) kollidieren.
+            Text(verbatim: "Merge")
         } footer: {
             if !pr.mergeMethods.isEmpty {
-                Text("Erlaubt: \(pr.mergeMethods.map(\.label).joined(separator: ", ")) – Repo-Einstellungen und Rulesets von \(pr.baseRef).")
+                Text("Allowed: \(pr.mergeMethods.map(\.label).joined(separator: ", ")) – per repo settings and rulesets for \(pr.baseRef).")
             }
         }
     }
@@ -145,7 +152,7 @@ private struct CheckRow: View {
             }
             VStack(alignment: .leading, spacing: 1) {
                 Text(check.name).lineLimit(2)
-                let detail = [check.group, check.state == .skipped ? "übersprungen" : nil].compactMap { $0 }
+                let detail = [check.group, check.state == .skipped ? String(localized: "skipped") : nil].compactMap { $0 }
                 if !detail.isEmpty {
                     Text(detail.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary)
                 }

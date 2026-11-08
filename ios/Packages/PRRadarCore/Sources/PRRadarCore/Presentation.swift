@@ -48,7 +48,7 @@ public struct Derived: Sendable {
     public func mergedByDay(now: Date = Date(), calendar: Calendar = .current) -> [(day: String, prs: [MergedPR])] {
         var out: [(day: String, prs: [MergedPR])] = []
         for m in merged {
-            let label = GermanTime.dayLabel(m.mergedAt, now: now, calendar: calendar)
+            let label = TimeText.dayLabel(m.mergedAt, now: now, calendar: calendar)
             if out.last?.day == label {
                 out[out.count - 1].prs.append(m)
             } else {
@@ -100,19 +100,19 @@ public enum MergeAction: Sendable, Equatable {
             return .disable(method: am.method, by: am.enabledBy)
         }
         guard let repo = snapshot.repo(pr.repo) else {
-            return .unavailable("Repository nicht geladen")
+            return .unavailable(L10n.tr("Repository not loaded"))
         }
         let methods = pr.mergeMethods
         if methods.isEmpty {
-            return .unavailable("Keine Merge-Methode erlaubt (Repo-Einstellungen und Rulesets)")
+            return .unavailable(L10n.tr("No merge method allowed (repo settings and rulesets)"))
         } else if !repo.viewerCanMerge {
-            return .unavailable("Keine Schreibrechte")
+            return .unavailable(L10n.tr("No write access"))
         } else if pr.isDraft {
-            return .unavailable("Draft-PRs können nicht gemergt werden")
+            return .unavailable(L10n.tr("Draft PRs cannot be merged"))
         } else if pr.readyToMerge {
             return .mergeNow(methods)
         } else if !repo.autoMergeAllowed {
-            return .unavailable("Auto-Merge ist in diesem Repo nicht erlaubt (Settings → Allow auto-merge)")
+            return .unavailable(L10n.tr("Auto-merge is not allowed in this repo (Settings → Allow auto-merge)"))
         } else {
             return .enable(methods)
         }
@@ -197,13 +197,13 @@ func worst(_ states: [PipelineState]) -> PipelineState {
 public func checkNodes(_ pr: OpenPR) -> [CheckNode] {
     let groups = group(pr.pipeline.checks) { $0.group ?? $0.name }
     if groups.isEmpty {
-        return [CheckNode(id: "none", label: "Keine Checks", sub: "letzter Commit", state: .none, url: nil)]
+        return [CheckNode(id: "none", label: L10n.tr("No checks"), sub: L10n.tr("latest commit"), state: .none, url: nil)]
     }
     var nodes: [CheckNode] = groups.map { label, checks in
         let state = worst(checks.map(\.state.pipeline))
         let passed = checks.filter { $0.state.pipeline == .passed }.count
         let sub =
-            if checks.count > 1 { "\(passed)/\(checks.count) grün" }
+            if checks.count > 1 { L10n.tr("%lld/%lld passed", passed, checks.count) }
             else if checks[0].group != nil { checks[0].name }
             else { state.label }
         let url = (checks.first { $0.state.pipeline == state } ?? checks[0]).url
@@ -217,40 +217,40 @@ public func checkNodes(_ pr: OpenPR) -> [CheckNode] {
     let rest = nodes[(maxCheckNodes - 1)...]
     let state = worst(rest.map(\.state))
     nodes = Array(nodes.prefix(maxCheckNodes - 1))
-    nodes.append(CheckNode(id: "more", label: "+\(rest.count) weitere", sub: state.label, state: state, url: pr.url))
+    nodes.append(CheckNode(id: "more", label: L10n.tr("+%lld more", rest.count), sub: state.label, state: state, url: pr.url))
     return nodes
 }
 
 public func reviewStage(_ pr: OpenPR, viewer: String?) -> Stage {
     if pr.requestsReview(from: viewer) && pr.reviewDecision != .approved {
-        return Stage(tone: .accent, symbol: "person.badge.clock", title: "Dein Review", sub: "angefragt")
+        return Stage(tone: .accent, symbol: "person.badge.clock", title: L10n.tr("Your review"), sub: L10n.tr("awaiting you"))
     }
     switch pr.reviewDecision {
     case .approved:
-        return Stage(tone: .pass, symbol: "checkmark.shield", title: "Approved", sub: "Review ok")
+        return Stage(tone: .pass, symbol: "checkmark.shield", title: L10n.tr("Approved"), sub: L10n.tr("Review ok"))
     case .changesRequested:
-        return Stage(tone: .fail, symbol: "exclamationmark.bubble", title: "Änderungen", sub: "angefordert")
+        return Stage(tone: .fail, symbol: "exclamationmark.bubble", title: L10n.tr("Changes"), sub: L10n.tr("requested"))
     case .reviewRequired:
-        let who = pr.reviewRequests.isEmpty ? "ausstehend" : pr.reviewRequests.joined(separator: ", ")
-        return Stage(tone: .idle, symbol: "eye", title: "Review offen", sub: who)
+        let who = pr.reviewRequests.isEmpty ? L10n.tr("pending") : pr.reviewRequests.joined(separator: ", ")
+        return Stage(tone: .idle, symbol: "eye", title: L10n.tr("Review pending"), sub: who)
     case nil:
-        return Stage(tone: .idle, symbol: "eye", title: "Review", sub: "nicht erforderlich")
+        return Stage(tone: .idle, symbol: "eye", title: L10n.tr("Review"), sub: L10n.tr("not required"))
     }
 }
 
 public func mergeStage(_ pr: OpenPR) -> Stage {
     if pr.hasConflict {
-        return Stage(tone: .fail, symbol: "exclamationmark.triangle", title: "Konflikt", sub: "nicht mergebar")
+        return Stage(tone: .fail, symbol: "exclamationmark.triangle", title: L10n.tr("Conflict"), sub: L10n.tr("not mergeable"))
     } else if pr.isDraft {
-        return Stage(tone: .idle, symbol: "pencil.circle", title: "Draft", sub: "noch nicht bereit")
+        return Stage(tone: .idle, symbol: "pencil.circle", title: L10n.tr("Draft"), sub: L10n.tr("not ready yet"))
     } else if let am = pr.autoMerge {
-        return Stage(tone: .accent, symbol: "bolt.fill", title: "Auto-Merge", sub: "\(am.method.label) · wenn grün")
+        return Stage(tone: .accent, symbol: "bolt.fill", title: L10n.tr("Auto-merge"), sub: L10n.tr("%@ · when green", am.method.label))
     } else if pr.readyToMerge {
-        return Stage(tone: .pass, symbol: "arrow.triangle.merge", title: "Bereit", sub: "kann gemergt werden")
+        return Stage(tone: .pass, symbol: "arrow.triangle.merge", title: L10n.tr("Ready"), sub: L10n.tr("can be merged"))
     } else if pr.mergeStateStatus == "BEHIND" {
-        return Stage(tone: .run, symbol: "arrow.triangle.merge", title: "Veraltet", sub: "Base ist weiter")
+        return Stage(tone: .run, symbol: "arrow.triangle.merge", title: L10n.tr("Behind"), sub: L10n.tr("base has moved on"))
     } else if pr.mergeStateStatus == "BLOCKED" {
-        return Stage(tone: .idle, symbol: "arrow.triangle.merge", title: "Blockiert", sub: "wartet auf Regeln")
+        return Stage(tone: .idle, symbol: "arrow.triangle.merge", title: L10n.tr("Blocked"), sub: L10n.tr("waiting for rules"))
     } else {
         return Stage(tone: .idle, symbol: "arrow.triangle.merge", title: "Merge", sub: pr.mergeStateStatus.lowercased())
     }

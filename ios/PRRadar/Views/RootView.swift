@@ -9,12 +9,12 @@ struct RootView: View {
 
     var body: some View {
         TabView(selection: Binding(get: { radar.prefs.tab }, set: { t in radar.updatePrefs { $0.tab = t } })) {
-            SwiftUI.Tab("Offen", systemImage: "arrow.triangle.pull", value: RadarTab.open) {
+            SwiftUI.Tab("Open", systemImage: "arrow.triangle.pull", value: RadarTab.open) {
                 OpenPRsView().safeAreaInset(edge: .top, spacing: 0) { DemoBanner() }
             }
             .badge(failedCount)
 
-            SwiftUI.Tab("Gemergt", systemImage: "arrow.triangle.merge", value: RadarTab.merged) {
+            SwiftUI.Tab("Merged", systemImage: "arrow.triangle.merge", value: RadarTab.merged) {
                 MergedView().safeAreaInset(edge: .top, spacing: 0) { DemoBanner() }
             }
 
@@ -22,7 +22,7 @@ struct RootView: View {
                 ReleasesView().safeAreaInset(edge: .top, spacing: 0) { DemoBanner() }
             }
 
-            SwiftUI.Tab("Einstellungen", systemImage: "gearshape", value: RadarTab.settings) {
+            SwiftUI.Tab("Settings", systemImage: "gearshape", value: RadarTab.settings) {
                 SettingsView().safeAreaInset(edge: .top, spacing: 0) { DemoBanner() }
             }
         }
@@ -104,13 +104,13 @@ private struct KeyboardShortcuts: View {
 
     var body: some View {
         Group {
-            Button("Neu laden") { radar.refresh() }.keyboardShortcut("r")
-            Button("Offen") { radar.updatePrefs { $0.tab = .open } }.keyboardShortcut("1")
-            Button("Gemergt") { radar.updatePrefs { $0.tab = .merged } }.keyboardShortcut("2")
+            Button("Reload") { radar.refresh() }.keyboardShortcut("r")
+            Button("Open") { radar.updatePrefs { $0.tab = .open } }.keyboardShortcut("1")
+            Button("Merged") { radar.updatePrefs { $0.tab = .merged } }.keyboardShortcut("2")
             Button("Releases") { radar.updatePrefs { $0.tab = .releases } }.keyboardShortcut("3")
-            Button("Einstellungen") { radar.updatePrefs { $0.tab = .settings } }.keyboardShortcut("4")
-            Button("Liste/Flow") { radar.updatePrefs { $0.view = $0.view == .list ? .flow : .list } }.keyboardShortcut("l")
-            Button("Gruppieren") { radar.updatePrefs { $0.grouped.toggle() } }.keyboardShortcut("g")
+            Button("Settings") { radar.updatePrefs { $0.tab = .settings } }.keyboardShortcut("4")
+            Button("List/Flow") { radar.updatePrefs { $0.view = $0.view == .list ? .flow : .list } }.keyboardShortcut("l")
+            Button("Toggle Grouping") { radar.updatePrefs { $0.grouped.toggle() } }.keyboardShortcut("g")
         }
         .opacity(0)
         .frame(width: 0, height: 0)

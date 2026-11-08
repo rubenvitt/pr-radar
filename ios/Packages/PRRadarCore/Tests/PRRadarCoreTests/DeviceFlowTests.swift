@@ -32,6 +32,8 @@ private final class QueuedTransport: HTTPTransport, @unchecked Sendable {
 private struct Offline: Error {}
 
 @Suite struct DeviceFlowTests {
+    init() { L10n.setLanguage("en") }  // Texte unabhängig von der Systemsprache
+
     let code = DeviceCode(
         deviceCode: "dc", userCode: "WDJB-MJHT", verificationURI: URL(string: "https://github.com/login/device")!,
         expiresIn: 900, interval: 5)
@@ -111,7 +113,7 @@ private struct Offline: Error {}
         let transport = QueuedTransport(Array(repeating: .success("<html>"), count: 10), statuses: Array(repeating: 503, count: 10))
         let flow = DeviceFlow(clientID: "id", transport: transport, timing: FakeClock().timing)
         await #expect(throws: DeviceFlowError.unavailable) { _ = try await flow.waitForToken(code) }
-        #expect(DeviceFlowError.unavailable.localizedDescription.contains("erneut anmelden"))
+        #expect(DeviceFlowError.unavailable.localizedDescription.contains("sign in again"))
         #expect(transport.requests.count == 4, "drei Fehler toleriert, der vierte bricht ab")
     }
 
@@ -137,6 +139,8 @@ private struct Offline: Error {}
 }
 
 @Suite struct AccessErrorTests {
+    init() { L10n.setLanguage("en") }  // Texte unabhängig von der Systemsprache
+
     private func errors(_ json: String) throws -> [GQLError] {
         try JSONDecoder().decode([GQLError].self, from: Data(json.utf8))
     }
@@ -144,12 +148,12 @@ private struct Offline: Error {}
     @Test func fehlendeSchreibrechteImKlartext() throws {
         let forbidden = try errors(#"[{"type":"FORBIDDEN","message":"Resource not accessible by personal access token"}]"#)
         let msg = describeMutationErrors(forbidden)
-        #expect(msg.contains("Keine Schreibrechte"))
+        #expect(msg.contains("No write access"))
         #expect(!msg.contains("Resource not accessible"))
 
         let perms = try errors(
             #"[{"message":"octocat does not have the correct permissions to execute `MergePullRequest`"}]"#)
-        #expect(describeMutationErrors(perms).contains("Keine Schreibrechte"))
+        #expect(describeMutationErrors(perms).contains("No write access"))
 
         // Andere Fehler bleiben, wie sie sind – „Base branch was modified“ wird erneut versucht.
         let other = try errors(#"[{"message":"Base branch was modified."},{"message":"zweiter"}]"#)
@@ -160,7 +164,7 @@ private struct Offline: Error {}
         let raw =
             "Although you appear to have the correct authorization credentials, the `acme` organization has enabled OAuth App access restrictions, meaning that data access to third-parties is limited."
         let msg = explainAccessError(raw, type: "FORBIDDEN")
-        #expect(msg?.contains("„acme“") == true)
+        #expect(msg?.contains("“acme”") == true)
         #expect(msg?.contains("Third-party access") == true)
         #expect(explainAccessError("Could not resolve to a Repository", type: "NOT_FOUND") == nil)
         #expect(explainOAuthRestriction(raw) == msg)

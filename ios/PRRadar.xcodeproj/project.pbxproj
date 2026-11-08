@@ -202,9 +202,10 @@
 				};
 			};
 			buildConfigurationList = E7AD0419CEE250868D64498C /* Build configuration list for PBXProject "PRRadar" */;
-			developmentRegion = de;
+			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
+				en,
 				de,
 				Base,
 			);

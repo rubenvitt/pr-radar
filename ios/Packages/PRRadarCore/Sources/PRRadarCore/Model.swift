@@ -7,10 +7,10 @@ public enum PipelineState: String, Sendable, Codable, Hashable, CaseIterable {
 
     public var label: String {
         switch self {
-        case .running: "läuft"
-        case .failed: "rot"
-        case .passed: "grün"
-        case .none: "ohne Ergebnis"
+        case .running: L10n.tr("running")
+        case .failed: L10n.tr("failed")
+        case .passed: L10n.tr("passed")
+        case .none: L10n.tr("no result")
         }
     }
 

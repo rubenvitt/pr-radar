@@ -120,7 +120,7 @@ private func settled(_ radar: Radar) async {
             Issue.record("erwartet Fehlermeldung, bekam \(events)")
             return
         }
-        #expect(message.contains("seit 3 min"))
+        #expect(message.contains("for 3 min"))
         #expect(await github.merges.count < 30)
     }
 
@@ -143,7 +143,7 @@ private func settled(_ radar: Radar) async {
         let radar = await makeRadar(github)
         radar.onEvent = { events.append($0) }
         radar.merge("1", method: .merge)
-        #expect(events == [.actionFailed("Merge-Methode Merge ist in a/b nicht erlaubt.")])
+        #expect(events == [.actionFailed("Merge method Merge is not allowed in a/b.")])
         #expect(await github.merges.isEmpty)
     }
 

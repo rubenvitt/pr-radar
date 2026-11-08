@@ -54,12 +54,12 @@ impl Summary {
 
     fn headline(&self) -> String {
         if self.loading {
-            return "Noch keine Daten".into();
+            return tr!("No data yet", "Noch keine Daten").into();
         }
         match self.failed {
-            0 => "Keine roten Pipelines".into(),
-            1 => "1 rote Pipeline".into(),
-            n => format!("{n} rote Pipelines"),
+            0 => tr!("No failed pipelines", "Keine roten Pipelines").into(),
+            1 => tr!("1 failed pipeline", "1 rote Pipeline").into(),
+            n => trf!("{n} failed pipelines", "{n} rote Pipelines"),
         }
     }
 
@@ -163,8 +163,12 @@ mod mac {
         if summary.failed > 0 {
             let more = summary.failed - summary.listed.len();
             let title = match more {
-                0 => "Rote PRs in PR Radar zeigen".to_string(),
-                n => format!("Alle {} roten PRs zeigen ({n} weitere)", summary.failed),
+                0 => tr!("Show failed PRs in PR Radar", "Rote PRs in PR Radar zeigen").to_string(),
+                n => trf!(
+                    "Show all {} failed PRs ({n} more)",
+                    "Alle {} roten PRs zeigen ({n} weitere)",
+                    summary.failed
+                ),
             };
             entries.push(Entry::Item {
                 title,
@@ -175,17 +179,17 @@ mod mac {
         entries.extend([
             Entry::Separator,
             Entry::Item {
-                title: "PR Radar öffnen".into(),
+                title: tr!("Open PR Radar", "PR Radar öffnen").into(),
                 tag: TAG_OPEN_WINDOW,
                 tooltip: None,
             },
             Entry::LoginItem {
-                title: "Beim Anmelden starten".into(),
+                title: tr!("Open at Login", "Beim Anmelden starten").into(),
                 tag: TAG_LOGIN,
             },
             Entry::Separator,
             Entry::Item {
-                title: "PR Radar beenden".into(),
+                title: tr!("Quit PR Radar", "PR Radar beenden").into(),
                 tag: TAG_QUIT,
                 tooltip: None,
             },
@@ -250,7 +254,7 @@ mod mac {
         };
         if let Err(e) = result {
             log::warn!("Beim Anmelden starten: {e}");
-            crate::ui::show_error("Beim Anmelden starten", e, cx);
+            crate::ui::show_error(tr!("Open at Login", "Beim Anmelden starten"), e, cx);
         }
         crate::ui::refresh_menus(cx);
     }
@@ -308,7 +312,9 @@ mod tests {
         let s = Summary::new(None);
         assert!(s.loading);
         assert_eq!(s.badge(), None);
-        assert_eq!(s.headline(), "Noch keine Daten");
+        assert_eq!(s.headline(), "No data yet");
+        let de = crate::l10n::with_lang(crate::l10n::Lang::De, || s.headline());
+        assert_eq!(de, "Noch keine Daten");
     }
 
     #[test]
@@ -321,7 +327,7 @@ mod tests {
         ])));
         assert_eq!(s.failed, 2);
         assert_eq!(s.badge().as_deref(), Some("2"));
-        assert_eq!(s.headline(), "2 rote Pipelines");
+        assert_eq!(s.headline(), "2 failed pipelines");
         let urls: Vec<&str> = s.listed.iter().map(|(_, u)| u.as_str()).collect();
         assert_eq!(
             urls,
@@ -336,8 +342,8 @@ mod tests {
     fn alles_gruen_ohne_badge() {
         let s = Summary::new(Some(&snapshot(vec![pr(1, PipelineState::Passed, 1)])));
         assert_eq!(s.badge(), None);
-        assert_eq!(s.headline(), "Keine roten Pipelines");
-        assert_eq!(s.tooltip(), "PR Radar – Keine roten Pipelines");
+        assert_eq!(s.headline(), "No failed pipelines");
+        assert_eq!(s.tooltip(), "PR Radar – No failed pipelines");
     }
 
     #[test]
@@ -348,7 +354,7 @@ mod tests {
         assert_eq!(s.listed.len(), MAX_LISTED);
         assert_eq!(s.badge().as_deref(), Some("99+"));
         let one = Summary::new(Some(&snapshot(vec![pr(1, PipelineState::Failed, 0)])));
-        assert_eq!(one.headline(), "1 rote Pipeline");
+        assert_eq!(one.headline(), "1 failed pipeline");
     }
 
     #[test]

@@ -17,9 +17,9 @@ struct OpenPRsView: View {
                     SetupStateView()
                 }
             }
-            .navigationTitle(radar.prefs.quick == .all ? "Pull Requests" : radar.prefs.quick.label)
+            .navigationTitle(radar.prefs.quick == .all ? String(localized: "Pull Requests") : radar.prefs.quick.label)
             .navigationDestination(for: String.self) { PRDetailView(prID: $0) }
-            .searchable(text: $query, prompt: "Titel, Repo, Autor, Branch, #Nr.")
+            .searchable(text: $query, prompt: "Title, repo, author, branch, #number")
             .refreshable { await radar.refreshNow() }
             .toolbar { toolbar }
         }
@@ -32,8 +32,9 @@ struct OpenPRsView: View {
                 ScrollView {
                     StaleBanner().padding()
                     ContentUnavailableView(
-                        "Nichts offen", systemImage: "tray",
-                        description: Text(query.isEmpty ? "Keine Pull Requests für diesen Filter." : "Keine Treffer für „\(query)“."))
+                        "Nothing Open", systemImage: "tray",
+                        description: query.isEmpty
+                            ? Text("No pull requests for this filter.") : Text("No results for “\(query)”."))
                 }
             } else if d.prefs.view == .flow {
                 flow(d)
@@ -129,17 +130,17 @@ struct OpenPRsView: View {
                     derived: Derived(snapshot: snapshot, prefs: radar.prefs, query: query))
             }
             Menu {
-                Picker("Darstellung", selection: viewBinding) {
-                    Label("Liste", systemImage: "list.bullet").tag(ViewMode.list)
+                Picker("Layout", selection: viewBinding) {
+                    Label("List", systemImage: "list.bullet").tag(ViewMode.list)
                     Label("Flow", systemImage: "point.3.connected.trianglepath.dotted").tag(ViewMode.flow)
                 }
                 Toggle(isOn: groupedBinding) {
-                    Label("Nach Repo gruppieren", systemImage: "square.stack")
+                    Label("Group by Repo", systemImage: "square.stack")
                 }
                 Divider()
                 RepoFilterMenu()
             } label: {
-                Label("Ansicht", systemImage: radar.prefs.repoFilter.isEmpty ? "ellipsis.circle" : "line.3.horizontal.decrease.circle.fill")
+                Label("View Options", systemImage: radar.prefs.repoFilter.isEmpty ? "ellipsis.circle" : "line.3.horizontal.decrease.circle.fill")
             }
         }
     }
@@ -186,7 +187,7 @@ struct QuickFilterBar: View {
                         HStack(spacing: 5) {
                             Image(systemName: q.symbol).imageScale(.small)
                             Text(q.label)
-                            Text("\(count)")
+                            Text(verbatim: "\(count)")
                                 .monospacedDigit()
                                 .foregroundStyle(selected ? Color.white.opacity(0.8) : Color.secondary)
                         }
@@ -220,22 +221,22 @@ struct MergeAllButton: View {
             Button {
                 confirm = true
             } label: {
-                Label("Alle mergen (\(plan.count))", systemImage: "arrow.triangle.merge")
+                Label("Merge All (\(plan.count))", systemImage: "arrow.triangle.merge")
                     .labelStyle(.titleAndIcon)
             }
             .tint(.green)
             .confirmationDialog(
-                "\(plan.count) PRs jetzt mergen?", isPresented: $confirm, titleVisibility: .visible
+                "Merge \(plan.count) PRs now?", isPresented: $confirm, titleVisibility: .visible
             ) {
                 if plan.needsChoice {
                     ForEach(plan.offered) { m in
-                        Button("Mit \(m.label) mergen") { radar.mergeAll(plan.items(preferred: m)) }
+                        Button("Merge with \(m.label)") { radar.mergeAll(plan.items(preferred: m)) }
                     }
                 } else {
-                    Button("Mergen") { radar.mergeAll(plan.items(preferred: nil)) }
+                    Button("Merge") { radar.mergeAll(plan.items(preferred: nil)) }
                 }
             } message: {
-                Text("Je Repo und Ziel-Branch nacheinander. Lehnt GitHub vorübergehend ab, wird erneut versucht bzw. Auto-Merge aktiviert.")
+                Text("One at a time per repo and target branch. If GitHub temporarily refuses, it retries or enables Auto-merge instead.")
             }
         }
     }

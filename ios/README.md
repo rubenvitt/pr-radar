@@ -15,6 +15,7 @@ Die iPhone-/iPad-App zur macOS-App – gleiche Funktionen, in SwiftUI. Spricht G
 - iPad: Seitenleiste, Tastatur `⌘R` neu laden, `⌘1–4` Bereiche, `⌘L` Liste/Flow, `⌘G` gruppieren
 - Hell/Dunkel, Dynamic Type, VoiceOver-Beschriftungen; der wandernde Punkt im Flow entfällt bei „Bewegung reduzieren“
 - **Demo-Modus** mit Beispieldaten: ohne Token und Repos ausprobieren (Knopf „Mit Beispieldaten ausprobieren“ im leeren Zustand)
+- Englisch (Standard) und Deutsch per String Catalog (`PRRadar/Localizable.xcstrings`, Texte des Kerns in `Packages/PRRadarCore/Sources/PRRadarCore/Resources/Localizable.xcstrings`); neue Texte auf Englisch schreiben und die deutsche Übersetzung im Catalog ergänzen – `L10nTests` prüft, dass keine fehlt
 
 ## Start
 

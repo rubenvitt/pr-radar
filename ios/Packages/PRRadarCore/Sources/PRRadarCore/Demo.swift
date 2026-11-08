@@ -228,7 +228,7 @@ public actor DemoGitHub: GitHubAPI {
         var s = snapshot
         // Entfernte Repos verschwinden wie bei GitHub; hinzugefügte gibt es in der Demo nicht.
         s.repos = repos.map { full in
-            s.repo(full) ?? .unavailable(full, error: "Im Demo-Modus gibt es nur die Beispiel-Repos.")
+            s.repo(full) ?? .unavailable(full, error: L10n.tr("Demo mode only includes the sample repos."))
         }
         s.open.removeAll { !repos.contains($0.repo) }
         s.merged.removeAll { !repos.contains($0.repo) }

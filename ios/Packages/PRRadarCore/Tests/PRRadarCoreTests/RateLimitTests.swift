@@ -90,7 +90,7 @@ private struct FixedTransport: HTTPTransport {
         await #expect(throws: GitHubError.http(403, "Resource not accessible by integration")) {
             _ = try await GitHubClient(transport: denied, token: { "t" }).fetch(repos: ["a/b"])
         }
-        #expect(describeHTTPError(403, message: "x").contains("Rechte"))
+        #expect(describeHTTPError(403, message: "x").contains("permissions"))
     }
 
     @Test func drosselungUeberHeaderUndGraphQL() async {
@@ -162,7 +162,7 @@ private struct FixedTransport: HTTPTransport {
 
     @Test func intervallText() {
         #expect(intervalLabel(30) == "30 s")
-        #expect(intervalLabel(300) == "5 Min.")
-        #expect(intervalLabel(605) == "11 Min.")
+        #expect(intervalLabel(300) == "5 min")
+        #expect(intervalLabel(605) == "11 min")
     }
 }

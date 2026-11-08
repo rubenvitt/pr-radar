@@ -149,7 +149,7 @@ fn review_stage(pr: &OpenPr, viewer: Option<&str>) -> Stage {
             Tone::Accent,
             Lucide::UserCheck,
             tr!("Your review", "Dein Review"),
-            tr!("requested", "angefragt"),
+            tr!("awaiting you", "angefragt"),
         );
     }
     match pr.review_decision {

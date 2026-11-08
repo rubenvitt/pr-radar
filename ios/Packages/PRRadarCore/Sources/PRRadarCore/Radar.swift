@@ -35,10 +35,10 @@ func waitAfterSuccess(_ rateLimit: RateLimit?, base: TimeInterval, now: Date) ->
     return min(max(reset.timeIntervalSince(now) + resetSlack, base), maxRateLimitWait)
 }
 
-/// „30 s“ bzw. bei längeren Pausen (Backoff, Drosselung) „5 Min.“
+/// „30 s“ bzw. bei längeren Pausen (Backoff, Drosselung) „5 min“ / „5 Min.“
 public func intervalLabel(_ interval: TimeInterval) -> String {
     let secs = Int(interval.rounded())
-    return secs < 120 ? "\(secs) s" : "\((secs + 59) / 60) Min."
+    return secs < 120 ? "\(secs) s" : L10n.tr("%lld min", (secs + 59) / 60)
 }
 
 /// So lange wird ein Merge bei vorübergehenden GitHub-Fehlern wiederholt.
@@ -86,14 +86,14 @@ public enum RadarError: LocalizedError, Equatable {
 
     public var errorDescription: String? {
         switch self {
-        case .invalidRepo: "Ungültiges Repo – erwartet owner/name oder eine GitHub-URL."
-        case let .duplicateRepo(full): "\(full) ist schon in der Liste."
+        case .invalidRepo: L10n.tr("Invalid repo – expected owner/name or a GitHub URL.")
+        case let .duplicateRepo(full): L10n.tr("%@ is already in the list.", full)
         case let .aborted(reason): reason
         case let .mergeTimedOut(detail):
-            "GitHub lässt den Merge seit \(Int(mergeDeadline / 60)) min nicht zu: \(detail)"
-        case .notLoaded: "Noch keine Daten geladen."
-        case .notOpen: "Pull Request nicht mehr offen."
-        case let .methodNotAllowed(m, repo): "Merge-Methode \(m.label) ist in \(repo) nicht erlaubt."
+            L10n.tr("GitHub has not allowed the merge for %lld min: %@", Int(mergeDeadline / 60), detail)
+        case .notLoaded: L10n.tr("No data loaded yet.")
+        case .notOpen: L10n.tr("Pull request is no longer open.")
+        case let .methodNotAllowed(m, repo): L10n.tr("Merge method %@ is not allowed in %@.", m.label, repo)
         }
     }
 }
@@ -567,10 +567,10 @@ func nextRound(_ snapshot: Snapshot, prID: String, head: String) -> Round {
     // PR inzwischen weg (gemergt/geschlossen)? Dann ist nichts mehr zu tun.
     guard let pr = snapshot.openPR(prID) else { return .done(.merged) }
     if pr.headOID != head {
-        return .abort("Seit dem Tippen wurden neue Commits gepusht – Merge abgebrochen.")
+        return .abort(L10n.tr("New commits were pushed since you tapped – merge cancelled."))
     }
     if let am = pr.autoMerge { return .done(.autoMerge(am.method)) }
-    if pr.hasConflict { return .abort("Merge-Konflikt – Branch muss erst aktualisiert werden.") }
+    if pr.hasConflict { return .abort(L10n.tr("Merge conflict – the branch needs to be updated first.")) }
     return .attempt(autoMergeAllowed: snapshot.repo(pr.repo)?.autoMergeAllowed ?? false)
 }
 
