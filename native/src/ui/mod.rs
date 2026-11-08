@@ -338,6 +338,10 @@ pub struct Workspace {
     expanded: HashSet<String>,
     /// Releases, deren Aufklapp-Zustand vom Standard abweicht
     toggled_releases: HashSet<String>,
+    /// Releases, deren Notes höher als die Kappung sind (gemessen beim Zeichnen)
+    long_notes: HashSet<String>,
+    /// Releases, deren Notes per „Mehr anzeigen“ vollständig zu sehen sind
+    full_notes: HashSet<String>,
     /// Kürzlich geänderte PRs → Durchlauf-Nummer des Aufleuchtens
     flashes: HashMap<String, u64>,
     flash_epoch: u64,
@@ -539,6 +543,8 @@ impl Workspace {
             focus,
             expanded: HashSet::new(),
             toggled_releases: HashSet::new(),
+            long_notes: HashSet::new(),
+            full_notes: HashSet::new(),
             flashes: HashMap::new(),
             flash_epoch: 0,
             manual_refresh: false,
