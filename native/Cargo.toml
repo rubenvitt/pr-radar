@@ -34,5 +34,5 @@ objc2-service-management = { version = "0.3.2", default-features = false, featur
 ] }
 
 [dev-dependencies]
-# Kopflose GPUI-Fenster für UI-Tests (Fokus, Kürzel, Sheets).
+# Kopflose GPUI-Fenster für UI-Tests (Fokus, Kürzel, Sheets, Kappung der Release Notes).
 gpui-kit = { version = "=0.7.0", features = ["test-support"] }
