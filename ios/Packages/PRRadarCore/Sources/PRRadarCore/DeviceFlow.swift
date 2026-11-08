@@ -80,6 +80,8 @@ public enum DeviceFlowError: LocalizedError, Equatable, Sendable {
     case badClient
     case rejected(String)
     case unreadable
+    /// GitHub war wiederholt nicht erreichbar; die Anmeldung ist beendet.
+    case unavailable
 
     public var errorDescription: String? {
         switch self {
@@ -90,6 +92,7 @@ public enum DeviceFlowError: LocalizedError, Equatable, Sendable {
         case .badClient: "GitHub kennt die Client-ID von PR Radar nicht. Die Anmeldung ist falsch eingerichtet."
         case let .rejected(detail): "GitHub lehnt die Anmeldung ab: \(detail)"
         case .unreadable: "Unerwartete Antwort von GitHub beim Anmelden"
+        case .unavailable: "GitHub ist gerade nicht erreichbar. Bitte erneut anmelden."
         }
     }
 
@@ -165,7 +168,13 @@ public struct DeviceFlow: Sendable {
 
     /// Schritt 1: Code für die Anmeldung anfordern.
     public func start() async throws -> DeviceCode {
-        try parseDeviceCode(try await post(deviceCodeURL, ["client_id": clientID, "scope": GitHubOAuth.scopes]))
+        do {
+            return try parseDeviceCode(
+                try await post(deviceCodeURL, ["client_id": clientID, "scope": GitHubOAuth.scopes]))
+        } catch let error as GitHubError where error.isTransient {
+            // „Neuer Versuch folgt automatisch“ stimmt hier nicht: Die Anmeldung ist beendet.
+            throw DeviceFlowError.unavailable
+        }
     }
 
     /// Schritt 2: Fragen, ob der Nutzer den Code bestätigt hat.
@@ -190,8 +199,9 @@ public struct DeviceFlow: Sendable {
                 case .pending: failures = 0
                 case let .slowDown(next): interval = next
                 }
-            } catch let error as GitHubError where error.isTransient && failures < 3 {
+            } catch let error as GitHubError where error.isTransient {
                 failures += 1
+                if failures > 3 { throw DeviceFlowError.unavailable }
             }
         }
     }

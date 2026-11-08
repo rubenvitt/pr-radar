@@ -271,7 +271,7 @@ impl Radar {
                     }
                     Err(e) => {
                         log::warn!("Anmeldung fehlgeschlagen: {e:#}");
-                        this.login = Login::Failed(format!("{e:#}"));
+                        this.login = Login::Failed(login_failure(&e));
                     }
                 }
                 cx.notify();
@@ -777,6 +777,16 @@ async fn merge_until_done(
     }
 }
 
+/// Text für eine gescheiterte Anmeldung. Vorübergehende Fehler versprechen sonst „Neuer Versuch
+/// folgt automatisch“ – die Anmeldung ist dann aber beendet und muss neu gestartet werden.
+fn login_failure(e: &anyhow::Error) -> String {
+    if Transient::matches(e) {
+        "GitHub ist gerade nicht erreichbar. Bitte erneut anmelden.".into()
+    } else {
+        format!("{e:#}")
+    }
+}
+
 /// Device Flow bis zum Token. Vorübergehende Fehler (Netz, 408/5xx) beim Warten werden kurz toleriert.
 async fn run_login(
     this: &WeakEntity<Radar>,
@@ -1030,6 +1040,25 @@ mod tests {
             }],
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn gescheiterte_anmeldung_verspricht_keinen_neuen_versuch() {
+        let transient: anyhow::Error = crate::github::Transient(
+            "GitHub hat gerade Probleme. Neuer Versuch folgt automatisch. (HTTP 503)".into(),
+        )
+        .into();
+        let msg = login_failure(&transient);
+        assert!(msg.contains("erneut anmelden"), "{msg}");
+        assert!(!msg.contains("Neuer Versuch"), "{msg}");
+        let timed_out: anyhow::Error = crate::github::TimedOut(Duration::from_secs(30)).into();
+        assert!(login_failure(&timed_out).contains("erneut anmelden"));
+        // Endgültige Fehler behalten ihren Text
+        let denied = anyhow!("Die Anmeldung wurde auf GitHub abgelehnt.");
+        assert_eq!(
+            login_failure(&denied),
+            "Die Anmeldung wurde auf GitHub abgelehnt."
+        );
     }
 
     #[test]
