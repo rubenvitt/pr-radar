@@ -33,9 +33,9 @@ impl Alert {
     /// Titel, Text, Tag und URL zu einem Übergang.
     pub fn new(t: &Transition) -> Self {
         let label = match t.kind {
-            TransitionKind::Failed => "Pipeline rot",
-            TransitionKind::Passed => "Pipeline grün",
-            TransitionKind::Merged => "Gemergt",
+            TransitionKind::Failed => tr!("Pipeline failed", "Pipeline rot"),
+            TransitionKind::Passed => tr!("Pipeline passed", "Pipeline grün"),
+            TransitionKind::Merged => tr!("Merged", "Gemergt"),
         };
         Self {
             title: format!("{label} · {}#{}", t.pr.repo, t.pr.number),
