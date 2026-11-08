@@ -62,7 +62,8 @@ actions!(
         About,
         OpenHelp,
         OpenLicense,
-        RevealLog
+        RevealLog,
+        ToggleLoginItem
     ]
 );
 
@@ -134,11 +135,19 @@ pub fn init(radar: Entity<Radar>, cx: &mut App) {
     cx.set_global(MainRadar(radar));
     cx.on_action(|_: &ShowMainWindow, cx| show_main_window(cx));
 
+    #[cfg(target_os = "macos")]
+    cx.on_action(|_: &ToggleLoginItem, cx| crate::menubar::toggle_login_item(cx));
+    refresh_menus(cx);
+}
+
+/// Setzt die Menüleiste der App (erneut, sobald sich ein Häkchen ändert).
+pub fn refresh_menus(cx: &mut App) {
     cx.set_menus(vec![
         Menu::new("PR Radar").items([
             MenuItem::action("Über PR Radar", About),
             MenuItem::separator(),
             MenuItem::action("Repositories…", OpenSettings),
+            login_menu_item(),
             MenuItem::separator(),
             MenuItem::os_submenu("Dienste", SystemMenuType::Services),
             MenuItem::separator(),
@@ -189,6 +198,26 @@ pub fn init(radar: Entity<Radar>, cx: &mut App) {
             MenuItem::action("Protokoll im Finder zeigen", RevealLog),
         ]),
     ]);
+}
+
+#[cfg(target_os = "macos")]
+fn login_menu_item() -> MenuItem {
+    MenuItem::action("Beim Anmelden starten", ToggleLoginItem)
+        .checked(crate::menubar::login_item_checked())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn login_menu_item() -> MenuItem {
+    MenuItem::action("Beim Anmelden starten", ToggleLoginItem).disabled(true)
+}
+
+/// Zeigt einen Fehler im Hauptfenster (öffnet es bei Bedarf).
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub fn show_error(title: &'static str, message: String, cx: &mut App) {
+    show_main_window(cx);
+    with_active_window(cx, move |window, cx| {
+        window.push_notification(Notification::error(message).title(title), cx);
+    });
 }
 
 /// Öffnet das Hauptfenster.
@@ -402,12 +431,7 @@ impl Workspace {
                 let failed = radar
                     .read(cx)
                     .snapshot()
-                    .map(|s| {
-                        s.open
-                            .iter()
-                            .filter(|p| p.pipeline.state == PipelineState::Failed)
-                            .count()
-                    })
+                    .map(|s| s.failed().count())
                     .unwrap_or(0);
                 window.set_window_title(&match failed {
                     0 => "PR Radar".to_string(),
