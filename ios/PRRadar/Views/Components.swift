@@ -290,6 +290,7 @@ struct SetupStateView: View {
             } actions: {
                 Button("Token eintragen") { radar.updatePrefs { $0.tab = .settings } }
                     .buttonStyle(.borderedProminent)
+                DemoButton()
             }
         } else if radar.repos.isEmpty {
             ContentUnavailableView {
@@ -299,6 +300,7 @@ struct SetupStateView: View {
             } actions: {
                 Button("Repositories hinzufügen") { radar.updatePrefs { $0.tab = .settings } }
                     .buttonStyle(.borderedProminent)
+                DemoButton()
             }
         } else if let error = radar.status.error {
             ContentUnavailableView {
@@ -311,6 +313,48 @@ struct SetupStateView: View {
         } else {
             ProgressView("Lade Daten von GitHub …")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+}
+
+/// Startet den Demo-Modus mit Beispieldaten – ausprobieren ohne Token und Repos.
+private struct DemoButton: View {
+    @Environment(AppState.self) private var app
+
+    var body: some View {
+        Button("Mit Beispieldaten ausprobieren", systemImage: "play.rectangle") { app.startDemo() }
+            .buttonStyle(.bordered)
+    }
+}
+
+/// Leiste über jedem Bereich, solange der Demo-Modus läuft – mit Ausstieg.
+struct DemoBanner: View {
+    @Environment(AppState.self) private var app
+
+    var body: some View {
+        if app.isDemo {
+            HStack(spacing: 10) {
+                Image(systemName: "play.rectangle.fill")
+                    .foregroundStyle(Color.accentColor)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Demo-Modus").font(.subheadline.weight(.semibold))
+                    Text("Beispieldaten, nicht mit GitHub verbunden")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .accessibilityElement(children: .combine)
+                Spacer(minLength: 0)
+                Button("Beenden") { app.endDemo() }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .accessibilityLabel("Demo-Modus beenden")
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity)
+            .background(Color.accentColor.opacity(0.12))
+            .background(.bar)
         }
     }
 }
