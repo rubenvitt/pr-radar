@@ -9,7 +9,7 @@ use chrono::{DateTime, Utc};
 use gpui_kit::{AppContext as _, AsyncApp, Context, EventEmitter, Task, WeakEntity};
 
 use crate::config::{Config, Prefs, parse_repo};
-use crate::github::{GitHub, RateLimit, RateLimited, TokenSource};
+use crate::github::{GitHub, RateLimit, RateLimited, TokenSource, UNKNOWN_RATE_LIMIT_WAIT};
 use crate::model::{AutoMerge, MergeMethod, Snapshot, Transition, diff_snapshots};
 
 /// So lange wird ein Merge bei vorübergehenden GitHub-Fehlern wiederholt.
@@ -55,8 +55,6 @@ const ACTIVE: Duration = Duration::from_secs(10);
 const MAX_BACKOFF: Duration = Duration::from_secs(300);
 /// Längste Pause bei Drosselung (GitHub setzt das Kontingent stündlich zurück)
 const MAX_RATE_LIMIT_WAIT: Duration = Duration::from_secs(3600);
-/// Drosselung ohne Zeitangabe: so lange warten
-const UNKNOWN_RATE_LIMIT_WAIT: Duration = Duration::from_secs(120);
 /// Puffer nach `reset_at`, damit der erste Versuch nicht knapp davor landet
 const RESET_SLACK: Duration = Duration::from_secs(5);
 
