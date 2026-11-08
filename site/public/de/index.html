@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PR Radar – Pull Requests über alle deine GitHub-Repos</title>
+  <meta name="description" content="PR Radar zeigt offene Pull Requests, Pipelines, Auto-Merge, zuletzt Gemergtes und Releases über viele GitHub-Repositories. Native Apps für Mac, iPhone und iPad. Ohne Server, ohne Tracking.">
+  <link rel="alternate" hreflang="en" href="/">
+  <link rel="alternate" hreflang="de" href="/de/">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <meta property="og:title" content="PR Radar">
+  <meta property="og:description" content="Pull Requests, Pipelines und Merges über alle deine GitHub-Repos. Nativ für Mac, iPhone und iPad.">
+  <meta property="og:image" content="/icon-256.png">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <a class="skip" href="#main">Zum Inhalt</a>
+  <header class="site-header">
+    <div class="wrap">
+      <a class="brand" href="/de/"><img src="/icon.svg" alt="" width="30" height="30">PR Radar</a>
+      <nav class="site-nav" aria-label="Hauptmenü">
+        <a href="#funktionen">Funktionen</a>
+        <a href="#datenschutz">Datenschutz</a>
+        <a href="/de/support/">Support</a>
+      </nav>
+      <a class="lang" href="/" hreflang="en" lang="en">English</a>
+    </div>
+  </header>
+
+  <main id="main">
+    <div class="wrap hero">
+      <div>
+        <p class="eyebrow">Für Mac, iPhone und iPad</p>
+        <h1>Alle Pull Requests auf einem Radar.</h1>
+        <p class="lead">PR Radar bündelt offene Pull Requests, Pipelines, Auto-Merge, zuletzt Gemergtes und Releases aus all deinen GitHub-Repositories in einem ruhigen Fenster – statt in zwanzig Browser-Tabs.</p>
+        <div class="cta">
+          <a class="button primary" href="#verfuegbarkeit">PR Radar holen</a>
+          <a class="button ghost" href="https://github.com/rubenvitt/pr-radar">Quellcode</a>
+        </div>
+        <p class="note">Spricht direkt mit GitHub. Kein Konto, kein Server, kein Tracking.</p>
+      </div>
+
+      <div class="mock" aria-hidden="true">
+        <div class="mock-bar"><i></i><i></i><i></i><span>Offen · 7 Pull Requests</span></div>
+        <div class="mock-chips">
+          <span class="chip on">läuft</span><span class="chip">rot</span><span class="chip">grün</span><span class="chip">Auto-Merge</span><span class="chip">Dein Review</span>
+        </div>
+        <div class="mock-row"><span class="dot yellow"></span><div><b>Add OAuth device flow</b><small>acme/app · feat/login · +412 −38</small></div><span class="tag auto">Auto-Merge</span></div>
+        <div class="mock-row"><span class="dot green"></span><div><b>Bump serde to 1.0.215</b><small>acme/api · deps · +4 −4</small></div><span class="tag ready">Bereit</span></div>
+        <div class="mock-row"><span class="dot red"></span><div><b>Split dashboard query per 20 repos</b><small>acme/web · perf/query · +96 −51</small></div><span class="tag fail">2 Checks rot</span></div>
+        <div class="mock-row"><span class="dot green"></span><div><b>Release 2.4.0</b><small>acme/cli · release · +12 −3</small></div><span class="tag ready">Bereit</span></div>
+      </div>
+    </div>
+
+    <section id="funktionen">
+      <div class="wrap">
+        <h2 class="section-title">Was du auf einen Blick siehst</h2>
+        <p class="section-lead">Gebaut für alle, die viele Repositories im Blick behalten: Maintainer, Plattform-Teams, Freelancer mit mehreren Kunden.</p>
+        <div class="grid">
+          <article class="card"><div class="icon" aria-hidden="true">⇄</div><h3>Alle offenen Pull Requests</h3><p>Nach Repository gruppiert oder als eine Liste, mit Review-Status, Konflikten, Labels, Branch und Diff-Größe. Als Liste oder als Flow von den Checks bis zum Merge.</p></article>
+          <article class="card"><div class="icon" aria-hidden="true">●</div><h3>Pipelines live</h3><p>Läuft, rot oder grün für jeden Pull Request, jeder Check einen Klick entfernt. Solange etwas läuft, aktualisiert PR Radar alle 10 Sekunden.</p></article>
+          <article class="card"><div class="icon" aria-hidden="true">✓</div><h3>Auto-Merge und Mergen</h3><p>Auto-Merge einschalten oder direkt mergen. PR Radar bietet nur die Methoden an, die Repo-Einstellungen und Rulesets des Ziel-Branches erlauben.</p></article>
+          <article class="card"><div class="icon" aria-hidden="true">≡</div><h3>Alle mergen</h3><p>Alle sichtbaren, sofort mergebaren Pull Requests nacheinander mergen, je Repository und Ziel-Branch. Vorübergehende Ablehnungen werden sicher wiederholt.</p></article>
+          <article class="card"><div class="icon" aria-hidden="true">◷</div><h3>Zuletzt gemergt und Releases</h3><p>Eine Timeline nach Tagen mit allem, was gelandet ist, und die neuesten Releases aller Repositories samt Beschreibung.</p></article>
+          <article class="card"><div class="icon" aria-hidden="true">🔔</div><h3>Benachrichtigungen</h3><p>Eine Systemmitteilung, wenn eine Pipeline rot oder grün wird oder ein Pull Request gemergt wurde. Schnellfilter für alles, was auf dich wartet.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section id="datenschutz">
+      <div class="wrap split">
+        <div class="callout">
+          <h3>Datenschutz von Anfang an</h3>
+          <ul>
+            <li>Dein GitHub-Token bleibt auf deinem Gerät.</li>
+            <li>Die Apps sprechen direkt mit GitHub. Es gibt keinen PR-Radar-Server dazwischen.</li>
+            <li>Keine Analyse, kein Tracking, keine Werbung, kein Konto.</li>
+          </ul>
+          <p class="note"><a href="/de/datenschutz/">Zur Datenschutzerklärung</a></p>
+        </div>
+        <div class="callout">
+          <h3>Nativ auf jedem Gerät</h3>
+          <ul>
+            <li><strong>Mac:</strong> eine schnelle native App in Rust, folgt Hell und Dunkel, komplett per Tastatur bedienbar.</li>
+            <li><strong>iPhone und iPad:</strong> dieselben Funktionen in SwiftUI, mit Wischgesten, Dynamic Type und VoiceOver.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="verfuegbarkeit">
+      <div class="wrap">
+        <h2 class="section-title">Verfügbarkeit</h2>
+        <p class="section-lead">PR Radar bereitet sich auf die erste Version vor. Die Mac-App gibt es direkt, die App für iPhone und iPad im App Store. Ein Kauf gilt für Mac, iPhone und iPad.</p>
+        <div class="split">
+          <div class="card"><h3>Mac</h3><p>Direkter Download, signiert und notarisiert. Bald verfügbar.</p></div>
+          <div class="card"><h3>iPhone und iPad</h3><p>Im App Store. Bald verfügbar.</p></div>
+          <div class="card"><h3>Quellcode offen</h3><p>Der Code ist öffentlich unter der <a href="https://github.com/rubenvitt/pr-radar/blob/main/LICENSE.md">Functional Source License</a>. Jede Version steht zwei Jahre nach Erscheinen zusätzlich unter Apache-2.0.</p></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <span>© 2026 Ruben Vitt</span>
+      <nav aria-label="Rechtliches">
+        <a href="/de/support/">Support</a>
+        <a href="/de/datenschutz/">Datenschutz</a>
+        <a href="/de/eula/">Lizenzvereinbarung (EULA)</a>
+        <a href="/imprint/">Impressum</a>
+        <a href="https://github.com/rubenvitt/pr-radar">GitHub</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>

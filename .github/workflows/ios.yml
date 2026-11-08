@@ -3,7 +3,7 @@ name: iOS
 on:
   push:
     branches: [main]
-    paths: ["ios/**", ".github/workflows/ios.yml"]
+    paths: ["ios/**", "site/public/**", ".github/workflows/ios.yml"]
   pull_request:
 
 concurrency:

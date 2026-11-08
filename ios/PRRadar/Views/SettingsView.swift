@@ -16,13 +16,7 @@ struct SettingsView: View {
                     .disabled(app.isDemo)
                 NotificationsSection()
                 StatusSection()
-                Section("Info") {
-                    LabeledContent("Version", value: Bundle.main.shortVersion)
-                    Link(destination: URL(string: "https://github.com/rubenvitt/pr-radar")!) {
-                        Label("Quellcode auf GitHub", systemImage: "chevron.left.forwardslash.chevron.right")
-                    }
-                    LabeledContent("Lizenz", value: "FSL-1.1-ALv2")
-                }
+                InfoSection()
             }
             .navigationTitle("Einstellungen")
             .toolbar { EditButton() }
@@ -212,6 +206,37 @@ private struct StatusSection: View {
                 Text(error).font(.footnote).foregroundStyle(.red)
             }
             Button("Jetzt aktualisieren", systemImage: "arrow.clockwise") { radar.refresh() }
+        }
+    }
+}
+
+/// Version, Produktseite, Support und Rechtstexte (Pflicht für den App Store).
+private struct InfoSection: View {
+    var body: some View {
+        Section("Info") {
+            LabeledContent("Version", value: Bundle.main.shortVersion)
+            Link(destination: Site.url(.home)) {
+                Label("PR-Radar-Website", systemImage: "globe")
+            }
+            Link(destination: Site.url(.support)) {
+                Label("Support", systemImage: "questionmark.circle")
+            }
+            Link(destination: Site.supportMail) {
+                Label("E-Mail an den Support", systemImage: "envelope")
+            }
+            Link(destination: Site.url(.privacy)) {
+                Label("Datenschutz", systemImage: "hand.raised")
+            }
+            Link(destination: Site.url(.terms)) {
+                Label("Lizenzvereinbarung (EULA)", systemImage: "doc.text")
+            }
+            Link(destination: Site.url(.imprint)) {
+                Label("Impressum", systemImage: "building.columns")
+            }
+            Link(destination: URL(string: "https://github.com/rubenvitt/pr-radar")!) {
+                Label("Quellcode auf GitHub", systemImage: "chevron.left.forwardslash.chevron.right")
+            }
+            LabeledContent("Lizenz des Quellcodes", value: "FSL-1.1-ALv2")
         }
     }
 }

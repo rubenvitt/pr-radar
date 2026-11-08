@@ -1,0 +1,21 @@
+name: Website
+
+on:
+  push:
+    branches: [main]
+    paths: ["site/**", ".github/workflows/site.yml"]
+  pull_request:
+    paths: ["site/**", ".github/workflows/site.yml"]
+
+jobs:
+  check:
+    name: Links und Ressourcen prüfen
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # Ohne --strict: offene Platzhalter sind hier nur eine Warnung,
+      # den Livegang sperrt der Produktions-Build auf Cloudflare Pages.
+      - run: sh site/build.sh

@@ -1,0 +1,15 @@
+# Kurz- und deutsche Pfade, die Apps, App Store Connect oder Menschen tippen könnten.
+/impressum      /imprint/        301
+/impressum/     /imprint/        301
+/de/impressum   /imprint/        301
+/de/impressum/  /imprint/        301
+/datenschutz    /de/datenschutz/ 301
+/datenschutz/   /de/datenschutz/ 301
+/de/privacy     /de/datenschutz/ 301
+/de/privacy/    /de/datenschutz/ 301
+/eula           /terms/          301
+/eula/          /terms/          301
+/de/terms       /de/eula/        301
+/de/terms/      /de/eula/        301
+/legal          /imprint/        301
+/legal/         /imprint/        301

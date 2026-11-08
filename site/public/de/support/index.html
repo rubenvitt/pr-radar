@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Support – PR Radar</title>
+  <meta name="description" content="Hilfe zu PR Radar: Kontakt, Token-Rechte, Auto-Merge, Benachrichtigungen und Erstattungen.">
+  <link rel="alternate" hreflang="en" href="/support/">
+  <link rel="alternate" hreflang="de" href="/de/support/">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <a class="skip" href="#main">Zum Inhalt</a>
+  <header class="site-header">
+    <div class="wrap">
+      <a class="brand" href="/de/"><img src="/icon.svg" alt="" width="30" height="30">PR Radar</a>
+      <nav class="site-nav" aria-label="Hauptmenü">
+        <a href="/de/#funktionen">Funktionen</a>
+        <a href="/de/datenschutz/">Datenschutz</a>
+        <a href="/de/support/" aria-current="page">Support</a>
+      </nav>
+      <a class="lang" href="/support/" hreflang="en" lang="en">English</a>
+    </div>
+  </header>
+
+  <main id="main" class="prose">
+    <h1>Support</h1>
+    <p class="meta">Fragen, Fehler, Ideen – schreib uns. Wir antworten meist innerhalb weniger Werktage, auf Deutsch oder Englisch.</p>
+
+    <div class="callout">
+      <h3>Kontakt</h3>
+      <p>E-Mail: <a href="mailto:pr-radar@rubeen.dev?subject=PR%20Radar%20Support">pr-radar@rubeen.dev</a></p>
+      <p class="note">Fehler und Wünsche kannst du auch als <a href="https://github.com/rubenvitt/pr-radar/issues">GitHub-Issue</a> melden. Issues dort sind öffentlich.</p>
+    </div>
+
+    <h2>Was uns beim Helfen hilft</h2>
+    <ul>
+      <li>App und Version: auf dem Mac unter <em>PR Radar → Über PR Radar</em>, auf iPhone und iPad unter <em>Einstellungen → Info</em></li>
+      <li>Deine macOS- oder iOS-Version</li>
+      <li>Was du getan hast, was du erwartet hast und was stattdessen passiert ist</li>
+      <li>Auf dem Mac: die Protokolldatei über <em>Hilfe → Protokoll im Finder zeigen</em>. Sie enthält keine Tokens, kann aber Repository-Namen enthalten.</li>
+    </ul>
+    <p><strong>Schick uns niemals deinen GitHub-Token.</strong> Wir fragen nie danach.</p>
+
+    <h2>Häufige Fragen</h2>
+
+    <details>
+      <summary>Welche Rechte braucht mein GitHub-Token?</summary>
+      <p>Einen Fine-grained Personal Access Token für die gewünschten Repositories mit <em>Metadata</em>, <em>Contents</em>, <em>Commit statuses</em> und <em>Actions/Checks</em> (lesen) sowie <em>Pull requests</em> (schreiben, nötig für Merge und Auto-Merge). Erlaubt deine Organisation keine Fine-grained Tokens, nimm einen klassischen Token mit <code>repo</code> oder die GitHub CLI.</p>
+    </details>
+
+    <details>
+      <summary>Woher nimmt die Mac-App meinen Token?</summary>
+      <p>Aus den Umgebungsvariablen <code>GITHUB_TOKEN</code> oder <code>GH_TOKEN</code>, sonst aus der GitHub CLI (<code>gh auth token</code>). Das klappt auch beim Start aus dem Finder. Der Token verlässt deinen Mac nur in Anfragen an GitHub.</p>
+    </details>
+
+    <details>
+      <summary>Warum lässt sich Auto-Merge nicht einschalten?</summary>
+      <p>Auto-Merge muss im Repository erlaubt sein (<em>Settings → General → Allow auto-merge</em>) und greift nur, wenn der Ziel-Branch Branch Protection oder ein Ruleset mit Pflicht-Checks oder Reviews hat.</p>
+    </details>
+
+    <details>
+      <summary>Eine Merge-Methode fehlt.</summary>
+      <p>PR Radar bietet nur Methoden an, die sowohl die Repo-Einstellungen als auch die Rulesets des Ziel-Branches erlauben. Verlangt ein Ruleset zum Beispiel Squash-Merges, fehlt „Merge-Commit“.</p>
+    </details>
+
+    <details>
+      <summary>Ein Repository zeigt „nur lesend“.</summary>
+      <p>Dein Token darf das Repository lesen, aber keine Pull Requests schreiben. Gib dem Token für dieses Repository <em>Pull requests: write</em> oder bitte eine Person mit Owner-Rechten in der Organisation, den Token freizugeben.</p>
+    </details>
+
+    <details>
+      <summary>PR Radar meldet, dass das API-Kontingent aufgebraucht ist.</summary>
+      <p>GitHub begrenzt, wie viele Anfragen ein Token pro Stunde stellen darf. PR Radar pausiert dann automatisch, bis GitHub wieder Anfragen zulässt, und macht danach von selbst weiter. Andere Werkzeuge mit demselben Token teilen sich dieses Kontingent.</p>
+    </details>
+
+    <details>
+      <summary>Ich bekomme keine Benachrichtigungen.</summary>
+      <p>Prüfe, ob Benachrichtigungen in der App eingeschaltet und für PR Radar in den Systemeinstellungen erlaubt sind. Auf iPhone und iPad entscheidet iOS, wie oft Apps im Hintergrund aktualisieren dürfen. Bei geschlossener App können Mitteilungen deshalb später kommen.</p>
+    </details>
+
+    <details>
+      <summary>Wie entferne ich alle meine Daten?</summary>
+      <p>Entferne den Token in der App und lösche die App. Auf dem Mac zusätzlich <code>~/Library/Application Support/pr-radar/</code> und <code>~/Library/Logs/PR Radar/</code> löschen. Auf einem Server speichern wir nichts über dich. Siehe die <a href="/de/datenschutz/">Datenschutzerklärung</a>.</p>
+    </details>
+
+    <details>
+      <summary>Wie bekomme ich mein Geld zurück?</summary>
+      <p>Bei Käufen im App Store beantragst du die Erstattung bei Apple unter <a href="https://reportaproblem.apple.com">reportaproblem.apple.com</a>. Bei direkt gekauften Mac-Lizenzen kümmert sich der Wiederverkäufer, der auf deiner Rechnung steht. Schreib uns, wenn du unsicher bist, wir helfen.</p>
+    </details>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <span>© 2026 Ruben Vitt</span>
+      <nav aria-label="Rechtliches">
+        <a href="/de/support/" aria-current="page">Support</a>
+        <a href="/de/datenschutz/">Datenschutz</a>
+        <a href="/de/eula/">Lizenzvereinbarung (EULA)</a>
+        <a href="/imprint/">Impressum</a>
+        <a href="https://github.com/rubenvitt/pr-radar">GitHub</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>
