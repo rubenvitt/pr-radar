@@ -18,6 +18,8 @@ SIZE="${SIZE:-1240x820}"
 VIEWS="${VIEWS:-offen-liste:--tab open --view list;offen-flow:--tab open --view flow;rot:--tab open --quick failed;gemergt:--tab merged;releases:--tab releases}"
 
 mkdir -p "$OUT"
+# Jede Aufnahme bekommt genau ihre Schalter; geerbte Demo-Variablen würden sie überlagern.
+unset PR_RADAR_APPEARANCE PR_RADAR_DARK PR_RADAR_TAB PR_RADAR_VIEW PR_RADAR_QUICK
 cargo build --quiet
 BIN="target/debug/pr-radar"
 
@@ -38,9 +40,11 @@ shoot_linux() { # name args...
   fi
   xdotool windowsize "$win" "${SIZE%x*}" "${SIZE#*x}" windowmove "$win" 0 0
   sleep "$SETTLE"
-  import -window "$win" "$OUT/$name.png"
+  local rc=0
+  import -window "$win" "$OUT/$name.png" || rc=$?
   kill "$pid" 2>/dev/null || true
   wait "$pid" 2>/dev/null || true
+  return "$rc"
 }
 
 # Fenster-ID über CoreGraphics (Swift aus den Command Line Tools), dann screencapture -l.
@@ -64,9 +68,11 @@ SWIFT
     echo "Kein Fenster für $name" >&2
     return 1
   fi
-  screencapture -x -o -l "$win" "$OUT/$name.png"
+  local rc=0
+  screencapture -x -o -l "$win" "$OUT/$name.png" || rc=$?
   kill "$pid" 2>/dev/null || true
   wait "$pid" 2>/dev/null || true
+  return "$rc"
 }
 
 case "$(uname -s)" in

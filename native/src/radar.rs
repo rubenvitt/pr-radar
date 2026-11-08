@@ -354,7 +354,8 @@ impl Radar {
     }
 
     pub fn remove_repo(&mut self, full: &str, cx: &mut Context<Self>) -> Result<()> {
-        if self.demo {
+        // Die Einstellungen verwerfen das Ergebnis, daher zusätzlich als Hinweis zeigen.
+        if self.demo_only("Repository entfernen", cx) {
             bail!("Im Demo-Modus lassen sich keine Repositories ändern.");
         }
         self.config.remove_repo(full)?;
