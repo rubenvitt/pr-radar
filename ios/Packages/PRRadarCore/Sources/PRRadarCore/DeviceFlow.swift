@@ -176,7 +176,7 @@ public struct DeviceFlow: Sendable {
     }
 
     /// Fragt im verlangten Abstand, bis der Nutzer bestätigt, ablehnt oder der Code abläuft.
-    /// Netzwerkfehler beim Warten werden kurz toleriert.
+    /// Vorübergehende Fehler (Netz, 408/5xx) beim Warten werden kurz toleriert.
     public func waitForToken(_ code: DeviceCode) async throws -> String {
         let deadline = timing.now().addingTimeInterval(code.expiresIn)
         var interval = max(code.interval, 1)
@@ -190,9 +190,8 @@ public struct DeviceFlow: Sendable {
                 case .pending: failures = 0
                 case let .slowDown(next): interval = next
                 }
-            } catch GitHubError.unreachable(let detail) {
+            } catch let error as GitHubError where error.isTransient && failures < 3 {
                 failures += 1
-                if failures > 3 { throw GitHubError.unreachable(detail) }
             }
         }
     }
@@ -221,6 +220,17 @@ public struct DeviceFlow: Sendable {
             throw GitHubError.http(status, gitHubMessage(data))
         }
         return data
+    }
+}
+
+extension GitHubError {
+    /// Lohnt sich beim Anmelden ein neuer Versuch?
+    var isTransient: Bool {
+        switch self {
+        case .unreachable: true
+        case let .http(status, _): status == 408 || status == 429 || (500..<600).contains(status)
+        default: false
+        }
     }
 }
 

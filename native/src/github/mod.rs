@@ -139,6 +139,26 @@ impl std::fmt::Display for TimedOut {
 
 impl std::error::Error for TimedOut {}
 
+/// Vorübergehender Fehler beim Anmelden (Verbindung, abgebrochene Antwort, 408/5xx): Die
+/// Anmeldung fragt weiter, statt aufzugeben.
+#[derive(Debug)]
+pub struct Transient(pub String);
+
+impl std::fmt::Display for Transient {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for Transient {}
+
+impl Transient {
+    /// Lohnt sich ein neuer Versuch nach diesem Fehler?
+    pub fn matches(e: &anyhow::Error) -> bool {
+        e.is::<Transient>() || e.is::<TimedOut>()
+    }
+}
+
 /// Bricht `work` nach `limit` mit `TimedOut` ab. Der Timer läuft unabhängig vom Executor
 /// (`async-io`), damit auch ein Request abbricht, dessen Client nie wieder aufweckt.
 async fn within<T>(limit: Duration, work: impl Future<Output = Result<T>>) -> Result<T> {
@@ -238,6 +258,12 @@ fn describe_http_error(status: u16, body: &str) -> String {
 
 /// Klartext für fehlende Rechte statt GitHubs Rohmeldung; `None`, wenn es kein Rechtefehler ist.
 fn explain_access_error(message: &str, kind: Option<&str>) -> Option<String> {
+    explain_oauth_restriction(message).or_else(|| explain_missing_write(message, kind))
+}
+
+/// Klartext, wenn eine Org OAuth-Apps einschränkt und PR Radar nicht freigegeben hat. Gilt für
+/// Lesen und Schreiben, daher auch beim Abruf der Repos.
+fn explain_oauth_restriction(message: &str) -> Option<String> {
     let lower = message.to_lowercase();
     if lower.contains("oauth app access restrictions") {
         // „… the `acme` organization has enabled OAuth App access restrictions …“
@@ -253,6 +279,13 @@ fn explain_access_error(message: &str, kind: Option<&str>) -> Option<String> {
              Settings → Third-party access → OAuth app policy erlauben."
         ));
     }
+    None
+}
+
+/// Klartext für fehlende Schreibrechte – nur für Mutationen: Beim Lesen bedeutet `FORBIDDEN`
+/// etwas anderes (z. B. SAML oder ein Token ohne Zugriff aufs Repo).
+fn explain_missing_write(message: &str, kind: Option<&str>) -> Option<String> {
+    let lower = message.to_lowercase();
     let denied = kind == Some("FORBIDDEN")
         || [
             "resource not accessible by",
@@ -269,6 +302,11 @@ fn explain_access_error(message: &str, kind: Option<&str>) -> Option<String> {
          im Repo und beim Token „Pull requests: write“ (Fine-grained PAT) bzw. den Scope `repo`."
             .to_string()
     })
+}
+
+/// HTTP-Status, nach denen ein neuer Versuch sinnvoll ist.
+fn is_transient_status(status: u16) -> bool {
+    status == 408 || status == 429 || (500..=599).contains(&status)
 }
 
 /// Fehler einer Mutation: Rechtefehler im Klartext, sonst GitHubs Meldungen.
@@ -426,19 +464,23 @@ impl GitHub {
                 .http
                 .send(req)
                 .await
-                .context("GitHub nicht erreichbar")?;
+                .map_err(|e| Transient(format!("GitHub nicht erreichbar: {e:#}")))?;
             let status = res.status();
             let mut text = String::new();
             res.body_mut()
                 .read_to_string(&mut text)
                 .await
-                .context("GitHub nicht erreichbar")?;
+                .map_err(|e| Transient(format!("Antwort von GitHub abgebrochen: {e}")))?;
             Ok((status, text))
         })
         .await?;
         // Fehler des Device Flows kommen als JSON mit `error`, auch bei HTTP 4xx.
         if !status.is_success() && !text.contains("\"error\"") {
-            bail!("{}", describe_http_error(status.as_u16(), &text));
+            let message = describe_http_error(status.as_u16(), &text);
+            if is_transient_status(status.as_u16()) {
+                return Err(Transient(message).into());
+            }
+            bail!("{message}");
         }
         Ok(text)
     }
@@ -610,7 +652,7 @@ impl GitHub {
                         });
                         let msg = err
                             .map(|e| {
-                                explain_access_error(&e.message, e.kind.as_deref())
+                                explain_oauth_restriction(&e.message)
                                     .unwrap_or_else(|| e.message.clone())
                             })
                             .unwrap_or_else(|| {
@@ -1056,11 +1098,39 @@ mod tests {
                    to third-parties is limited.";
         let msg = explain_access_error(raw, Some("FORBIDDEN")).unwrap();
         assert!(msg.contains("„acme“"), "{msg}");
+        assert_eq!(explain_oauth_restriction(raw), Some(msg.clone()));
         assert!(msg.contains("Third-party access"), "{msg}");
         assert_eq!(
             explain_access_error("Could not resolve to a Repository", Some("NOT_FOUND")),
             None
         );
+    }
+
+    #[test]
+    fn lesefehler_sind_keine_fehlenden_schreibrechte() {
+        // Beim Abruf (Lesen) zählt nur die OAuth-Sperre der Org, sonst bleibt GitHubs Meldung.
+        assert_eq!(
+            explain_oauth_restriction("Resource protected by organization SAML enforcement."),
+            None
+        );
+        assert_eq!(
+            explain_oauth_restriction("Resource not accessible by personal access token"),
+            None
+        );
+    }
+
+    #[test]
+    fn voruebergehende_fehler_beim_anmelden() {
+        assert!(is_transient_status(502));
+        assert!(is_transient_status(408));
+        assert!(!is_transient_status(404));
+        assert!(Transient::matches(&Transient("x".into()).into()));
+        assert!(Transient::matches(
+            &TimedOut(Duration::from_secs(30)).into()
+        ));
+        assert!(!Transient::matches(&anyhow!(
+            "Die Anmeldung wurde abgelehnt"
+        )));
     }
 
     #[test]

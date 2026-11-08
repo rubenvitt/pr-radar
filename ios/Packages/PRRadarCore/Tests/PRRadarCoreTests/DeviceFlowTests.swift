@@ -7,22 +7,25 @@ import Testing
 
 @testable import PRRadarCore
 
-/// Antwortet der Reihe nach mit den vorgegebenen Bodies (HTTP 200) und merkt sich die Anfragen.
+/// Antwortet der Reihe nach mit den vorgegebenen Bodies (HTTP 200, sonst `status`) und merkt sich die Anfragen.
 private final class QueuedTransport: HTTPTransport, @unchecked Sendable {
     private let lock = NSLock()
     private var responses: [Result<String, Error>]
+    private var statuses: [Int]
     private(set) var requests: [URLRequest] = []
 
-    init(_ responses: [Result<String, Error>]) {
+    init(_ responses: [Result<String, Error>], statuses: [Int] = []) {
         self.responses = responses
+        self.statuses = statuses
     }
 
     func send(_ request: URLRequest) async throws -> (Data, Int) {
-        let next = lock.withLock {
+        let (next, status) = lock.withLock {
             requests.append(request)
-            return responses.isEmpty ? .success("{}") : responses.removeFirst()
+            let body = responses.isEmpty ? .success("{}") : responses.removeFirst()
+            return (body, statuses.isEmpty ? 200 : statuses.removeFirst())
         }
-        return (Data(try next.get().utf8), 200)
+        return (Data(try next.get().utf8), status)
     }
 }
 
@@ -92,6 +95,24 @@ private struct Offline: Error {}
                 == "client_id=Ov23li&device_code=dc&grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Adevice_code")
     }
 
+    @Test func serverfehlerBeimWartenWerdenToleriert() async throws {
+        let transport = QueuedTransport(
+            [
+                .success("<html>Bad Gateway</html>"),
+                .success(#"{"message":"Server Error"}"#),
+                .success(#"{"access_token":"gho_abc"}"#),
+            ], statuses: [502, 500, 200])
+        let flow = DeviceFlow(clientID: "id", transport: transport, timing: FakeClock().timing)
+        #expect(try await flow.waitForToken(code) == "gho_abc")
+    }
+
+    @Test func dauerhafteServerfehlerBrechenAb() async {
+        let transport = QueuedTransport(Array(repeating: .success("<html>"), count: 10), statuses: Array(repeating: 503, count: 10))
+        let flow = DeviceFlow(clientID: "id", transport: transport, timing: FakeClock().timing)
+        await #expect(throws: GitHubError.self) { _ = try await flow.waitForToken(code) }
+        #expect(transport.requests.count == 4, "drei Fehler toleriert, der vierte bricht ab")
+    }
+
     @Test func brichtNachAblaufAb() async {
         let transport = QueuedTransport(Array(repeating: .success(#"{"error":"authorization_pending"}"#), count: 500))
         let clock = FakeClock()
@@ -140,5 +161,12 @@ private struct Offline: Error {}
         #expect(msg?.contains("„acme“") == true)
         #expect(msg?.contains("Third-party access") == true)
         #expect(explainAccessError("Could not resolve to a Repository", type: "NOT_FOUND") == nil)
+        #expect(explainOAuthRestriction(raw) == msg)
+    }
+
+    @Test func lesefehlerSindKeineFehlendenSchreibrechte() {
+        // Beim Abruf (Lesen) zählt nur die OAuth-Sperre der Org, sonst bleibt GitHubs Meldung.
+        #expect(explainOAuthRestriction("Resource protected by organization SAML enforcement.") == nil)
+        #expect(explainOAuthRestriction("Resource not accessible by personal access token") == nil)
     }
 }

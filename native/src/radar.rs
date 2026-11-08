@@ -12,7 +12,7 @@ use crate::config::{Config, Loaded, Prefs};
 use crate::demo;
 use crate::github::oauth::{self, PollStep};
 use crate::github::{
-    GitHub, RateLimit, RateLimited, TimedOut, TokenSource, UNKNOWN_RATE_LIMIT_WAIT,
+    GitHub, RateLimit, RateLimited, TokenSource, Transient, UNKNOWN_RATE_LIMIT_WAIT,
 };
 use crate::model::{AutoMerge, MergeMethod, Snapshot, Transition, diff_snapshots};
 
@@ -777,7 +777,7 @@ async fn merge_until_done(
     }
 }
 
-/// Device Flow bis zum Token. Netzwerkfehler beim Warten werden kurz toleriert.
+/// Device Flow bis zum Token. Vorübergehende Fehler (Netz, 408/5xx) beim Warten werden kurz toleriert.
 async fn run_login(
     this: &WeakEntity<Radar>,
     github: Arc<GitHub>,
@@ -817,15 +817,11 @@ async fn run_login(
             }
             Ok(PollStep::Pending) => failures = 0,
             Ok(PollStep::SlowDown(next)) => interval = next,
-            // Ablehnung, Ablauf usw. beenden die Anmeldung sofort; Netzwerkfehler erst nach mehreren Versuchen.
-            Err(e) if is_network_error(&e) && failures < 3 => failures += 1,
+            // Ablehnung, Ablauf usw. beenden die Anmeldung sofort; vorübergehende Fehler erst nach mehreren Versuchen.
+            Err(e) if Transient::matches(&e) && failures < 3 => failures += 1,
             Err(e) => return Err(e),
         }
     }
-}
-
-fn is_network_error(e: &anyhow::Error) -> bool {
-    e.downcast_ref::<TimedOut>().is_some() || format!("{e:#}").contains("GitHub nicht erreichbar")
 }
 
 /// Ablehnungen, die sich von selbst erledigen – etwa direkt nachdem ein anderer PR in denselben
