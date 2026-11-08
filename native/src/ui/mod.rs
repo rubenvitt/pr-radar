@@ -7,6 +7,7 @@ mod motion;
 mod parts;
 mod pr_row;
 mod settings;
+pub mod theme;
 mod views;
 
 use std::collections::{HashMap, HashSet};
