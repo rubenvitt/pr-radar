@@ -69,3 +69,10 @@ Auto-Merge muss im Repo erlaubt sein (Settings → General → *Allow auto-merge
 Der Quellcode ist offen einsehbar. Nutzen, ändern und weitergeben ist erlaubt, nur kein konkurrierendes kommerzielles Produkt daraus machen. Zwei Jahre nach ihrer Veröffentlichung steht jede Version zusätzlich unter Apache-2.0.
 
 Stände bis einschließlich Commit `469e369` (2. November 2026) wurden unter Apache-2.0 veröffentlicht und bleiben das.
+
+### Drittanbieter
+
+- **Rust-Abhängigkeiten:** nur freizügige Lizenzen (MIT, Apache-2.0, BSD, ISC, Zlib, MPL-2.0 u. a.). `cargo deny check` in `native/` prüft Lizenzen, Sicherheitsmeldungen und Quellen (`deny.toml`, läuft in der CI). `scripts/bundle.sh` erzeugt mit [`cargo about`](https://github.com/EmbarkStudios/cargo-about) die Datei `ThirdPartyNotices.html` im App-Bundle (Menü Hilfe → „Drittanbieter-Lizenzen“).
+- **Lucide-Icons** (über GPUI Kit, eingebettet als Rückfall für Komponenten-Icons ohne eigene Datei): ISC, teils MIT (Feather). Die Hinweise stehen in `ThirdPartyNotices.html`.
+- **App-Icons** in `native/assets/icons/`: [Icons8](https://icons8.com) „Material Rounded“, kommerziell lizenziert über ein Icons8-Abo, daher ohne Namensnennung. Sie fallen **nicht** unter die Lizenz dieses Repos und dürfen nicht losgelöst von PR Radar weiterverwendet werden.
+- **iOS-App:** keine Fremdbibliotheken, Symbole aus Apples SF Symbols.

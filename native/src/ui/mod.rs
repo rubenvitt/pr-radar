@@ -69,6 +69,7 @@ actions!(
         OpenPrivacy,
         OpenTerms,
         OpenImprint,
+        OpenThirdPartyNotices,
         RevealLog,
         ToggleLoginItem
     ]
@@ -130,6 +131,7 @@ pub fn init(radar: Entity<Radar>, cx: &mut App) {
     cx.on_action(|_: &OpenPrivacy, cx| cx.open_url(&site::url(site::Page::Privacy)));
     cx.on_action(|_: &OpenTerms, cx| cx.open_url(&site::url(site::Page::Terms)));
     cx.on_action(|_: &OpenImprint, cx| cx.open_url(&site::url(site::Page::Imprint)));
+    cx.on_action(|_: &OpenThirdPartyNotices, cx| open_third_party_notices(cx));
     cx.on_action(|_: &RevealLog, cx| cx.reveal_path(crate::logging::log_path()));
     cx.on_action(|_: &CloseWindow, cx| {
         with_active_window(cx, |window, cx| {
@@ -218,6 +220,7 @@ pub fn refresh_menus(cx: &mut App) {
             MenuItem::separator(),
             MenuItem::action("PR Radar auf GitHub", OpenHelp),
             MenuItem::action("Lizenz des Quellcodes", OpenLicense),
+            MenuItem::action("Drittanbieter-Lizenzen", OpenThirdPartyNotices),
             MenuItem::separator(),
             MenuItem::action("Protokoll im Finder zeigen", RevealLog),
         ]),
@@ -297,6 +300,21 @@ fn with_active_window(cx: &mut App, f: impl FnOnce(&mut Window, &mut App) + 'sta
         };
         handle.update(cx, |_, window, cx| f(window, cx)).ok();
     });
+}
+
+/// Öffnet die Drittanbieter-Hinweise aus dem App-Bundle; unter `cargo run` gibt es
+/// sie nicht, dann den Lizenzabschnitt im README.
+fn open_third_party_notices(cx: &mut App) {
+    match crate::notices::locate() {
+        Some(path) => cx.open_with_system(&path),
+        None => {
+            log::warn!(
+                "{} fehlt (nur im App-Bundle aus scripts/bundle.sh), öffne das README",
+                crate::notices::FILE_NAME
+            );
+            cx.open_url(&format!("{REPO_URL}#lizenz"));
+        }
+    }
 }
 
 fn open_about(window: &mut Window, cx: &mut App) {

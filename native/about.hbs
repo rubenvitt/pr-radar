@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PR Radar – Drittanbieter-Lizenzen</title>
+<style>
+  :root { color-scheme: light dark; --muted: #6b6b76; --line: #d9d9e0; --code: #f4f4f7; }
+  @media (prefers-color-scheme: dark) { :root { --muted: #a0a0ab; --line: #3a3a44; --code: #1d1d23; } }
+  body { font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; max-width: 860px; margin: 0 auto; padding: 32px 20px 64px; }
+  h1 { font-size: 24px; margin-bottom: 4px; }
+  h2 { font-size: 18px; margin-top: 40px; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+  h3 { font-size: 15px; margin-top: 28px; }
+  p.lead, .muted { color: var(--muted); }
+  ul.overview { columns: 2; padding-left: 18px; }
+  ul.used-by { padding-left: 18px; columns: 2; font-size: 13px; }
+  pre { white-space: pre-wrap; background: var(--code); border-radius: 8px; padding: 12px 14px; font-size: 12px; overflow-x: auto; }
+  a { color: #5b4bff; }
+</style>
+</head>
+<body>
+<h1>Drittanbieter-Lizenzen</h1>
+<p class="lead">PR Radar steht unter der Functional Source License 1.1, ALv2 Future License. Die App enthält Software und Grafiken Dritter unter den folgenden Lizenzen.</p>
+
+<h2>Icons</h2>
+<h3>Lucide (über GPUI Kit)</h3>
+<p>Symbole aus <a href="https://lucide.dev">Lucide</a>, eingebettet über <code>gpui-kit-assets</code> als Rückfall für Komponenten-Icons.</p>
+<pre>ISC License
+
+Copyright (c) 2026 Lucide Icons and Contributors
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted, provided that the above
+copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.</pre>
+<p>Ein Teil der Lucide-Symbole stammt aus dem Feather-Projekt:</p>
+<pre>The MIT License (MIT)
+
+Copyright (c) 2013-present Cole Bemis
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.</pre>
+<h3>Icons8</h3>
+<p>Symbole „Material Rounded“ von <a href="https://icons8.com">Icons8</a>, lizenziert über ein Icons8-Abo.</p>
+
+<h2>Rust-Bibliotheken</h2>
+<ul class="overview">
+{{#each overview}}
+  <li><a href="#{{id}}">{{name}}</a> ({{count}})</li>
+{{/each}}
+</ul>
+{{#each licenses}}
+<h3 id="{{id}}">{{name}}</h3>
+<p class="muted">Verwendet von:</p>
+<ul class="used-by">
+{{#each used_by}}
+  <li><a href="{{#if crate.repository}}{{crate.repository}}{{else}}https://crates.io/crates/{{crate.name}}{{/if}}">{{crate.name}} {{crate.version}}</a></li>
+{{/each}}
+</ul>
+<pre>{{text}}</pre>
+{{/each}}
+</body>
+</html>
