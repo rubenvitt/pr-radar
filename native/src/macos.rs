@@ -1,5 +1,6 @@
-//! AppKit-Teile, die GPUI nicht anbietet: Menüleisten-Symbol, Dock-Badge und
-//! „Beim Anmelden starten“ (`SMAppService`, ab macOS 13).
+//! AppKit-Teile, die GPUI nicht anbietet: Menüleisten-Symbol, Dock-Badge,
+//! „Beim Anmelden starten“ (`SMAppService`, ab macOS 13) und die Erkennung,
+//! ob die App gerade als Anmeldeobjekt gestartet wurde.
 //!
 //! Klicks im Menü gehen als Tag über einen Kanal an die App zurück; was sie
 //! bedeuten, entscheidet `crate::menubar`.
@@ -15,7 +16,7 @@ use objc2_app_kit::{
     NSControlStateValueOn, NSImage, NSMenu, NSMenuDelegate, NSMenuItem, NSStatusBar, NSStatusItem,
     NSVariableStatusItemLength,
 };
-use objc2_foundation::{NSBundle, NSObject, NSString};
+use objc2_foundation::{NSAppleEventDescriptor, NSAppleEventManager, NSBundle, NSObject, NSString};
 use objc2_service_management::{SMAppService, SMAppServiceStatus};
 
 /// SF Symbol des Menüleisten-Symbols (Vorlage, passt sich Hell/Dunkel an).
@@ -283,4 +284,103 @@ pub fn set_login(enabled: bool) -> Result<(), String> {
 pub fn open_login_settings() {
     // SAFETY: öffnet nur die Systemeinstellungen.
     unsafe { SMAppService::openSystemSettingsLoginItems() };
+}
+
+/// Apple-Event-Codes (`AE/AERegistry.h`) als `FourCharCode`.
+const fn four_cc(code: &[u8; 4]) -> u32 {
+    u32::from_be_bytes(*code)
+}
+/// `kAEOpenApplication`: Start ohne Dokumente.
+const OPEN_APPLICATION: u32 = four_cc(b"oapp");
+/// `keyAEPropData`: Zusatzangabe im Start-Event.
+const PROP_DATA: u32 = four_cc(b"prdt");
+/// `keyAELaunchedAsLogInItem`: macOS hat die App bei der Anmeldung gestartet.
+const LAUNCHED_AS_LOGIN_ITEM: u32 = four_cc(b"lgit");
+
+/// Wurde die App gerade von macOS bei der Anmeldung gestartet (Anmeldeobjekt)?
+///
+/// Ein Start aus Finder, Dock, Spotlight oder `open` liefert `false`. Nur im
+/// `applicationDidFinishLaunching:` aussagekräftig, solange das Start-Event
+/// (`kAEOpenApplication`) noch das aktuelle Apple Event ist, also im
+/// Start-Callback von `App::run`.
+pub fn launched_as_login_item() -> bool {
+    let event = NSAppleEventManager::sharedAppleEventManager().currentAppleEvent();
+    let (event_id, prop_data) = match event.as_deref() {
+        Some(event) => (Some(event_id(event)), prop_data(event)),
+        None => (None, None),
+    };
+    // Protokollieren, was wirklich ankommt: Ob `SMAppService` das Merkmal setzt,
+    // lässt sich nur auf dem Mac nach einer echten Anmeldung prüfen.
+    log::info!(
+        "Start-Event: {}, prdt: {}",
+        event_id.map_or("keins".into(), four_cc_text),
+        prop_data.map_or("keins".into(), four_cc_text),
+    );
+    is_login_launch(event_id, prop_data)
+}
+
+fn event_id(event: &NSAppleEventDescriptor) -> u32 {
+    // SAFETY: `eventID` hat keine Vorbedingungen und liefert einen `AEEventID` (u32).
+    // Direkt per Nachricht, weil objc2-foundation die Methode nur mit dem Feature
+    // `objc2-core-services` anbietet.
+    unsafe { msg_send![event, eventID] }
+}
+
+fn prop_data(event: &NSAppleEventDescriptor) -> Option<u32> {
+    // SAFETY: `paramDescriptorForKeyword:` nimmt ein `AEKeyword` (u32) und liefert
+    // einen Deskriptor oder nil; `enumCodeValue` hat keine Vorbedingungen.
+    let param: Option<Retained<NSAppleEventDescriptor>> =
+        unsafe { msg_send![event, paramDescriptorForKeyword: PROP_DATA] };
+    param.map(|p| p.enumCodeValue())
+}
+
+/// Entscheidung über Event-ID und `keyAEPropData` des Start-Events.
+fn is_login_launch(event_id: Option<u32>, prop_data: Option<u32>) -> bool {
+    event_id == Some(OPEN_APPLICATION) && prop_data == Some(LAUNCHED_AS_LOGIN_ITEM)
+}
+
+/// `0x6F617070` → `'oapp'`, für das Protokoll.
+fn four_cc_text(code: u32) -> String {
+    let bytes = code.to_be_bytes();
+    if bytes.iter().all(|b| b.is_ascii_graphic() || *b == b' ') {
+        format!("'{}'", String::from_utf8_lossy(&bytes))
+    } else {
+        format!("{code:#010x}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn login_launch_needs_open_event_with_login_marker() {
+        assert!(is_login_launch(
+            Some(OPEN_APPLICATION),
+            Some(LAUNCHED_AS_LOGIN_ITEM)
+        ));
+    }
+
+    #[test]
+    fn normal_launches_are_not_login_launches() {
+        // Finder, Dock, Spotlight: `oapp` ohne Merkmal
+        assert!(!is_login_launch(Some(OPEN_APPLICATION), None));
+        // Start mit Dokument bzw. URL
+        assert!(!is_login_launch(Some(four_cc(b"odoc")), None));
+        assert!(!is_login_launch(
+            Some(four_cc(b"odoc")),
+            Some(LAUNCHED_AS_LOGIN_ITEM)
+        ));
+        // `cargo run` ohne Apple Event
+        assert!(!is_login_launch(None, None));
+    }
+
+    #[test]
+    fn four_cc_matches_header_values() {
+        assert_eq!(OPEN_APPLICATION, 0x6F61_7070);
+        assert_eq!(PROP_DATA, 0x7072_6474);
+        assert_eq!(LAUNCHED_AS_LOGIN_ITEM, 0x6C67_6974);
+        assert_eq!(four_cc_text(OPEN_APPLICATION), "'oapp'");
+        assert_eq!(four_cc_text(0), "0x00000000");
+    }
 }
