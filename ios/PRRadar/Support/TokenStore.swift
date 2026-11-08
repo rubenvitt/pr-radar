@@ -20,10 +20,22 @@ enum TokenSource: Equatable {
 final class TokenStore: Sendable {
     static let shared = TokenStore()
 
-    private let service = "email.rubeen.prradar"
-    private let account = "github-token"
+    private let service: String
+    private let account: String
+    private let environment: @Sendable () -> [String: String]
     /// `nil`: noch nicht gelesen; `.some(nil)`: kein Token im Schlüsselbund
     private let cache = Mutex<String??>(nil)
+
+    /// Tests geben einen eigenen `service` und eine feste Umgebung vor, damit sie den Token der App nicht berühren.
+    init(
+        service: String = "email.rubeen.prradar",
+        account: String = "github-token",
+        environment: @escaping @Sendable () -> [String: String] = { ProcessInfo.processInfo.environment }
+    ) {
+        self.service = service
+        self.account = account
+        self.environment = environment
+    }
 
     /// Wird bei jedem GitHub-Request gelesen – ein neuer Token greift sofort.
     var token: String? {
@@ -46,7 +58,7 @@ final class TokenStore: Sendable {
     }
 
     private var environmentToken: String? {
-        let env = ProcessInfo.processInfo.environment
+        let env = environment()
         return [env["GITHUB_TOKEN"], env["GH_TOKEN"]]
             .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
             .first { !$0.isEmpty }

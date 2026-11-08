@@ -41,3 +41,21 @@ jobs:
             -scheme PRRadar \
             -destination 'generic/platform=iOS Simulator' \
             CODE_SIGNING_ALLOWED=NO
+      - name: App- und UI-Tests (iOS-Simulator)
+        working-directory: ios
+        run: |
+          # Neuestes verfügbares iOS mit einem iPhone, statt einen Gerätenamen fest zu verdrahten
+          udid=$(xcrun simctl list devices available -j | python3 -c '
+          import json, re, sys
+          devices = json.load(sys.stdin)["devices"]
+          runtimes = sorted((k for k in devices if ".iOS-" in k),
+                            key=lambda k: [int(n) for n in re.findall(r"\d+", k.split(".iOS-")[1])], reverse=True)
+          print(next(d["udid"] for k in runtimes for d in devices[k] if d["name"].startswith("iPhone")))
+          ')
+          echo "Simulator: $udid"
+          xcodebuild test \
+            -project PRRadar.xcodeproj \
+            -scheme PRRadar \
+            -destination "id=$udid" \
+            -only-testing:PRRadarTests \
+            -only-testing:PRRadarUITests
