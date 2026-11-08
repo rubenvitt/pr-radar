@@ -80,26 +80,37 @@ import Testing
 }
 
 @Suite struct TimeTests {
+    let en = Locale(identifier: "en_US")
+    let de = Locale(identifier: "de_DE")
+
     @Test func relativeAngaben() {
         let now = Date()
-        #expect(GermanTime.ago(nil) == "–")
-        #expect(GermanTime.ago(now, now: now) == "gerade eben")
-        #expect(GermanTime.ago(now - 5 * 60, now: now) == "vor 5 Min.")
-        #expect(GermanTime.ago(now - 3 * 3600, now: now) == "vor 3 Std.")
-        #expect(GermanTime.ago(now - 30 * 3600, now: now) == "gestern")
-        #expect(GermanTime.ago(now - 4 * 86_400, now: now) == "vor 4 Tagen")
-        #expect(GermanTime.ago(now - 8 * 86_400, now: now) == "vor 1 Woche")
-        #expect(GermanTime.ago(now - 400 * 86_400, now: now) == "vor 1 Jahr")
+        #expect(TimeText.ago(nil) == "–")
+        #expect(TimeText.ago(now, now: now) == "just now")
+        #expect(TimeText.ago(now - 30, now: now) == "just now")
+        #expect(TimeText.ago(now - 30 * 3600, now: now, locale: en) == "yesterday")
+        let minutes = TimeText.ago(now - 5 * 60, now: now, locale: en)
+        #expect(minutes.contains("5") && minutes.contains("ago"), "\(minutes)")
+        #if canImport(Darwin)
+            // RelativeDateTimeFormatter gibt es nur auf Apple-Plattformen.
+            #expect(TimeText.ago(now - 5 * 60, now: now, locale: de) == "vor 5 Min.")
+            #expect(TimeText.ago(now - 30 * 3600, now: now, locale: de) == "gestern")
+        #else
+            #expect(TimeText.ago(now - 3 * 3600, now: now) == "3 hr. ago")
+            #expect(TimeText.ago(now - 4 * 86_400, now: now) == "4 days ago")
+        #endif
     }
 
     @Test func tageslabel() {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(identifier: "Europe/Berlin")!
         let now = cal.date(from: DateComponents(year: 2026, month: 10, day: 15, hour: 12))!
-        #expect(GermanTime.dayLabel(now - 3600, now: now, calendar: cal) == "Heute")
-        #expect(GermanTime.dayLabel(now - 86_400, now: now, calendar: cal) == "Gestern")
-        #expect(GermanTime.dayLabel(now - 2 * 86_400, now: now, calendar: cal) == "Dienstag, 13. Oktober")
-        #expect(GermanTime.clock(now, calendar: cal) == "12:00")
-        #expect(GermanTime.full(now, calendar: cal) == "15.10.2026, 12:00")
+        #expect(TimeText.dayLabel(now - 3600, now: now, calendar: cal) == "Today")
+        #expect(TimeText.dayLabel(now - 86_400, now: now, calendar: cal) == "Yesterday")
+        #expect(TimeText.dayLabel(now - 2 * 86_400, now: now, calendar: cal, locale: de) == "Dienstag, 13. Oktober")
+        #expect(TimeText.dayLabel(now - 2 * 86_400, now: now, calendar: cal, locale: en) == "Tuesday, October 13")
+        #expect(TimeText.clock(now, calendar: cal, locale: de) == "12:00")
+        #expect(TimeText.full(now, calendar: cal, locale: de) == "15.10.2026, 12:00")
+        #expect(TimeText.full(now, calendar: cal, locale: en).hasPrefix("Oct 15, 2026"))
     }
 }

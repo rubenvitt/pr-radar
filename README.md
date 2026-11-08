@@ -20,6 +20,7 @@ Dazu gibt es eine **iOS-/iPadOS-App** mit denselben Funktionen in SwiftUI – si
 - Tastatur: `/` bzw. `⌘F` Suche, `r` neu laden, `v` Liste/Flow, `g` gruppieren, `1–3` bzw. `⌘1–3` Ansichten, `⌘B` Seitenleiste
 - macOS-Standards: `⌘W` schließt Sheet bzw. Fenster (die App läuft weiter, Dock-Klick öffnet es wieder), `⌘M` Dock, `⌘H`/`⌥⌘H` ausblenden, `⌃⌘F` Vollbild; Menüs Ablage, Bearbeiten (Widerrufen, Ausschneiden, Kopieren, Einsetzen, Alles auswählen), Fenster und Hilfe
 - Eigenes Farbschema (Akzent Blau, „gemergt“ Lila, Statusfarben mit mind. 4,5:1, gestaffelte Flächen im Dunkelmodus), folgt Hell/Dunkel des Systems; Animationen entfallen bei „Bewegung reduzieren“
+- Englisch (Standard) und Deutsch, nach der Systemsprache bzw. „Sprache pro App“; `PR_RADAR_LANG=de|en` erzwingt eine Sprache (z. B. bei `cargo run`)
 
 ## Start
 

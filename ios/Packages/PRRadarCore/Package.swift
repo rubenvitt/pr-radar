@@ -6,13 +6,13 @@ import PackageDescription
 
 let package = Package(
     name: "PRRadarCore",
-    defaultLocalization: "de",
+    defaultLocalization: "en",
     platforms: [.iOS(.v18), .macOS(.v15)],
     products: [
         .library(name: "PRRadarCore", targets: ["PRRadarCore"])
     ],
     targets: [
-        .target(name: "PRRadarCore"),
+        .target(name: "PRRadarCore", resources: [.process("Resources")]),
         .testTarget(
             name: "PRRadarCoreTests",
             dependencies: ["PRRadarCore"],

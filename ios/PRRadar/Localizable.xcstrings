@@ -1,0 +1,1812 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "%@ %@" : {
+      "shouldTranslate" : false
+    },
+    "%@%@" : {
+      "shouldTranslate" : false
+    },
+    "%lld failed" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld fehlgeschlagen"
+          }
+        }
+      }
+    },
+    "%lld lines added, %lld removed" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%#@added@, %#@removed@"
+          },
+          "substitutions" : {
+            "added" : {
+              "argNum" : 1,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg Zeile hinzugefügt"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg Zeilen hinzugefügt"
+                    }
+                  }
+                }
+              }
+            },
+            "removed" : {
+              "argNum" : 2,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg entfernt"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg entfernt"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%#@added@, %#@removed@"
+          },
+          "substitutions" : {
+            "added" : {
+              "argNum" : 1,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg line added"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg lines added"
+                    }
+                  }
+                }
+              }
+            },
+            "removed" : {
+              "argNum" : 2,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg removed"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg removed"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld merged" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld gemergt"
+          }
+        }
+      }
+    },
+    "%lld of %lld checks passed" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld von %lld Checks grün"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%#@done@ of %#@total@ passed"
+          },
+          "substitutions" : {
+            "done" : {
+              "argNum" : 1,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg"
+                    }
+                  }
+                }
+              }
+            },
+            "total" : {
+              "argNum" : 2,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg check"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg checks"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld via Auto-merge" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld per Auto-Merge"
+          }
+        }
+      }
+    },
+    "%lld/%lld passed" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld/%lld grün"
+          }
+        }
+      }
+    },
+    "API Quota" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "API-Kontingent"
+          }
+        }
+      }
+    },
+    "API quota %lld / %lld" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "API-Kontingent %lld / %lld"
+          }
+        }
+      }
+    },
+    "About" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Info"
+          }
+        }
+      }
+    },
+    "Action Failed" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktion fehlgeschlagen"
+          }
+        }
+      }
+    },
+    "Add" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hinzufügen"
+          }
+        }
+      }
+    },
+    "Add Repositories" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Repositories hinzufügen"
+          }
+        }
+      }
+    },
+    "Add repos as owner/name or a GitHub URL." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Füge Repos als owner/name oder GitHub-URL hinzu."
+          }
+        }
+      }
+    },
+    "Advanced: Personal Access Token" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erweitert: Personal Access Token"
+          }
+        }
+      }
+    },
+    "All Repos" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle Repos"
+          }
+        }
+      }
+    },
+    "All repos are fetched together via GraphQL – every 30 s, or every 10 s while any pipeline is running. Auto-merge must be allowed in the repo (Settings → General → Allow auto-merge)." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle Repos werden gebündelt per GraphQL abgefragt – alle 30 s, solange irgendwo eine Pipeline läuft alle 10 s. Auto-Merge muss im Repo erlaubt sein (Settings → General → Allow auto-merge)."
+          }
+        }
+      }
+    },
+    "Allow them for PR Radar in iOS Settings." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In den iOS-Einstellungen für PR Radar erlauben."
+          }
+        }
+      }
+    },
+    "Allowed: %@ – per repo settings and rulesets for %@." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erlaubt: %@ – Repo-Einstellungen und Rulesets von %@."
+          }
+        }
+      }
+    },
+    "Approved" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Approved"
+          }
+        }
+      }
+    },
+    "Auto Off" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auto aus"
+          }
+        }
+      }
+    },
+    "Auto · %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auto · %@"
+          }
+        }
+      }
+    },
+    "Auto-merge" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auto-Merge"
+          }
+        }
+      }
+    },
+    "Auto-merge allowed" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auto-Merge erlaubt"
+          }
+        }
+      }
+    },
+    "Auto-merge for #%lld" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auto-Merge für #%lld"
+          }
+        }
+      }
+    },
+    "Auto-merge is on (%@) – merges as soon as everything is green." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auto-Merge aktiv (%@) – mergt, sobald alles grün ist."
+          }
+        }
+      }
+    },
+    "Auto-merge is on (%@, by %@) – merges as soon as everything is green." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auto-Merge aktiv (%1$@, von %2$@) – mergt, sobald alles grün ist."
+          }
+        }
+      }
+    },
+    "Auto-merge off" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auto-Merge aus"
+          }
+        }
+      }
+    },
+    "Auto-merge with" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auto-Merge mit"
+          }
+        }
+      }
+    },
+    "Cancel" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abbrechen"
+          }
+        }
+      }
+    },
+    "Can’t Reach GitHub" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub nicht erreichbar"
+          }
+        }
+      }
+    },
+    "Changes Requested" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Änderungen"
+          }
+        }
+      }
+    },
+    "Checks" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Checks"
+          }
+        }
+      }
+    },
+    "Collapse release notes" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Release Notes zuklappen"
+          }
+        }
+      }
+    },
+    "Conflict" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konflikt"
+          }
+        }
+      }
+    },
+    "Connecting to GitHub…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbinde mit GitHub …"
+          }
+        }
+      }
+    },
+    "Copy Code and Open GitHub" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Code kopieren und GitHub öffnen"
+          }
+        }
+      }
+    },
+    "Copy Link" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Link kopieren"
+          }
+        }
+      }
+    },
+    "Couldn’t save the token to the keychain: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Token konnte nicht im Schlüsselbund gespeichert werden: %@"
+          }
+        }
+      }
+    },
+    "Create Token on GitHub" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Token auf GitHub erstellen"
+          }
+        }
+      }
+    },
+    "Default · %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Default · %@"
+          }
+        }
+      }
+    },
+    "Demo Mode" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Demo-Modus"
+          }
+        }
+      }
+    },
+    "Disable Auto-merge" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auto-Merge deaktivieren"
+          }
+        }
+      }
+    },
+    "Draft" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Draft"
+          }
+        }
+      }
+    },
+    "Email Support" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "E-Mail an den Support"
+          }
+        }
+      }
+    },
+    "Enable Auto-merge with %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auto-Merge mit %@ aktivieren"
+          }
+        }
+      }
+    },
+    "Enabling…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktiviert …"
+          }
+        }
+      }
+    },
+    "Enter Token" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Token eintragen"
+          }
+        }
+      }
+    },
+    "Enter new token" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neuen Token eintragen"
+          }
+        }
+      }
+    },
+    "Enter this code on GitHub (it’s on the clipboard):" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gib diesen Code auf GitHub ein (liegt in der Zwischenablage):"
+          }
+        }
+      }
+    },
+    "Error – reload" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fehler – neu laden"
+          }
+        }
+      }
+    },
+    "Exit" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beenden"
+          }
+        }
+      }
+    },
+    "Exit Demo Mode" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Demo-Modus beenden"
+          }
+        }
+      }
+    },
+    "Expand release notes" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Release Notes aufklappen"
+          }
+        }
+      }
+    },
+    "Fine-grained PAT for the repos you want: Metadata, Contents, Commit statuses, Actions/Checks (read) and Pull requests (**write** for merging and Auto-merge). For org repos without fine-grained tokens, use a classic PAT with `repo`. The token is stored only in this device’s keychain." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fine-grained PAT auf die gewünschten Repos: Metadata, Contents, Commit statuses, Actions/Checks (read) und Pull requests (**write** für Merge und Auto-Merge). Für Org-Repos ohne fine-grained Tokens einen klassischen PAT mit `repo` nutzen. Der Token liegt nur im Schlüsselbund dieses Geräts."
+          }
+        }
+      }
+    },
+    "Flow" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Flow"
+          }
+        }
+      }
+    },
+    "GITHUB_TOKEN (Xcode scheme)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GITHUB_TOKEN (Xcode-Scheme)"
+          }
+        }
+      }
+    },
+    "GitHub" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub"
+          }
+        }
+      }
+    },
+    "GitHub Account" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub-Konto"
+          }
+        }
+      }
+    },
+    "GitHub Sign-In" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub-Anmeldung"
+          }
+        }
+      }
+    },
+    "GitHub Token" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub-Token"
+          }
+        }
+      }
+    },
+    "GitHub isn’t allowing the merge yet – retrying shortly…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub lässt den Merge noch nicht zu – neuer Versuch gleich …"
+          }
+        }
+      }
+    },
+    "Group by Repo" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nach Repo gruppieren"
+          }
+        }
+      }
+    },
+    "Instead of signing in: a fine-grained PAT for the repos you want with Metadata, Contents, Commit statuses, Actions/Checks (read) and Pull requests (**write** for merge and auto-merge). For org repos without fine-grained tokens, use a classic PAT with `repo`. Replaces an existing sign-in." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Statt der Anmeldung: Fine-grained PAT auf die gewünschten Repos mit Metadata, Contents, Commit statuses, Actions/Checks (read) und Pull requests (**write** für Merge und Auto-Merge). Für Org-Repos ohne fine-grained Tokens einen klassischen PAT mit `repo` nutzen. Ersetzt eine bestehende Anmeldung."
+          }
+        }
+      }
+    },
+    "Keychain" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schlüsselbund"
+          }
+        }
+      }
+    },
+    "Last Updated" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zuletzt"
+          }
+        }
+      }
+    },
+    "Latest" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Latest"
+          }
+        }
+      }
+    },
+    "Layout" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Darstellung"
+          }
+        }
+      }
+    },
+    "Legal Notice" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impressum"
+          }
+        }
+      }
+    },
+    "License Agreement (EULA)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lizenzvereinbarung (EULA)"
+          }
+        }
+      }
+    },
+    "List" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Liste"
+          }
+        }
+      }
+    },
+    "List/Flow" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Liste/Flow"
+          }
+        }
+      }
+    },
+    "Loading" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lädt"
+          }
+        }
+      }
+    },
+    "Loading data from GitHub…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lade Daten von GitHub …"
+          }
+        }
+      }
+    },
+    "Loading…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "wird geladen …"
+          }
+        }
+      }
+    },
+    "Merge" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mergen"
+          }
+        }
+      }
+    },
+    "Merge %@#%lld now?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@#%lld jetzt mergen?"
+          }
+        }
+      }
+    },
+    "Merge %lld PRs now?" : {
+      "localizations" : {
+        "de" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld PR jetzt mergen?"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld PRs jetzt mergen?"
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Merge %lld PR now?"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Merge %lld PRs now?"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Merge All" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle mergen"
+          }
+        }
+      }
+    },
+    "Merge All (%lld)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle mergen (%lld)"
+          }
+        }
+      }
+    },
+    "Merge Now" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jetzt mergen"
+          }
+        }
+      }
+    },
+    "Merge with %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mit %@ mergen"
+          }
+        }
+      }
+    },
+    "Merged" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemergt"
+          }
+        }
+      }
+    },
+    "Merging…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mergt …"
+          }
+        }
+      }
+    },
+    "Name, tag, repo" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Name, Tag, Repo"
+          }
+        }
+      }
+    },
+    "No GitHub Token" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein GitHub-Token"
+          }
+        }
+      }
+    },
+    "No Longer Open" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht mehr offen"
+          }
+        }
+      }
+    },
+    "No Releases" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Releases"
+          }
+        }
+      }
+    },
+    "No Repositories Yet" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch keine Repositories"
+          }
+        }
+      }
+    },
+    "No checks for the latest commit." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Checks für den letzten Commit."
+          }
+        }
+      }
+    },
+    "No pull requests for this filter." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Pull Requests für diesen Filter."
+          }
+        }
+      }
+    },
+    "No repos yet – add one above." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch keine Repos – füge oben eins hinzu."
+          }
+        }
+      }
+    },
+    "No results for “%@”." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Treffer für „%@“."
+          }
+        }
+      }
+    },
+    "Not Signed In to GitHub" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht bei GitHub angemeldet"
+          }
+        }
+      }
+    },
+    "Nothing Merged Yet" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch nichts gemergt"
+          }
+        }
+      }
+    },
+    "Nothing Open" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nichts offen"
+          }
+        }
+      }
+    },
+    "Notifications" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Benachrichtigungen"
+          }
+        }
+      }
+    },
+    "Notifications Off" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Benachrichtigungen aus"
+          }
+        }
+      }
+    },
+    "Notifies you when a pipeline turns red or green or a PR is merged, and shows red PRs as a badge. In the background iOS only refreshes occasionally – the app is live in the foreground." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meldet, wenn eine Pipeline rot oder grün wird oder ein PR gemergt wurde, und zeigt rote PRs als Badge. Im Hintergrund aktualisiert iOS nur gelegentlich – live ist die App im Vordergrund."
+          }
+        }
+      }
+    },
+    "Notify About Pipelines & Merges" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pipelines & Merges melden"
+          }
+        }
+      }
+    },
+    "One at a time per repo and target branch. If GitHub temporarily refuses, it retries or enables Auto-merge instead." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Je Repo und Ziel-Branch nacheinander. Lehnt GitHub vorübergehend ab, wird erneut versucht bzw. Auto-Merge aktiviert."
+          }
+        }
+      }
+    },
+    "Open" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Offen"
+          }
+        }
+      }
+    },
+    "Open check on GitHub" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Check auf GitHub öffnen"
+          }
+        }
+      }
+    },
+    "Open details" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Details öffnen"
+          }
+        }
+      }
+    },
+    "Open on GitHub" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auf GitHub öffnen"
+          }
+        }
+      }
+    },
+    "PR Radar Website" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PR-Radar-Website"
+          }
+        }
+      }
+    },
+    "PR Radar is connected to GitHub." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PR Radar ist mit GitHub verbunden."
+          }
+        }
+      }
+    },
+    "PR Radar talks to GitHub directly, without a server of its own." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PR Radar spricht GitHub direkt an, ohne eigenen Server."
+          }
+        }
+      }
+    },
+    "PR Radar talks to GitHub directly. Add a Personal Access Token." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PR Radar spricht GitHub direkt an. Hinterlege einen Personal Access Token."
+          }
+        }
+      }
+    },
+    "Personal Access Token" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Personal Access Token"
+          }
+        }
+      }
+    },
+    "Pipeline %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pipeline %@"
+          }
+        }
+      }
+    },
+    "Pipeline Failed" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pipeline rot"
+          }
+        }
+      }
+    },
+    "Pipeline Passed" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pipeline grün"
+          }
+        }
+      }
+    },
+    "Pre-release" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pre-Release"
+          }
+        }
+      }
+    },
+    "Privacy Policy" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datenschutz"
+          }
+        }
+      }
+    },
+    "Published %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Veröffentlicht %@"
+          }
+        }
+      }
+    },
+    "Pull Requests" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pull Requests"
+          }
+        }
+      }
+    },
+    "Refresh Failed" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktualisierung fehlgeschlagen"
+          }
+        }
+      }
+    },
+    "Refresh Interval" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktualisierung"
+          }
+        }
+      }
+    },
+    "Refresh Now" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jetzt aktualisieren"
+          }
+        }
+      }
+    },
+    "Releases" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Releases"
+          }
+        }
+      }
+    },
+    "Reload" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neu laden"
+          }
+        }
+      }
+    },
+    "Remove Token" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Token entfernen"
+          }
+        }
+      }
+    },
+    "Repos" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Repos"
+          }
+        }
+      }
+    },
+    "Repositories" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Repositories"
+          }
+        }
+      }
+    },
+    "Retrying…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neuer Versuch …"
+          }
+        }
+      }
+    },
+    "Review" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Review"
+          }
+        }
+      }
+    },
+    "Sample data, not connected to GitHub" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beispieldaten, nicht mit GitHub verbunden"
+          }
+        }
+      }
+    },
+    "Save" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Speichern"
+          }
+        }
+      }
+    },
+    "Settings" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen"
+          }
+        }
+      }
+    },
+    "Share…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Teilen …"
+          }
+        }
+      }
+    },
+    "Sign In with GitHub" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mit GitHub anmelden"
+          }
+        }
+      }
+    },
+    "Sign Out" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abmelden"
+          }
+        }
+      }
+    },
+    "Sign-in is not set up in this build. Enter a personal access token under “Advanced”." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In diesem Build ist keine Anmeldung eingerichtet. Trage unter „Erweitert“ einen Personal Access Token ein."
+          }
+        }
+      }
+    },
+    "Signed In" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Angemeldet"
+          }
+        }
+      }
+    },
+    "Signed in as %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Angemeldet als %@"
+          }
+        }
+      }
+    },
+    "Signing in opens GitHub in the browser. PR Radar gets access to your repos (scope “repo”) to read PRs, merge them and toggle auto-merge. Org repos only appear once the organization approves PR Radar. The token is stored only in this device’s keychain." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Anmeldung öffnet GitHub im Browser. PR Radar bekommt Zugriff auf deine Repos (Scope „repo“), um PRs zu lesen, zu mergen und Auto-Merge zu schalten. Org-Repos erscheinen erst, wenn die Organisation PR Radar freigibt. Der Token liegt nur im Schlüsselbund dieses Geräts."
+          }
+        }
+      }
+    },
+    "Source Code License" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lizenz des Quellcodes"
+          }
+        }
+      }
+    },
+    "Source Code on GitHub" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quellcode auf GitHub"
+          }
+        }
+      }
+    },
+    "Status" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Status"
+          }
+        }
+      }
+    },
+    "Support" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Support"
+          }
+        }
+      }
+    },
+    "Target branch" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ziel-Branch"
+          }
+        }
+      }
+    },
+    "The pull request was merged or closed." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Pull Request wurde gemergt oder geschlossen."
+          }
+        }
+      }
+    },
+    "Title, repo, #number" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Titel, Repo, #Nr."
+          }
+        }
+      }
+    },
+    "Title, repo, author, branch, #number" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Titel, Repo, Autor, Branch, #Nr."
+          }
+        }
+      }
+    },
+    "Toggle Grouping" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gruppieren"
+          }
+        }
+      }
+    },
+    "Token Saved" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Token hinterlegt"
+          }
+        }
+      }
+    },
+    "Try Again" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erneut versuchen"
+          }
+        }
+      }
+    },
+    "Try with Sample Data" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mit Beispieldaten ausprobieren"
+          }
+        }
+      }
+    },
+    "Up to date – reload" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktuell – neu laden"
+          }
+        }
+      }
+    },
+    "Updated %@ · every %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktualisiert %@ · alle %@"
+          }
+        }
+      }
+    },
+    "Updating…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ändert …"
+          }
+        }
+      }
+    },
+    "Version" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Version"
+          }
+        }
+      }
+    },
+    "View Options" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ansicht"
+          }
+        }
+      }
+    },
+    "Waiting for confirmation on GitHub…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Warte auf die Bestätigung auf GitHub …"
+          }
+        }
+      }
+    },
+    "Your Review" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein Review"
+          }
+        }
+      }
+    },
+    "by %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "von %@"
+          }
+        }
+      }
+    },
+    "every %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "alle %@"
+          }
+        }
+      }
+    },
+    "ghp_… or github_pat_…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ghp_… oder github_pat_…"
+          }
+        }
+      }
+    },
+    "merged by %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "gemergt von %@"
+          }
+        }
+      }
+    },
+    "owner/repo or GitHub URL" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "owner/repo oder GitHub-URL"
+          }
+        }
+      }
+    },
+    "read-only" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "nur lesend"
+          }
+        }
+      }
+    },
+    "skipped" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "übersprungen"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

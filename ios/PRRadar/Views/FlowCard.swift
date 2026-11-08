@@ -102,7 +102,7 @@ struct FlowCard: View {
                     FlowNode(
                         tone: Tone(base), title: pr.baseRef,
                         sub: snapshot.repo(pr.repo)?.defaultBranch == pr.baseRef
-                            ? "Default · \(base.label)" : "Ziel-Branch",
+                            ? String(localized: "Default · \(base.label)") : String(localized: "Target branch"),
                         monospacedTitle: true
                     ) {
                         Image(systemName: "arrow.triangle.branch")
@@ -121,7 +121,7 @@ struct FlowCard: View {
         FlowNode(
             tone: pr.isBy(snapshot.viewer) ? .accent : .idle,
             title: pr.title,
-            sub: [showRepo ? pr.repo : nil, "#\(pr.number)", pr.headRef, GermanTime.ago(pr.updatedAt)]
+            sub: [showRepo ? pr.repo : nil, "#\(pr.number)", pr.headRef, TimeText.ago(pr.updatedAt)]
                 .compactMap { $0 }.joined(separator: " · "),
             titleLines: 2,
             dimmed: pr.isDraft
@@ -129,7 +129,7 @@ struct FlowCard: View {
             AvatarView(person: pr.author, size: 26)
         }
         .contentShape(Rectangle())
-        .accessibilityHint(linksToDetail ? "Details öffnen" : "")
+        .accessibilityHint(linksToDetail ? Text("Open details") : Text(verbatim: ""))
     }
 
     @ViewBuilder
@@ -141,7 +141,7 @@ struct FlowCard: View {
         if let raw = c.url, let url = URL(string: raw) {
             Button { openURL(url) } label: { node }
                 .buttonStyle(.plain)
-                .accessibilityHint("Check auf GitHub öffnen")
+                .accessibilityHint("Open check on GitHub")
         } else {
             node
         }

@@ -235,10 +235,14 @@ pub enum LoginState {
 impl LoginState {
     pub fn hint(self) -> Option<&'static str> {
         match self {
-            Self::NeedsApproval => Some(
-                "In den Systemeinstellungen unter Allgemein → Anmeldeobjekte noch nicht erlaubt",
-            ),
-            Self::Unavailable => Some("Nur in der installierten App verfügbar"),
+            Self::NeedsApproval => Some(tr!(
+                "Not yet allowed in System Settings under General → Login Items",
+                "In den Systemeinstellungen unter Allgemein → Anmeldeobjekte noch nicht erlaubt"
+            )),
+            Self::Unavailable => Some(tr!(
+                "Only available in the installed app",
+                "Nur in der installierten App verfügbar"
+            )),
             Self::On | Self::Off => None,
         }
     }
@@ -266,7 +270,11 @@ pub fn login_state() -> LoginState {
 /// Trägt die App als Anmeldeobjekt ein bzw. aus.
 pub fn set_login(enabled: bool) -> Result<(), String> {
     if !is_bundled() {
-        return Err("Nur in der installierten App verfügbar".into());
+        return Err(tr!(
+            "Only available in the installed app",
+            "Nur in der installierten App verfügbar"
+        )
+        .into());
     }
     // SAFETY: `mainAppService` beschreibt die laufende App; Fehler kommen als NSError zurück.
     let result = unsafe {

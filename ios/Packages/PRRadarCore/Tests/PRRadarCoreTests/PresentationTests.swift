@@ -34,12 +34,12 @@ import Testing
     @Test func mergeButtonZustaende() {
         let s = Snapshot(repos: [repoInfo(autoMerge: false)])
         #expect(MergeAction.of(makePR("1"), in: s) == .mergeNow([.merge]))
-        #expect(MergeAction.of(makePR("1", status: "BLOCKED"), in: s) == .unavailable("Auto-Merge ist in diesem Repo nicht erlaubt (Settings → Allow auto-merge)"))
+        #expect(MergeAction.of(makePR("1", status: "BLOCKED"), in: s) == .unavailable("Auto-merge is not allowed in this repo (Settings → Allow auto-merge)"))
         #expect(MergeAction.of(makePR("1", status: "BLOCKED"), in: Snapshot(repos: [repoInfo()])) == .enable([.merge]))
-        #expect(MergeAction.of(makePR("1", methods: []), in: s) == .unavailable("Keine Merge-Methode erlaubt (Repo-Einstellungen und Rulesets)"))
-        #expect(MergeAction.of(makePR("1"), in: Snapshot(repos: [repoInfo(canMerge: false)])) == .unavailable("Keine Schreibrechte"))
+        #expect(MergeAction.of(makePR("1", methods: []), in: s) == .unavailable("No merge method allowed (repo settings and rulesets)"))
+        #expect(MergeAction.of(makePR("1"), in: Snapshot(repos: [repoInfo(canMerge: false)])) == .unavailable("No write access"))
         #expect(MergeAction.of(makePR("1", auto: AutoMerge(method: .squash, enabledBy: "x")), in: s) == .disable(method: .squash, by: "x"))
-        #expect(MergeAction.of(makePR("1"), in: Snapshot()) == .unavailable("Repository nicht geladen"))
+        #expect(MergeAction.of(makePR("1"), in: Snapshot()) == .unavailable("Repository not loaded"))
     }
 
     @Test func alleMergenNurBereite() throws {
@@ -69,22 +69,22 @@ import Testing
             Check(name: "d", state: .skipped),
         ]
         let nodes = checkNodes(pr)
-        #expect(nodes.map(\.label) == ["CI", "b", "a", "+2 weitere"])
-        #expect(nodes[0].sub == "1/2 grün")
+        #expect(nodes.map(\.label) == ["CI", "b", "a", "+2 more"])
+        #expect(nodes[0].sub == "1/2 passed")
         #expect(nodes[0].url == "f")
         #expect(nodes[3].state == .passed)
-        #expect(checkNodes(makePR("2")).map(\.label) == ["Keine Checks"])
+        #expect(checkNodes(makePR("2")).map(\.label) == ["No checks"])
     }
 
     @Test func flowStufen() {
         var pr = makePR("1", status: "BEHIND", mergeable: .mergeable)
-        #expect(mergeStage(pr).title == "Veraltet")
+        #expect(mergeStage(pr).title == "Behind")
         pr.reviewRequests = ["me"]
         pr.reviewDecision = .reviewRequired
-        #expect(reviewStage(pr, viewer: "me").title == "Dein Review")
+        #expect(reviewStage(pr, viewer: "me").title == "Your review")
         #expect(reviewStage(pr, viewer: "other").sub == "me")
         pr.autoMerge = AutoMerge(method: .squash)
-        #expect(mergeStage(pr).sub == "Squash · wenn grün")
+        #expect(mergeStage(pr).sub == "Squash · when green")
     }
 
     @Test func standardmaessigOffeneReleases() {

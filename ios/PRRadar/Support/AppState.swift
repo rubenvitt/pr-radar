@@ -84,7 +84,7 @@ final class AppState {
                 // Wer sich anmeldet, will seine eigenen Daten sehen.
                 endDemo()
                 radar.refresh()
-                show(.success, "Angemeldet", "PR Radar ist mit GitHub verbunden.")
+                show(.success, String(localized: "Signed In"), String(localized: "PR Radar is connected to GitHub."))
             } catch {
                 guard !Task.isCancelled, !(error is CancellationError) else { return }
                 login = .failed(error.localizedDescription)
@@ -149,17 +149,18 @@ final class AppState {
     private func handle(_ event: RadarEvent) {
         switch event {
         case let .actionFailed(message):
-            show(.error, "Aktion fehlgeschlagen", message)
+            show(.error, String(localized: "Action Failed"), message)
         case let .mergeAllFinished(merged, autoMerge, failed):
             var parts: [String] = []
-            if merged > 0 { parts.append("\(merged) gemergt") }
-            if autoMerge > 0 { parts.append("\(autoMerge) per Auto-Merge") }
-            if !failed.isEmpty { parts.append("\(failed.count) fehlgeschlagen") }
+            if merged > 0 { parts.append(String(localized: "\(merged) merged")) }
+            if autoMerge > 0 { parts.append(String(localized: "\(autoMerge) via Auto-merge")) }
+            if !failed.isEmpty { parts.append(String(localized: "\(failed.count) failed")) }
             let summary = parts.joined(separator: " · ")
+            let title = String(localized: "Merge All")
             if failed.isEmpty {
-                show(.success, "Alle mergen", summary)
+                show(.success, title, summary)
             } else {
-                show(.error, "Alle mergen", ([summary] + failed).joined(separator: "\n"))
+                show(.error, title, ([summary] + failed).joined(separator: "\n"))
             }
         case let .transitions(transitions):
             guard radar.prefs.notify else { return }

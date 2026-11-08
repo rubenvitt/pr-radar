@@ -17,7 +17,7 @@ struct PRRow: View {
                 if showRepo {
                     RepoName(fullName: pr.repo).font(.caption)
                 }
-                Text("\(Text(pr.title).foregroundStyle(pr.isDraft ? Color.secondary : Color.primary)) \(Text("#\(pr.number)").foregroundStyle(.secondary))")
+                Text("\(Text(pr.title).foregroundStyle(pr.isDraft ? Color.secondary : Color.primary)) \(Text(verbatim: "#\(pr.number)").foregroundStyle(.secondary))")
                     .font(.body.weight(.medium))
                     .lineLimit(3)
 
@@ -37,10 +37,11 @@ struct PRRow: View {
 
                 HStack(spacing: 8) {
                     if pr.pipeline.total > 0 {
-                        Label("\(pr.pipeline.passed)/\(pr.pipeline.total)", systemImage: "checklist")
+                        let ratio = "\(pr.pipeline.passed)/\(pr.pipeline.total)"
+                        Label(ratio, systemImage: "checklist")
                             .font(.caption.monospacedDigit())
                             .foregroundStyle(pr.pipeline.state.color)
-                            .accessibilityLabel("\(pr.pipeline.passed) von \(pr.pipeline.total) Checks grün")
+                            .accessibilityLabel("\(pr.pipeline.passed) of \(pr.pipeline.total) checks passed")
                     }
                     Spacer(minLength: 0)
                     MergeControl(pr: pr, snapshot: snapshot)
@@ -62,11 +63,11 @@ struct PRTags: View {
         if hasAny {
             FlowLayout(spacing: 5, lineSpacing: 4) {
                 if pr.isDraft { Chip(text: "Draft", symbol: "pencil") }
-                if pr.hasConflict { Chip(text: "Konflikt", symbol: "exclamationmark.triangle.fill", color: .red, filled: true) }
-                if pr.requestsReview(from: viewer) { Chip(text: "Dein Review", symbol: "person.badge.clock", color: .accentColor) }
+                if pr.hasConflict { Chip(text: "Conflict", symbol: "exclamationmark.triangle.fill", color: .red, filled: true) }
+                if pr.requestsReview(from: viewer) { Chip(text: "Your Review", symbol: "person.badge.clock", color: .accentColor) }
                 switch pr.reviewDecision {
                 case .approved: Chip(text: "Approved", symbol: "checkmark.shield", color: .green)
-                case .changesRequested: Chip(text: "Änderungen", symbol: "exclamationmark.bubble", color: .red)
+                case .changesRequested: Chip(text: "Changes Requested", symbol: "exclamationmark.bubble", color: .red)
                 default: EmptyView()
                 }
                 if let am = pr.autoMerge { Chip(text: "Auto · \(am.method.label)", symbol: "bolt.fill", color: .accentColor) }
@@ -92,7 +93,7 @@ struct RepoHeader: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(.primary)
-            Text("\(count)")
+            Text(verbatim: "\(count)")
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)
             Spacer()

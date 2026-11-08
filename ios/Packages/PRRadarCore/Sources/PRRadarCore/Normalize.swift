@@ -360,7 +360,7 @@ func gitHubDecoder() -> JSONDecoder {
         let s = try d.singleValueContainer().decode(String.self)
         if let date = parseISO8601(s) { return date }
         throw DecodingError.dataCorrupted(
-            .init(codingPath: d.codingPath, debugDescription: "Ungültiges Datum: \(s)"))
+            .init(codingPath: d.codingPath, debugDescription: L10n.tr("Invalid date: %@", s)))
     }
     return decoder
 }

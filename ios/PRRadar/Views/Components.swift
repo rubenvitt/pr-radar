@@ -94,7 +94,7 @@ struct AvatarView: View {
 
 /// Kleines Etikett (Draft, Konflikt, Approved …).
 struct Chip: View {
-    var text: String
+    var text: LocalizedStringKey
     var symbol: String? = nil
     var color: Color = .secondary
     var filled = false
@@ -212,7 +212,7 @@ struct BranchLabel: View {
         HStack(spacing: 3) {
             Image(systemName: "arrow.triangle.branch").imageScale(.small)
             Text(head).lineLimit(1).truncationMode(.middle).frame(maxWidth: 160, alignment: .leading)
-            Text("→")
+            Text(verbatim: "→")
             Text(base).lineLimit(1)
         }
         .font(.caption.monospaced())
@@ -226,11 +226,11 @@ struct DiffSize: View {
 
     var body: some View {
         HStack(spacing: 3) {
-            Text("+\(additions)").foregroundStyle(.green)
-            Text("−\(deletions)").foregroundStyle(.red)
+            Text(verbatim: "+\(additions)").foregroundStyle(.green)
+            Text(verbatim: "−\(deletions)").foregroundStyle(.red)
         }
         .font(.caption.monospacedDigit())
-        .accessibilityLabel("\(additions) Zeilen hinzugefügt, \(deletions) entfernt")
+        .accessibilityLabel("\(additions) lines added, \(deletions) removed")
     }
 }
 
@@ -240,7 +240,7 @@ struct AgoText: View {
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
-            Text(GermanTime.ago(date, now: context.date))
+            Text(TimeText.ago(date, now: context.date))
         }
     }
 }
@@ -255,7 +255,7 @@ struct RepoFilterMenu: View {
             Button {
                 radar.updatePrefs { $0.repoFilter = [] }
             } label: {
-                if filter.isEmpty { Label("Alle Repos", systemImage: "checkmark") } else { Text("Alle Repos") }
+                if filter.isEmpty { Label("All Repos", systemImage: "checkmark") } else { Text("All Repos") }
             }
             Divider()
             ForEach(radar.repos, id: \.self) { repo in
@@ -284,42 +284,42 @@ struct SetupStateView: View {
     var body: some View {
         if !app.hasToken {
             ContentUnavailableView {
-                Label("Nicht bei GitHub angemeldet", systemImage: "person.badge.key")
+                Label("Not Signed In to GitHub", systemImage: "person.badge.key")
             } description: {
-                Text("PR Radar spricht GitHub direkt an, ohne eigenen Server.")
+                Text("PR Radar talks to GitHub directly, without a server of its own.")
             } actions: {
                 if app.canLogin {
-                    Button("Mit GitHub anmelden") {
+                    Button("Sign In with GitHub") {
                         app.startLogin()
                         radar.updatePrefs { $0.tab = .settings }
                     }
                     .buttonStyle(.borderedProminent)
                 } else {
-                    Button("Token eintragen") { radar.updatePrefs { $0.tab = .settings } }
+                    Button("Enter Token") { radar.updatePrefs { $0.tab = .settings } }
                         .buttonStyle(.borderedProminent)
                 }
                 DemoButton()
             }
         } else if radar.repos.isEmpty {
             ContentUnavailableView {
-                Label("Noch keine Repositories", systemImage: "arrow.triangle.pull")
+                Label("No Repositories Yet", systemImage: "arrow.triangle.pull")
             } description: {
-                Text("Füge Repos als owner/name oder GitHub-URL hinzu.")
+                Text("Add repos as owner/name or a GitHub URL.")
             } actions: {
-                Button("Repositories hinzufügen") { radar.updatePrefs { $0.tab = .settings } }
+                Button("Add Repositories") { radar.updatePrefs { $0.tab = .settings } }
                     .buttonStyle(.borderedProminent)
                 DemoButton()
             }
         } else if let error = radar.status.error {
             ContentUnavailableView {
-                Label("GitHub nicht erreichbar", systemImage: "wifi.exclamationmark")
+                Label("Can’t Reach GitHub", systemImage: "wifi.exclamationmark")
             } description: {
                 Text(error)
             } actions: {
-                Button("Erneut versuchen") { radar.refresh() }
+                Button("Try Again") { radar.refresh() }
             }
         } else {
-            ProgressView("Lade Daten von GitHub …")
+            ProgressView("Loading data from GitHub…")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
@@ -330,7 +330,7 @@ private struct DemoButton: View {
     @Environment(AppState.self) private var app
 
     var body: some View {
-        Button("Mit Beispieldaten ausprobieren", systemImage: "play.rectangle") { app.startDemo() }
+        Button("Try with Sample Data", systemImage: "play.rectangle") { app.startDemo() }
             .buttonStyle(.bordered)
     }
 }
@@ -346,17 +346,17 @@ struct DemoBanner: View {
                     .foregroundStyle(Color.accentColor)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("Demo-Modus").font(.subheadline.weight(.semibold))
-                    Text("Beispieldaten, nicht mit GitHub verbunden")
+                    Text("Demo Mode").font(.subheadline.weight(.semibold))
+                    Text("Sample data, not connected to GitHub")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
                 .accessibilityElement(children: .combine)
                 Spacer(minLength: 0)
-                Button("Beenden") { app.endDemo() }
+                Button("Exit") { app.endDemo() }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
-                    .accessibilityLabel("Demo-Modus beenden")
+                    .accessibilityLabel("Exit Demo Mode")
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
@@ -375,7 +375,7 @@ struct StaleBanner: View {
         if let error = radar.status.error {
             Label {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Aktualisierung fehlgeschlagen").font(.subheadline.weight(.semibold))
+                    Text("Refresh Failed").font(.subheadline.weight(.semibold))
                     Text(error).font(.caption).foregroundStyle(.secondary).lineLimit(3)
                 }
             } icon: {
@@ -393,9 +393,9 @@ struct PollFooter: View {
         let s = radar.status
         TimelineView(.periodic(from: .now, by: 10)) { ctx in
             VStack(spacing: 2) {
-                Text("Aktualisiert \(GermanTime.ago(s.lastSuccess, now: ctx.date)) · alle \(intervalLabel(s.interval))")
+                Text("Updated \(TimeText.ago(s.lastSuccess, now: ctx.date)) · every \(intervalLabel(s.interval))")
                 if let rl = s.rateLimit {
-                    Text("API-Kontingent \(rl.remaining) / \(rl.limit)")
+                    Text("API quota \(rl.remaining) / \(rl.limit)")
                 }
             }
             .font(.caption2)
@@ -411,6 +411,8 @@ struct PollIndicator: View {
 
     var body: some View {
         let state = radar.status.state
+        let a11yLabel: LocalizedStringKey =
+            state == .error ? "Error – reload" : state == .polling ? "Loading" : "Up to date – reload"
         Button {
             radar.refresh()
         } label: {
@@ -418,6 +420,6 @@ struct PollIndicator: View {
                 .foregroundStyle(state == .error ? Color.red : state == .polling ? Color.orange : Color.green)
                 .symbolEffect(.variableColor.iterative, isActive: state == .polling)
         }
-        .accessibilityLabel(state == .error ? "Fehler – neu laden" : state == .polling ? "Lädt" : "Aktuell – neu laden")
+        .accessibilityLabel(a11yLabel)
     }
 }

@@ -20,7 +20,7 @@ struct SettingsView: View {
                 StatusSection()
                 InfoSection()
             }
-            .navigationTitle("Einstellungen")
+            .navigationTitle("Settings")
             .toolbar { EditButton() }
         }
     }
@@ -37,62 +37,62 @@ private struct AccountSection: View {
             case .starting:
                 HStack(spacing: 10) {
                     ProgressView()
-                    Text("Verbinde mit GitHub …")
+                    Text("Connecting to GitHub…")
                 }
-                Button("Abbrechen", role: .cancel) { app.cancelLogin() }
+                Button("Cancel", role: .cancel) { app.cancelLogin() }
             case let .waiting(code):
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Gib diesen Code auf GitHub ein (liegt in der Zwischenablage):")
+                    Text("Enter this code on GitHub (it’s on the clipboard):")
                         .font(.subheadline)
                     Text(code.userCode)
                         .font(.system(.title, design: .monospaced).weight(.semibold))
                         .textSelection(.enabled)
                     HStack(spacing: 8) {
                         ProgressView()
-                        Text("Warte auf die Bestätigung auf GitHub …")
+                        Text("Waiting for confirmation on GitHub…")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
                 }
                 .padding(.vertical, 4)
-                Button("Code kopieren und GitHub öffnen", systemImage: "safari") {
+                Button("Copy Code and Open GitHub", systemImage: "safari") {
                     UIPasteboard.general.string = code.userCode
                     openURL(code.verificationURI)
                 }
-                Button("Abbrechen", role: .cancel) { app.cancelLogin() }
+                Button("Cancel", role: .cancel) { app.cancelLogin() }
             case .idle, .failed:
                 if let source = app.tokenSource {
                     LabeledContent {
                         Text(source.label)
                     } label: {
                         if let viewer = radar.snapshot?.viewer {
-                            Label("Angemeldet als \(viewer)", systemImage: "checkmark.seal.fill")
+                            Label("Signed in as \(viewer)", systemImage: "checkmark.seal.fill")
                                 .foregroundStyle(.green)
                         } else {
-                            Label("Token hinterlegt", systemImage: "key.fill")
+                            Label("Token Saved", systemImage: "key.fill")
                         }
                     }
                 }
                 if app.tokenSource != .login {
-                    Button("Mit GitHub anmelden", systemImage: "person.badge.key") { app.startLogin() }
+                    Button("Sign In with GitHub", systemImage: "person.badge.key") { app.startLogin() }
                         .disabled(!app.canLogin)
                 }
                 if case let .failed(message) = app.login {
                     Text(message).font(.footnote).foregroundStyle(.red)
                 }
                 if app.tokenSource == .login {
-                    Button("Abmelden", role: .destructive) { app.deleteToken() }
+                    Button("Sign Out", role: .destructive) { app.deleteToken() }
                 }
             }
         } header: {
-            Text("GitHub-Konto")
+            Text("GitHub Account")
         } footer: {
             if app.canLogin {
                 Text(
-                    "Die Anmeldung öffnet GitHub im Browser. PR Radar bekommt Zugriff auf deine Repos (Scope „repo“), um PRs zu lesen, zu mergen und Auto-Merge zu schalten. Org-Repos erscheinen erst, wenn die Organisation PR Radar freigibt. Der Token liegt nur im Schlüsselbund dieses Geräts."
+                    "Signing in opens GitHub in the browser. PR Radar gets access to your repos (scope “repo”) to read PRs, merge them and toggle auto-merge. Org repos only appear once the organization approves PR Radar. The token is stored only in this device’s keychain."
                 )
             } else {
-                Text("In diesem Build ist keine Anmeldung eingerichtet. Trage unter „Erweitert“ einen Personal Access Token ein.")
+                Text("Sign-in is not set up in this build. Enter a personal access token under “Advanced”.")
             }
         }
     }
@@ -106,31 +106,32 @@ private struct TokenSection: View {
     @FocusState private var focused: Bool
 
     var body: some View {
+        let placeholder: LocalizedStringKey = app.hasToken ? "Enter new token" : "ghp_… or github_pat_…"
         Section {
             HStack {
-                SecureField(app.hasToken ? "Neuen Token eintragen" : "ghp_… oder github_pat_…", text: $input)
+                SecureField(placeholder, text: $input)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .textContentType(.password)
                     .focused($focused)
                     .onSubmit(save)
-                Button("Speichern", action: save)
+                Button("Save", action: save)
                     .disabled(input.trimmingCharacters(in: .whitespaces).isEmpty)
             }
             if let error {
                 Text(error).font(.footnote).foregroundStyle(.red)
             }
             if app.tokenSource == .keychain {
-                Button("Token entfernen", role: .destructive) { app.deleteToken() }
+                Button("Remove Token", role: .destructive) { app.deleteToken() }
             }
         } header: {
-            Text("Erweitert: Personal Access Token")
+            Text("Advanced: Personal Access Token")
         } footer: {
             VStack(alignment: .leading, spacing: 6) {
                 Text(
-                    "Statt der Anmeldung: Fine-grained PAT auf die gewünschten Repos mit Metadata, Contents, Commit statuses, Actions/Checks (read) und Pull requests (**write** für Merge und Auto-Merge). Für Org-Repos ohne fine-grained Tokens einen klassischen PAT mit `repo` nutzen. Ersetzt eine bestehende Anmeldung."
+                    "Instead of signing in: a fine-grained PAT for the repos you want with Metadata, Contents, Commit statuses, Actions/Checks (read) and Pull requests (**write** for merge and auto-merge). For org repos without fine-grained tokens, use a classic PAT with `repo`. Replaces an existing sign-in."
                 )
-                Link("Token auf GitHub erstellen", destination: URL(string: "https://github.com/settings/personal-access-tokens/new")!)
+                Link("Create Token on GitHub", destination: URL(string: "https://github.com/settings/personal-access-tokens/new")!)
             }
         }
     }
@@ -155,13 +156,13 @@ private struct ReposSection: View {
     var body: some View {
         Section {
             HStack {
-                TextField("owner/repo oder GitHub-URL", text: $input)
+                TextField("owner/repo or GitHub URL", text: $input)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .keyboardType(.URL)
                     .submitLabel(.done)
                     .onSubmit(add)
-                Button("Hinzufügen", systemImage: "plus.circle.fill", action: add)
+                Button("Add", systemImage: "plus.circle.fill", action: add)
                     .labelStyle(.iconOnly)
                     .disabled(input.trimmingCharacters(in: .whitespaces).isEmpty)
             }
@@ -169,7 +170,7 @@ private struct ReposSection: View {
                 Text(error).font(.footnote).foregroundStyle(.red)
             }
             if radar.repos.isEmpty {
-                Text("Noch keine Repos – füge oben eins hinzu.")
+                Text("No repos yet – add one above.")
                     .foregroundStyle(.secondary)
             }
             ForEach(radar.repos, id: \.self) { full in
@@ -182,7 +183,7 @@ private struct ReposSection: View {
         } header: {
             Text("Repositories")
         } footer: {
-            Text("Alle Repos werden gebündelt per GraphQL abgefragt – alle 30 s, solange irgendwo eine Pipeline läuft alle 10 s. Auto-Merge muss im Repo erlaubt sein (Settings → General → Allow auto-merge).")
+            Text("All repos are fetched together via GraphQL – every 30 s, or every 10 s while any pipeline is running. Auto-merge must be allowed in the repo (Settings → General → Allow auto-merge).")
         }
     }
 
@@ -209,11 +210,14 @@ private struct RepoSettingsRow: View {
                 if let error = info?.error {
                     Text(error).font(.caption).foregroundStyle(.red)
                 } else if let info {
-                    Text("\(info.defaultBranch ?? "–") · Auto-Merge \(info.autoMergeAllowed ? "erlaubt" : "aus")\(info.viewerCanMerge ? "" : " · nur lesend")")
+                    let autoMerge =
+                        info.autoMergeAllowed ? String(localized: "Auto-merge allowed") : String(localized: "Auto-merge off")
+                    let parts: [String] = [info.defaultBranch ?? "–", autoMerge] + (info.viewerCanMerge ? [] : [String(localized: "read-only")])
+                    Text(parts.joined(separator: " · "))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
-                    Text("wird geladen …").font(.caption).foregroundStyle(.secondary)
+                    Text("Loading…").font(.caption).foregroundStyle(.secondary)
                 }
             }
         }
@@ -227,12 +231,12 @@ private struct NotificationsSection: View {
     var body: some View {
         Section {
             Toggle(isOn: Binding(get: { radar.prefs.notify }, set: { setNotify($0) })) {
-                Label("Pipelines & Merges melden", systemImage: "bell.badge")
+                Label("Notify About Pipelines & Merges", systemImage: "bell.badge")
             }
         } header: {
-            Text("Benachrichtigungen")
+            Text("Notifications")
         } footer: {
-            Text("Meldet, wenn eine Pipeline rot oder grün wird oder ein PR gemergt wurde, und zeigt rote PRs als Badge. Im Hintergrund aktualisiert iOS nur gelegentlich – live ist die App im Vordergrund.")
+            Text("Notifies you when a pipeline turns red or green or a PR is merged, and shows red PRs as a badge. In the background iOS only refreshes occasionally – the app is live in the foreground.")
         }
     }
 
@@ -247,7 +251,9 @@ private struct NotificationsSection: View {
             radar.updatePrefs { $0.notify = granted }
             app.updateBadge()
             if !granted {
-                app.show(.error, "Benachrichtigungen aus", "In den iOS-Einstellungen für PR Radar erlauben.")
+                app.show(
+                    .error, String(localized: "Notifications Off"),
+                    String(localized: "Allow them for PR Radar in iOS Settings."))
             }
         }
     }
@@ -259,15 +265,15 @@ private struct StatusSection: View {
     var body: some View {
         let s = radar.status
         Section("Status") {
-            LabeledContent("Aktualisierung", value: "alle \(intervalLabel(s.interval))")
-            LabeledContent("Zuletzt") { AgoText(date: s.lastSuccess) }
+            LabeledContent("Refresh Interval", value: String(localized: "every \(intervalLabel(s.interval))"))
+            LabeledContent("Last Updated") { AgoText(date: s.lastSuccess) }
             if let rl = s.rateLimit {
-                LabeledContent("API-Kontingent", value: "\(rl.remaining) / \(rl.limit)")
+                LabeledContent("API Quota", value: "\(rl.remaining) / \(rl.limit)")
             }
             if let error = s.error {
                 Text(error).font(.footnote).foregroundStyle(.red)
             }
-            Button("Jetzt aktualisieren", systemImage: "arrow.clockwise") { radar.refresh() }
+            Button("Refresh Now", systemImage: "arrow.clockwise") { radar.refresh() }
         }
     }
 }
@@ -275,30 +281,30 @@ private struct StatusSection: View {
 /// Version, Produktseite, Support und Rechtstexte (Pflicht für den App Store).
 private struct InfoSection: View {
     var body: some View {
-        Section("Info") {
+        Section("About") {
             LabeledContent("Version", value: Bundle.main.shortVersion)
             Link(destination: Site.url(.home)) {
-                Label("PR-Radar-Website", systemImage: "globe")
+                Label("PR Radar Website", systemImage: "globe")
             }
             Link(destination: Site.url(.support)) {
                 Label("Support", systemImage: "questionmark.circle")
             }
             Link(destination: Site.supportMail) {
-                Label("E-Mail an den Support", systemImage: "envelope")
+                Label("Email Support", systemImage: "envelope")
             }
             Link(destination: Site.url(.privacy)) {
-                Label("Datenschutz", systemImage: "hand.raised")
+                Label("Privacy Policy", systemImage: "hand.raised")
             }
             Link(destination: Site.url(.terms)) {
-                Label("Lizenzvereinbarung (EULA)", systemImage: "doc.text")
+                Label("License Agreement (EULA)", systemImage: "doc.text")
             }
             Link(destination: Site.url(.imprint)) {
-                Label("Impressum", systemImage: "building.columns")
+                Label("Legal Notice", systemImage: "building.columns")
             }
             Link(destination: URL(string: "https://github.com/rubenvitt/pr-radar")!) {
-                Label("Quellcode auf GitHub", systemImage: "chevron.left.forwardslash.chevron.right")
+                Label("Source Code on GitHub", systemImage: "chevron.left.forwardslash.chevron.right")
             }
-            LabeledContent("Lizenz des Quellcodes", value: "FSL-1.1-ALv2")
+            LabeledContent("Source Code License", value: "FSL-1.1-ALv2")
         }
     }
 }

@@ -21,22 +21,22 @@ struct MergeControl: View {
                 Button {
                     radar.setAutoMerge(pr.id, method: nil)
                 } label: {
-                    ControlLabel(symbol: "bolt.fill", text: "Auto · \(method.label)", busy: busy, busyText: "Ändert …")
+                    ControlLabel(symbol: "bolt.fill", text: "Auto · \(method.label)", busy: busy, busyText: "Updating…")
                 }
                 .tint(.accentColor)
-                .accessibilityHint("Auto-Merge deaktivieren")
+                .accessibilityHint("Disable Auto-merge")
 
             case let .mergeNow(methods):
                 Menu {
-                    Section("Jetzt mergen") {
+                    Section("Merge Now") {
                         ForEach(methods) { m in
                             Button(m.label, systemImage: "arrow.triangle.merge") { radar.merge(pr.id, method: m) }
                         }
                     }
                 } label: {
                     ControlLabel(
-                        symbol: "arrow.triangle.merge", text: "Mergen", busy: busy,
-                        busyText: radar.isRetrying(pr.id) ? "Neuer Versuch …" : "Mergt …")
+                        symbol: "arrow.triangle.merge", text: "Merge", busy: busy,
+                        busyText: radar.isRetrying(pr.id) ? "Retrying…" : "Merging…")
                 }
                 .tint(.green)
 
@@ -45,18 +45,18 @@ struct MergeControl: View {
                     Button {
                         radar.setAutoMerge(pr.id, method: only)
                     } label: {
-                        ControlLabel(symbol: "bolt", text: "Auto-Merge", busy: busy, busyText: "Aktiviert …")
+                        ControlLabel(symbol: "bolt", text: "Auto-merge", busy: busy, busyText: "Enabling…")
                     }
-                    .accessibilityHint("Auto-Merge mit \(only.label) aktivieren")
+                    .accessibilityHint("Enable Auto-merge with \(only.label)")
                 } else {
                     Menu {
-                        Section("Auto-Merge mit") {
+                        Section("Auto-merge with") {
                             ForEach(methods) { m in
                                 Button(m.label) { radar.setAutoMerge(pr.id, method: m) }
                             }
                         }
                     } label: {
-                        ControlLabel(symbol: "bolt", text: "Auto-Merge", busy: busy, busyText: "Aktiviert …")
+                        ControlLabel(symbol: "bolt", text: "Auto-merge", busy: busy, busyText: "Enabling…")
                     }
                 }
 
@@ -65,7 +65,7 @@ struct MergeControl: View {
                 Menu {
                     Text(reason)
                 } label: {
-                    ControlLabel(symbol: "bolt.slash", text: "Auto-Merge", busy: false, busyText: "")
+                    ControlLabel(symbol: "bolt.slash", text: "Auto-merge", busy: false)
                 }
                 .tint(.secondary)
             }
@@ -80,15 +80,15 @@ struct MergeControl: View {
 
 private struct ControlLabel: View {
     var symbol: String
-    var text: String
+    var text: LocalizedStringKey
     var busy: Bool
-    var busyText: String
+    var busyText: LocalizedStringKey? = nil
 
     var body: some View {
         if busy {
             HStack(spacing: 6) {
                 ProgressView().controlSize(.mini)
-                Text(busyText)
+                if let busyText { Text(busyText) }
             }
             .font(.caption.weight(.semibold))
         } else {
@@ -114,15 +114,15 @@ struct PRActions: ViewModifier {
                 if !busy {
                     switch action {
                     case .mergeNow:
-                        Button("Mergen", systemImage: "arrow.triangle.merge") { confirmMerge = true }
+                        Button("Merge", systemImage: "arrow.triangle.merge") { confirmMerge = true }
                             .tint(.green)
                     case let .enable(methods):
-                        Button("Auto-Merge", systemImage: "bolt") {
+                        Button("Auto-merge", systemImage: "bolt") {
                             if methods.count == 1 { radar.setAutoMerge(pr.id, method: methods[0]) } else { confirmMerge = true }
                         }
                         .tint(.accentColor)
                     case .disable:
-                        Button("Auto aus", systemImage: "bolt.slash") { radar.setAutoMerge(pr.id, method: nil) }
+                        Button("Auto Off", systemImage: "bolt.slash") { radar.setAutoMerge(pr.id, method: nil) }
                             .tint(.gray)
                     case .unavailable:
                         EmptyView()
@@ -139,9 +139,9 @@ struct PRActions: ViewModifier {
                 if !busy { mergeButtons(action) }
                 if let url = URL(string: pr.url) {
                     Section {
-                        Button("Auf GitHub öffnen", systemImage: "safari") { openURL(url) }
-                        Button("Link kopieren", systemImage: "doc.on.doc") { UIPasteboard.general.url = url }
-                        ShareLink(item: url) { Label("Teilen …", systemImage: "square.and.arrow.up") }
+                        Button("Open on GitHub", systemImage: "safari") { openURL(url) }
+                        Button("Copy Link", systemImage: "doc.on.doc") { UIPasteboard.general.url = url }
+                        ShareLink(item: url) { Label("Share…", systemImage: "square.and.arrow.up") }
                     }
                 }
             }
@@ -154,27 +154,27 @@ struct PRActions: ViewModifier {
     private func mergeButtons(_ action: MergeAction) -> some View {
         switch action {
         case let .mergeNow(methods):
-            Section("Jetzt mergen") {
+            Section("Merge Now") {
                 ForEach(methods) { m in
-                    Button("\(m.label)", systemImage: "arrow.triangle.merge") { radar.merge(pr.id, method: m) }
+                    Button(m.label, systemImage: "arrow.triangle.merge") { radar.merge(pr.id, method: m) }
                 }
             }
         case let .enable(methods):
-            Section("Auto-Merge mit") {
+            Section("Auto-merge with") {
                 ForEach(methods) { m in
-                    Button("\(m.label)", systemImage: "bolt") { radar.setAutoMerge(pr.id, method: m) }
+                    Button(m.label, systemImage: "bolt") { radar.setAutoMerge(pr.id, method: m) }
                 }
             }
         case .disable:
-            Button("Auto-Merge deaktivieren", systemImage: "bolt.slash") { radar.setAutoMerge(pr.id, method: nil) }
+            Button("Disable Auto-merge", systemImage: "bolt.slash") { radar.setAutoMerge(pr.id, method: nil) }
         case .unavailable:
             EmptyView()
         }
     }
 
-    private func dialogTitle(_ action: MergeAction) -> String {
-        if case .mergeNow = action { return "\(pr.repo)#\(pr.number) jetzt mergen?" }
-        return "Auto-Merge für #\(pr.number)"
+    private func dialogTitle(_ action: MergeAction) -> LocalizedStringKey {
+        if case .mergeNow = action { return "Merge \(pr.repo)#\(pr.number) now?" }
+        return "Auto-merge for #\(pr.number)"
     }
 }
 

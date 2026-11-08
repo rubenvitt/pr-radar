@@ -43,21 +43,21 @@ public enum GitHubError: LocalizedError, Equatable, Sendable {
     public var errorDescription: String? {
         switch self {
         case .noToken:
-            "Nicht bei GitHub angemeldet. Melde dich in den Einstellungen mit GitHub an oder hinterlege einen Personal Access Token."
+            L10n.tr("Not signed in to GitHub. Sign in with GitHub in Settings or save a personal access token.")
         case .unauthorized:
-            "GitHub lehnt den Token ab (401). Token prüfen."
+            L10n.tr("GitHub rejected the token (401). Check the token.")
         case let .unreachable(detail):
-            "GitHub nicht erreichbar: \(detail)"
+            L10n.tr("GitHub is unreachable: %@", detail)
         case let .http(status, message):
             describeHTTPError(status, message: message)
         case let .graphQL(message):
             message
         case let .unreadable(detail):
-            "Unerwartete Antwort von GitHub: \(detail)"
+            L10n.tr("Unexpected response from GitHub: %@", detail)
         case let .rateLimited(retryAt?):
-            "GitHub-API-Kontingent aufgebraucht. Wieder frei um \(GermanTime.clock(retryAt)) Uhr."
+            L10n.tr("GitHub API quota used up. Available again at %@.", TimeText.clock(retryAt))
         case .rateLimited(nil):
-            "GitHub drosselt gerade die Anfragen. Neuer Versuch in ein paar Minuten."
+            L10n.tr("GitHub is throttling requests right now. Retrying in a few minutes.")
         }
     }
 }
@@ -65,13 +65,16 @@ public enum GitHubError: LocalizedError, Equatable, Sendable {
 /// Verständlicher Text für einen HTTP-Fehler statt des rohen Antwort-Bodys.
 func describeHTTPError(_ status: Int, message: String) -> String {
     let detail = message.trimmingCharacters(in: .whitespacesAndNewlines)
-    let suffix = detail.isEmpty ? "" : " GitHub meldet: „\(detail.prefix(160))“"
+    let suffix = detail.isEmpty ? "" : L10n.tr(" GitHub says: “%@”", String(detail.prefix(160)))
     switch status {
-    case 403: return "GitHub verweigert den Zugriff (403). Fehlen dem Token Rechte für diese Repos?" + suffix
-    case 404: return "GitHub kennt die Adresse nicht (404)." + suffix
-    case 408, 504: return "GitHub hat nicht rechtzeitig geantwortet. Neuer Versuch folgt automatisch. (HTTP \(status))"
-    case 500..<600: return "GitHub hat gerade Probleme. Neuer Versuch folgt automatisch. (HTTP \(status))"
-    default: return "GitHub hat die Anfrage abgelehnt." + suffix
+    case 403:
+        return L10n.tr("GitHub denied access (403). Does the token lack permissions for these repos?") + suffix
+    case 404: return L10n.tr("GitHub does not know this address (404).") + suffix
+    case 408, 504:
+        return L10n.tr("GitHub did not respond in time. Retrying automatically. (HTTP %lld)", status)
+    case 500..<600:
+        return L10n.tr("GitHub is having problems right now. Retrying automatically. (HTTP %lld)", status)
+    default: return L10n.tr("GitHub rejected the request.") + suffix
     }
 }
 
@@ -87,8 +90,11 @@ func explainOAuthRestriction(_ message: String) -> String? {
         // „… the `acme` organization has enabled OAuth App access restrictions …“
         let parts = message.split(separator: "`", omittingEmptySubsequences: false)
         let org = parts.count > 2 ? String(parts[1]) : ""
-        let who = org.isEmpty || org.contains(" ") ? "Die Organisation" : "Die Organisation „\(org)“"
-        return "\(who) hat PR Radar noch nicht freigegeben. Ein Owner kann das unter Settings → Third-party access → OAuth app policy erlauben."
+        if org.isEmpty || org.contains(" ") {
+            return L10n.tr("The organization has not approved PR Radar yet. An owner can allow it under Settings → Third-party access → OAuth app policy.")
+        }
+        return L10n.tr("The organization “%@” has not approved PR Radar yet. An owner can allow it under Settings → Third-party access → OAuth app policy.",
+            org)
     }
     return nil
 }
@@ -102,7 +108,7 @@ func explainMissingWrite(_ message: String, type: String?) -> String? {
         "must have push access", "must have write access", "not authorized",
     ]
     guard type == "FORBIDDEN" || patterns.contains(where: lower.contains) else { return nil }
-    return "Keine Schreibrechte für diesen Pull Request. Mergen und Auto-Merge brauchen Schreibrechte im Repo und beim Token „Pull requests: write“ (Fine-grained PAT) bzw. den Scope `repo`."
+    return L10n.tr("No write access to this pull request. Merging and auto-merge need write access to the repo and, for the token, “Pull requests: write” (fine-grained PAT) or the `repo` scope.")
 }
 
 /// Fehler einer Mutation: Rechtefehler im Klartext, sonst GitHubs Meldungen.
@@ -336,7 +342,7 @@ public final class GitHubClient: GitHubAPI {
         for (chunk, res) in zip(chunks, responses) {
             guard let data = res.data else {
                 let msg = res.errors.map(\.message).joined(separator: "; ")
-                throw GitHubError.graphQL(msg.isEmpty ? "Leere Antwort von GitHub" : msg)
+                throw GitHubError.graphQL(msg.isEmpty ? L10n.tr("Empty response from GitHub") : msg)
             }
             if snapshot.viewer == nil { snapshot.viewer = data.viewer }
             if let rl = data.rateLimit { rateLimit = rl }
@@ -346,12 +352,12 @@ public final class GitHubClient: GitHubAPI {
                 case let .repo(raw)?:
                     pushRepo(&snapshot, raw)
                 case let .failed(message)?:
-                    snapshot.repos.append(.unavailable(full, error: "Antwort nicht lesbar: \(message)"))
+                    snapshot.repos.append(.unavailable(full, error: L10n.tr("Unreadable response: %@", message)))
                 case .null?, nil:
                     let err = res.errors.first { $0.path.first == alias }
                     let message = err.map { explainOAuthRestriction($0.message) ?? $0.message }
                     snapshot.repos.append(
-                        .unavailable(full, error: message ?? "Repository nicht gefunden oder kein Zugriff"))
+                        .unavailable(full, error: message ?? L10n.tr("Repository not found or no access")))
                 }
             }
         }
@@ -441,7 +447,7 @@ struct GQLError: Decodable, Sendable {
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        message = try c.decodeIfPresent(String.self, forKey: .message) ?? "Unbekannter Fehler"
+        message = try c.decodeIfPresent(String.self, forKey: .message) ?? L10n.tr("Unknown error")
         type = try? c.decodeIfPresent(String.self, forKey: .type)
         var out: [String] = []
         if var p = try? c.nestedUnkeyedContainer(forKey: .path) {

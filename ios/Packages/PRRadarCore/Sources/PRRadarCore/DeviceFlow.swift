@@ -85,14 +85,14 @@ public enum DeviceFlowError: LocalizedError, Equatable, Sendable {
 
     public var errorDescription: String? {
         switch self {
-        case .notConfigured: "Die Anmeldung ist in diesem Build nicht eingerichtet (keine Client-ID)."
-        case .expired: "Der Anmeldecode ist abgelaufen. Bitte erneut anmelden."
-        case .denied: "Die Anmeldung wurde auf GitHub abgelehnt."
-        case .disabled: "Für PR Radar ist die Anmeldung per Code bei GitHub nicht freigeschaltet."
-        case .badClient: "GitHub kennt die Client-ID von PR Radar nicht. Die Anmeldung ist falsch eingerichtet."
-        case let .rejected(detail): "GitHub lehnt die Anmeldung ab: \(detail)"
-        case .unreadable: "Unerwartete Antwort von GitHub beim Anmelden"
-        case .unavailable: "GitHub ist gerade nicht erreichbar. Bitte erneut anmelden."
+        case .notConfigured: L10n.tr("Sign-in is not set up in this build (no client ID).")
+        case .expired: L10n.tr("The sign-in code has expired. Please sign in again.")
+        case .denied: L10n.tr("Sign-in was declined on GitHub.")
+        case .disabled: L10n.tr("Sign-in with a code is not enabled for PR Radar on GitHub.")
+        case .badClient: L10n.tr("GitHub does not know PR Radar’s client ID. Sign-in is misconfigured.")
+        case let .rejected(detail): L10n.tr("GitHub rejects the sign-in: %@", detail)
+        case .unreadable: L10n.tr("Unexpected response from GitHub during sign-in")
+        case .unavailable: L10n.tr("GitHub can’t be reached right now. Please sign in again.")
         }
     }
 

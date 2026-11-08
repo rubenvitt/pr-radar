@@ -16,7 +16,7 @@ struct ReleasesView: View {
                 if let snapshot = radar.snapshot, !radar.repos.isEmpty {
                     let d = Derived(snapshot: snapshot, prefs: radar.prefs, query: query)
                     if d.releases.isEmpty {
-                        ContentUnavailableView("Keine Releases", systemImage: "tag")
+                        ContentUnavailableView("No Releases", systemImage: "tag")
                     } else {
                         let defaults = d.releasesOpenByDefault
                         List {
@@ -42,7 +42,7 @@ struct ReleasesView: View {
                 }
             }
             .navigationTitle("Releases")
-            .searchable(text: $query, prompt: "Name, Tag, Repo")
+            .searchable(text: $query, prompt: "Name, tag, repo")
             .refreshable { await radar.refreshNow() }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) { RepoFilterMenu() }
@@ -70,11 +70,11 @@ private struct ReleaseCard: View {
                             Text(release.tagName).font(.caption.monospaced()).foregroundStyle(.secondary)
                         }
                         if release.isLatest { Chip(text: "Latest", color: .green) }
-                        if release.isPrerelease { Chip(text: "Pre-Release", color: .orange) }
+                        if release.isPrerelease { Chip(text: "Pre-release", color: .orange) }
                     }
                     FlowLayout(spacing: 8, lineSpacing: 3) {
                         RepoName(fullName: release.repo)
-                        if let author = release.author { Text("von \(author)") }
+                        if let author = release.author { Text("by \(author)") }
                         AgoText(date: release.publishedAt)
                     }
                     .font(.caption)
@@ -94,7 +94,9 @@ private struct ReleaseCard: View {
                 withAnimation(.snappy) { isOpen.toggle() }
             }
             .accessibilityAddTraits(hasNotes ? .isButton : [])
-            .accessibilityHint(hasNotes ? (isOpen ? "Release Notes zuklappen" : "Release Notes aufklappen") : "")
+            .accessibilityHint(
+                !hasNotes ? Text(verbatim: "")
+                    : isOpen ? Text("Collapse release notes") : Text("Expand release notes"))
 
             if isOpen && hasNotes {
                 Divider()
@@ -105,11 +107,11 @@ private struct ReleaseCard: View {
         .padding(.vertical, 4)
         .contextMenu {
             if let url = URL(string: release.url) {
-                Button("Auf GitHub öffnen", systemImage: "safari") { openURL(url) }
+                Button("Open on GitHub", systemImage: "safari") { openURL(url) }
                 ShareLink(item: url)
             }
             if let date = release.publishedAt {
-                Text("Veröffentlicht \(GermanTime.full(date))")
+                Text("Published \(TimeText.full(date))")
             }
         }
         .swipeActions(edge: .trailing) {

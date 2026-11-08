@@ -14,9 +14,9 @@ enum TokenSource: Equatable {
 
     var label: String {
         switch self {
-        case .login: "GitHub-Anmeldung"
-        case .keychain: "Personal Access Token"
-        case .environment: "GITHUB_TOKEN (Xcode-Scheme)"
+        case .login: String(localized: "GitHub Sign-In")
+        case .keychain: String(localized: "Personal Access Token")
+        case .environment: String(localized: "GITHUB_TOKEN (Xcode scheme)")
         }
     }
 }
@@ -117,6 +117,6 @@ struct KeychainError: LocalizedError {
 
     var errorDescription: String? {
         let detail = SecCopyErrorMessageString(status, nil) as String? ?? "Code \(status)"
-        return "Token konnte nicht im Schlüsselbund gespeichert werden: \(detail)"
+        return String(localized: "Couldn’t save the token to the keychain: \(detail)")
     }
 }

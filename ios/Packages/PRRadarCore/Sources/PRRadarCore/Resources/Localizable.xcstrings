@@ -1,0 +1,908 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    " GitHub says: “%@”" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : " GitHub meldet: „%@“"
+          }
+        }
+      }
+    },
+    "%@ is already in the list." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ist schon in der Liste."
+          }
+        }
+      }
+    },
+    "%@ · when green" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · wenn grün"
+          }
+        }
+      }
+    },
+    "%lld min" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld Min."
+          }
+        }
+      }
+    },
+    "%lld/%lld passed" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld/%lld grün"
+          }
+        }
+      }
+    },
+    "+%lld more" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "+%lld weitere"
+          }
+        }
+      }
+    },
+    "All" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle"
+          }
+        }
+      }
+    },
+    "Approved" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Approved"
+          }
+        }
+      }
+    },
+    "Auto-merge" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auto-Merge"
+          }
+        }
+      }
+    },
+    "Auto-merge is not allowed in this repo (Settings → Allow auto-merge)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auto-Merge ist in diesem Repo nicht erlaubt (Settings → Allow auto-merge)"
+          }
+        }
+      }
+    },
+    "Behind" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Veraltet"
+          }
+        }
+      }
+    },
+    "Blocked" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Blockiert"
+          }
+        }
+      }
+    },
+    "By you" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Von dir"
+          }
+        }
+      }
+    },
+    "Changes" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Änderungen"
+          }
+        }
+      }
+    },
+    "Conflict" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konflikt"
+          }
+        }
+      }
+    },
+    "Demo mode only includes the sample repos." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Im Demo-Modus gibt es nur die Beispiel-Repos."
+          }
+        }
+      }
+    },
+    "Draft" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Draft"
+          }
+        }
+      }
+    },
+    "Draft PRs cannot be merged" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Draft-PRs können nicht gemergt werden"
+          }
+        }
+      }
+    },
+    "Empty response from GitHub" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Leere Antwort von GitHub"
+          }
+        }
+      }
+    },
+    "Failed" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rot"
+          }
+        }
+      }
+    },
+    "GitHub API quota used up. Available again at %@." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub-API-Kontingent aufgebraucht. Wieder frei um %@ Uhr."
+          }
+        }
+      }
+    },
+    "GitHub can’t be reached right now. Please sign in again." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub ist gerade nicht erreichbar. Bitte erneut anmelden."
+          }
+        }
+      }
+    },
+    "GitHub denied access (403). Does the token lack permissions for these repos?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub verweigert den Zugriff (403). Fehlen dem Token Rechte für diese Repos?"
+          }
+        }
+      }
+    },
+    "GitHub did not respond in time. Retrying automatically. (HTTP %lld)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub hat nicht rechtzeitig geantwortet. Neuer Versuch folgt automatisch. (HTTP %lld)"
+          }
+        }
+      }
+    },
+    "GitHub does not know PR Radar’s client ID. Sign-in is misconfigured." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub kennt die Client-ID von PR Radar nicht. Die Anmeldung ist falsch eingerichtet."
+          }
+        }
+      }
+    },
+    "GitHub does not know this address (404)." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub kennt die Adresse nicht (404)."
+          }
+        }
+      }
+    },
+    "GitHub has not allowed the merge for %lld min: %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub lässt den Merge seit %lld min nicht zu: %@"
+          }
+        }
+      }
+    },
+    "GitHub is having problems right now. Retrying automatically. (HTTP %lld)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub hat gerade Probleme. Neuer Versuch folgt automatisch. (HTTP %lld)"
+          }
+        }
+      }
+    },
+    "GitHub is throttling requests right now. Retrying in a few minutes." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub drosselt gerade die Anfragen. Neuer Versuch in ein paar Minuten."
+          }
+        }
+      }
+    },
+    "GitHub is unreachable: %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub nicht erreichbar: %@"
+          }
+        }
+      }
+    },
+    "GitHub rejected the request." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub hat die Anfrage abgelehnt."
+          }
+        }
+      }
+    },
+    "GitHub rejected the token (401). Check the token." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub lehnt den Token ab (401). Token prüfen."
+          }
+        }
+      }
+    },
+    "GitHub rejects the sign-in: %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub lehnt die Anmeldung ab: %@"
+          }
+        }
+      }
+    },
+    "Invalid date: %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ungültiges Datum: %@"
+          }
+        }
+      }
+    },
+    "Invalid repo – expected owner/name or a GitHub URL." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ungültiges Repo – erwartet owner/name oder eine GitHub-URL."
+          }
+        }
+      }
+    },
+    "Merge conflict – the branch needs to be updated first." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Merge-Konflikt – Branch muss erst aktualisiert werden."
+          }
+        }
+      }
+    },
+    "Merge method %@ is not allowed in %@." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Merge-Methode %@ ist in %@ nicht erlaubt."
+          }
+        }
+      }
+    },
+    "New commits were pushed since you tapped – merge cancelled." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seit dem Tippen wurden neue Commits gepusht – Merge abgebrochen."
+          }
+        }
+      }
+    },
+    "No GitHub token saved. Enter a personal access token in Settings." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein GitHub-Token hinterlegt. Trage in den Einstellungen einen Personal Access Token ein."
+          }
+        }
+      }
+    },
+    "No checks" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Checks"
+          }
+        }
+      }
+    },
+    "No data loaded yet." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch keine Daten geladen."
+          }
+        }
+      }
+    },
+    "No merge method allowed (repo settings and rulesets)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Merge-Methode erlaubt (Repo-Einstellungen und Rulesets)"
+          }
+        }
+      }
+    },
+    "No write access" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Schreibrechte"
+          }
+        }
+      }
+    },
+    "No write access to this pull request. Merging and auto-merge need write access to the repo and, for the token, “Pull requests: write” (fine-grained PAT) or the `repo` scope." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Schreibrechte für diesen Pull Request. Mergen und Auto-Merge brauchen Schreibrechte im Repo und beim Token „Pull requests: write“ (Fine-grained PAT) bzw. den Scope `repo`."
+          }
+        }
+      }
+    },
+    "Not signed in to GitHub. Sign in with GitHub in Settings or save a personal access token." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht bei GitHub angemeldet. Melde dich in den Einstellungen mit GitHub an oder hinterlege einen Personal Access Token."
+          }
+        }
+      }
+    },
+    "Passed" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grün"
+          }
+        }
+      }
+    },
+    "Pipeline running" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pipeline läuft"
+          }
+        }
+      }
+    },
+    "Pull request is no longer open." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pull Request nicht mehr offen."
+          }
+        }
+      }
+    },
+    "Ready" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bereit"
+          }
+        }
+      }
+    },
+    "Repository not found or no access" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Repository nicht gefunden oder kein Zugriff"
+          }
+        }
+      }
+    },
+    "Repository not loaded" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Repository nicht geladen"
+          }
+        }
+      }
+    },
+    "Review" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Review"
+          }
+        }
+      }
+    },
+    "Review ok" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Review ok"
+          }
+        }
+      }
+    },
+    "Review pending" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Review offen"
+          }
+        }
+      }
+    },
+    "Sign-in is not set up in this build (no client ID)." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Anmeldung ist in diesem Build nicht eingerichtet (keine Client-ID)."
+          }
+        }
+      }
+    },
+    "Sign-in was declined on GitHub." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Anmeldung wurde auf GitHub abgelehnt."
+          }
+        }
+      }
+    },
+    "Sign-in with a code is not enabled for PR Radar on GitHub." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für PR Radar ist die Anmeldung per Code bei GitHub nicht freigeschaltet."
+          }
+        }
+      }
+    },
+    "The organization has not approved PR Radar yet. An owner can allow it under Settings → Third-party access → OAuth app policy." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Organisation hat PR Radar noch nicht freigegeben. Ein Owner kann das unter Settings → Third-party access → OAuth app policy erlauben."
+          }
+        }
+      }
+    },
+    "The organization “%@” has not approved PR Radar yet. An owner can allow it under Settings → Third-party access → OAuth app policy." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Organisation „%@“ hat PR Radar noch nicht freigegeben. Ein Owner kann das unter Settings → Third-party access → OAuth app policy erlauben."
+          }
+        }
+      }
+    },
+    "The sign-in code has expired. Please sign in again." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Anmeldecode ist abgelaufen. Bitte erneut anmelden."
+          }
+        }
+      }
+    },
+    "Today" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heute"
+          }
+        }
+      }
+    },
+    "Unexpected response from GitHub during sign-in" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unerwartete Antwort von GitHub beim Anmelden"
+          }
+        }
+      }
+    },
+    "Unexpected response from GitHub: %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unerwartete Antwort von GitHub: %@"
+          }
+        }
+      }
+    },
+    "Unknown error" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unbekannter Fehler"
+          }
+        }
+      }
+    },
+    "Unreadable response: %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Antwort nicht lesbar: %@"
+          }
+        }
+      }
+    },
+    "Yesterday" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gestern"
+          }
+        }
+      }
+    },
+    "Your review" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein Review"
+          }
+        }
+      }
+    },
+    "awaiting you" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "angefragt"
+          }
+        }
+      }
+    },
+    "base has moved on" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Base ist weiter"
+          }
+        }
+      }
+    },
+    "can be merged" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "kann gemergt werden"
+          }
+        }
+      }
+    },
+    "failed" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rot"
+          }
+        }
+      }
+    },
+    "just now" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "gerade eben"
+          }
+        }
+      }
+    },
+    "latest commit" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "letzter Commit"
+          }
+        }
+      }
+    },
+    "no result" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ohne Ergebnis"
+          }
+        }
+      }
+    },
+    "not mergeable" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "nicht mergebar"
+          }
+        }
+      }
+    },
+    "not ready yet" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "noch nicht bereit"
+          }
+        }
+      }
+    },
+    "not required" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "nicht erforderlich"
+          }
+        }
+      }
+    },
+    "passed" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "grün"
+          }
+        }
+      }
+    },
+    "pending" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ausstehend"
+          }
+        }
+      }
+    },
+    "requested" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "angefordert"
+          }
+        }
+      }
+    },
+    "running" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "läuft"
+          }
+        }
+      }
+    },
+    "waiting for rules" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "wartet auf Regeln"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

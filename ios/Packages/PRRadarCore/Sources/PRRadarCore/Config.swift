@@ -13,14 +13,14 @@ public enum Quick: String, Sendable, Codable, Hashable, CaseIterable, Identifiab
 
     public var label: String {
         switch self {
-        case .all: "Alle"
-        case .running: "Pipeline läuft"
-        case .failed: "Rot"
-        case .passed: "Grün"
-        case .auto: "Auto-Merge"
-        case .conflict: "Konflikt"
-        case .review: "Dein Review"
-        case .mine: "Von dir"
+        case .all: L10n.tr("All")
+        case .running: L10n.tr("Pipeline running")
+        case .failed: L10n.tr("Failed")
+        case .passed: L10n.tr("Passed")
+        case .auto: L10n.tr("Auto-merge")
+        case .conflict: L10n.tr("Conflict")
+        case .review: L10n.tr("Your review")
+        case .mine: L10n.tr("By you")
         }
     }
 

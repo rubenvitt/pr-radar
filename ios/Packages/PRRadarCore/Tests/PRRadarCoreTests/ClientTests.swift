@@ -34,12 +34,12 @@ import Testing
 
     @Test func httpTexteJeStatus() {
         #expect(describeHTTPError(404, message: "Not Found").contains("404"))
-        #expect(describeHTTPError(404, message: "Not Found").contains("„Not Found“"))
-        #expect(describeHTTPError(408, message: "").contains("nicht rechtzeitig"))
-        #expect(describeHTTPError(504, message: "").contains("nicht rechtzeitig"))
-        #expect(describeHTTPError(503, message: "x").contains("automatisch"))
-        #expect(!describeHTTPError(503, message: "x").contains("„x“"), "Bei 5xx keine GitHub-Meldung anhängen")
-        #expect(describeHTTPError(422, message: "  ").hasSuffix("abgelehnt."), "Leere Meldung ohne Anhang")
+        #expect(describeHTTPError(404, message: "Not Found").contains("“Not Found”"))
+        #expect(describeHTTPError(408, message: "").contains("did not respond in time"))
+        #expect(describeHTTPError(504, message: "").contains("did not respond in time"))
+        #expect(describeHTTPError(503, message: "x").contains("automatically"))
+        #expect(!describeHTTPError(503, message: "x").contains("“x”"), "Bei 5xx keine GitHub-Meldung anhängen")
+        #expect(describeHTTPError(422, message: "  ").hasSuffix("rejected the request."), "Leere Meldung ohne Anhang")
         // Lange Meldungen werden gekürzt
         let long = String(repeating: "x", count: 500)
         #expect(describeHTTPError(422, message: long).count < 300)
@@ -58,7 +58,7 @@ import Testing
             Issue.record("unreachable erwartet, war \(String(describing: error))")
             return
         }
-        #expect(error?.localizedDescription.hasPrefix("GitHub nicht erreichbar") == true)
+        #expect(error?.localizedDescription.hasPrefix("GitHub is unreachable") == true)
     }
 
     @Test func abbruchBleibtAbbruch() async {
@@ -80,7 +80,7 @@ import Testing
         #expect(await fetchError(both) as? GitHubError == .graphQL("Eins; Zwei"))
 
         let empty = ScriptedTransport(status: 200, body: "{}")
-        #expect(await fetchError(empty) as? GitHubError == .graphQL("Leere Antwort von GitHub"))
+        #expect(await fetchError(empty) as? GitHubError == .graphQL("Empty response from GitHub"))
     }
 
     @Test func einzelneReposScheiternOhneDenAbrufZuKippen() async throws {
@@ -92,8 +92,8 @@ import Testing
         let s = try await client.fetch(repos: ["a/b", "x/y", "c/d"]).snapshot
         #expect(s.viewer == "me")
         #expect(s.repos.map(\.fullName) == ["a/b", "x/y", "c/d"])
-        #expect(s.repos[0].error == "Repository nicht gefunden oder kein Zugriff")
-        #expect(s.repos[1].error?.hasPrefix("Antwort nicht lesbar") == true)
+        #expect(s.repos[0].error == "Repository not found or no access")
+        #expect(s.repos[1].error?.hasPrefix("Unreadable response") == true)
         #expect(s.repos[2].error == "Kein Zugriff auf c/d")
     }
 

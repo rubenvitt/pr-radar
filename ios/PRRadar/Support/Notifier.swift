@@ -27,11 +27,11 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
             let title: String
             switch t.kind {
             case .failed:
-                title = "Pipeline rot"
+                title = String(localized: "Pipeline Failed")
             case .passed:
-                title = "Pipeline grün"
+                title = String(localized: "Pipeline Passed")
             case .merged:
-                title = "Gemergt"
+                title = String(localized: "Merged")
             }
             content.title = "\(title) · \(t.pr.repo)#\(t.pr.number)"
             content.body = t.pr.title
