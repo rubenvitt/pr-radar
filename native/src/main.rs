@@ -2,6 +2,7 @@
 
 mod config;
 mod github;
+mod logging;
 mod model;
 mod radar;
 mod time;
@@ -78,6 +79,7 @@ impl AssetSource for AppAssets {
 }
 
 fn main() {
+    logging::init();
     let app = gpui_kit::application().with_assets(AppAssets);
     // Klick aufs Dock-Symbol, nachdem das Fenster mit ⌘W geschlossen wurde.
     app.on_reopen(ui::show_main_window);
@@ -86,16 +88,18 @@ fn main() {
         Theme::sync_system_appearance(None, cx);
 
         // Ein Client für GraphQL und Avatare (img(url) braucht einen registrierten Client).
-        let http = Arc::new(
-            reqwest_client::ReqwestClient::user_agent("pr-radar-native")
-                .expect("HTTP-Client nicht initialisierbar"),
-        );
+        let http = match reqwest_client::ReqwestClient::user_agent("pr-radar-native") {
+            Ok(client) => Arc::new(client),
+            Err(e) => logging::fatal("Netzwerkzugriff nicht möglich", e),
+        };
         cx.set_http_client(http.clone());
         let github = Arc::new(GitHub::new(http));
         let radar = cx.new(|cx| Radar::new(github, cx));
 
         ui::init(radar.clone(), cx);
-        ui::open_main_window(radar, cx);
+        if let Err(e) = ui::open_main_window(radar, cx) {
+            logging::fatal("Fenster konnte nicht geöffnet werden", e);
+        }
         cx.activate(true);
     });
 }
