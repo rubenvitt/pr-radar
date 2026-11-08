@@ -1,5 +1,6 @@
 //! Hauptfenster: Titelleiste, Seitenleiste (Ansichten, Filter, Repos) und Inhaltsbereich.
 
+mod alerts;
 mod content;
 mod flow;
 mod motion;
@@ -132,6 +133,8 @@ pub fn init(radar: Entity<Radar>, cx: &mut App) {
         with_active_window(cx, |window, _| window.toggle_fullscreen())
     });
     cx.on_action(|_: &About, cx| with_active_window(cx, open_about));
+    // Systembenachrichtigungen auch ohne offenes Fenster (nach ⌘W).
+    alerts::init(radar.clone(), cx);
     cx.set_global(MainRadar(radar));
     cx.on_action(|_: &ShowMainWindow, cx| show_main_window(cx));
 
@@ -547,28 +550,24 @@ impl Workspace {
                 if !self.radar.read(cx).prefs().notify {
                     return;
                 }
+                // Nur der Toast im Fenster; die Systembenachrichtigung schickt
+                // `alerts` auf App-Ebene, auch wenn kein Fenster offen ist.
                 for t in transitions {
-                    let (title, notification) = match t.kind {
-                        TransitionKind::Failed => {
-                            ("Pipeline rot", Notification::error(t.pr.title.clone()))
-                        }
-                        TransitionKind::Passed => {
-                            ("Pipeline grün", Notification::success(t.pr.title.clone()))
-                        }
-                        TransitionKind::Merged => {
-                            ("Gemergt", Notification::info(t.pr.title.clone()))
-                        }
+                    let alert = alerts::Alert::new(t);
+                    let notification = match t.kind {
+                        TransitionKind::Failed => Notification::error(alert.body),
+                        TransitionKind::Passed => Notification::success(alert.body),
+                        TransitionKind::Merged => Notification::info(alert.body),
                     };
-                    let url = t.pr.url.clone();
+                    let (url, tag) = (alert.url, alert.tag);
                     window.push_notification(
                         notification
-                            .id1::<Workspace>(SharedString::from(format!(
-                                "{}-{:?}",
-                                t.pr.id, t.kind
-                            )))
-                            .title(format!("{title} · {}#{}", t.pr.repo, t.pr.number))
-                            .in_app_and_system()
-                            .on_click(move |_, _, cx| cx.open_url(&url)),
+                            .id1::<Workspace>(SharedString::from(tag.clone()))
+                            .title(alert.title)
+                            .on_click(move |_, _, cx| {
+                                cx.dismiss_system_notification(&tag);
+                                cx.open_url(&url);
+                            }),
                         cx,
                     );
                 }
