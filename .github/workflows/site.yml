@@ -4,8 +4,9 @@ on:
   push:
     branches: [main]
     paths: ["site/**", ".github/workflows/site.yml"]
+  # Wie die anderen Workflows ohne Pfadfilter bei PRs, damit der Check
+  # immer entsteht und als Pflicht-Check taugt.
   pull_request:
-    paths: ["site/**", ".github/workflows/site.yml"]
 
 jobs:
   check:

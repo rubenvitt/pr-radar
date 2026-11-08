@@ -84,7 +84,7 @@
     <details>
       <summary>Wie entferne ich alle meine Daten?</summary>
       <p><strong>iPhone und iPad:</strong> Entferne den Token in der App und lösche die App.</p>
-      <p><strong>Mac:</strong> Lösche die App und die Ordner <code>~/Library/Application Support/pr-radar/</code> und <code>~/Library/Logs/PR Radar/</code>. Hat die App einmal ein Ausweich-Protokoll benutzt, zeigt <em>Hilfe → Protokoll im Finder zeigen</em>, wo es liegt (im temporären Ordner). Die Mac-App liest den Token aus <code>GITHUB_TOKEN</code>, <code>GH_TOKEN</code> oder der GitHub CLI und speichert ihn nicht selbst. Entferne ihn also dort (zum Beispiel mit <code>gh auth logout</code>).</p>
+      <p><strong>Mac:</strong> Lösche die App und die Ordner <code>~/Library/Application Support/pr-radar/</code> und <code>~/Library/Logs/PR Radar/</code>. Hat die App einmal ein Ausweich-Protokoll benutzt, lösche auch den Ordner, den <code>open "$TMPDIR/pr-radar"</code> im Terminal öffnet. Die Mac-App liest den Token aus <code>GITHUB_TOKEN</code>, <code>GH_TOKEN</code> oder der GitHub CLI und speichert ihn nicht selbst. Entferne ihn also dort (zum Beispiel mit <code>gh auth logout</code>).</p>
       <p>Brauchst du den Token gar nicht mehr, widerrufe ihn auf GitHub unter <a href="https://github.com/settings/tokens">Settings → Developer settings → Tokens</a>. Die Apps senden uns nichts. Wir haben nur, was du uns selbst schickst (Support-Mails), und bei Direktkäufen die Bestelldaten vom Wiederverkäufer. Möchtest du die gelöscht haben, schreib uns, siehe <a href="/de/datenschutz/#rechte">Datenschutzerklärung</a>.</p>
     </details>
 
