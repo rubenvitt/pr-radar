@@ -304,6 +304,17 @@ impl Workspace {
 
     /// Die Liste ist leer: sagen, warum, und eine Aktion anbieten, die weiterhilft.
     fn render_empty(&self, d: &Derived, cx: &mut Context<Self>) -> AnyElement {
+        // Nicht erreichbare Repos (im Repo-Filter) können offene PRs verbergen.
+        let failed = d
+            .snapshot
+            .repos
+            .iter()
+            .filter(|r| {
+                r.error.is_some()
+                    && (d.prefs.repo_filter.is_empty()
+                        || d.prefs.repo_filter.contains(&r.full_name))
+            })
+            .count();
         let filters = active_filters(&d.prefs, &self.query);
         if !filters.is_empty() {
             let what = match d.prefs.tab {
@@ -311,8 +322,17 @@ impl Workspace {
                 Tab::Merged => "Keine gemergten Pull Requests",
                 Tab::Releases => "Keine Releases",
             };
+            let filters = filters.join(" · ");
+            let hint = if d.prefs.tab == Tab::Open && failed > 0 {
+                format!(
+                    "{what} für {filters}, aber {} – siehe Seitenleiste.",
+                    not_loaded(failed)
+                )
+            } else {
+                format!("{what} für {filters}.")
+            };
             return EmptyState::new(IconName::Search, "Keine Treffer")
-                .hint(format!("{what} für {}.", filters.join(" · ")))
+                .hint(hint)
                 .action(
                     Button::new("reset-filters")
                         .primary()
@@ -325,19 +345,13 @@ impl Workspace {
         }
 
         let repos = in_repos(self.radar.read(cx).repos().len());
-        let failed = d
-            .snapshot
-            .repos
-            .iter()
-            .filter(|r| r.error.is_some())
-            .count();
         let to_tab = |id: &'static str, label: &'static str, tab: Tab| {
             Button::new(id)
                 .label(label)
                 .on_click(cx.listener(move |this, _, _, cx| this.show_tab(tab, cx)))
         };
         let state = match d.prefs.tab {
-            // Nicht erreichbare Repos können offene PRs verbergen: dann kein Erfolg melden.
+            // Dann kein Erfolg melden.
             Tab::Open if failed > 0 => {
                 EmptyState::new(IconName::Inbox, "Nichts offen").hint(format!(
                     "{repos} ist kein Pull Request offen, aber {} – siehe Seitenleiste.",
