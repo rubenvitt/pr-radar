@@ -5,6 +5,8 @@ import Testing
 
 /// Persistenz der Konfiguration: Datei fehlt, ist kaputt, wird angelegt, bleibt mit der macOS-App kompatibel.
 @Suite struct ConfigStoreTests {
+
+    init() { L10n.setLanguage("en") }  // Texte unabhängig von der Systemsprache
     /// Eigener, noch nicht existierender Ordner je Test: `<tmp>/prradar-<uuid>/nested/pr-radar/config.json`.
     private func tempStore() -> ConfigStore {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("prradar-\(UUID().uuidString)")

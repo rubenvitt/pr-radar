@@ -21,6 +21,8 @@ private func settled(_ radar: Radar) async {
 }
 
 @Suite struct MergeLogicTests {
+
+    init() { L10n.setLanguage("en") }  // Texte unabhängig von der Systemsprache
     @Test func erkenntVoruebergehendeMergeFehler() {
         #expect(isTransientMergeError("Base branch was modified. Review and try the merge again."))
         #expect(isTransientMergeError("Pull Request is not mergeable"))
@@ -67,6 +69,8 @@ private func settled(_ radar: Radar) async {
 
 @MainActor
 @Suite struct RadarTests {
+
+    init() { L10n.setLanguage("en") }  // Texte unabhängig von der Systemsprache
     @Test func direktMergenBindetAnHeadUndLaedtNeu() async {
         let github = FakeGitHub(snapshot: Snapshot(repos: [repoInfo()], open: [makePR("1")]))
         let radar = await makeRadar(github)

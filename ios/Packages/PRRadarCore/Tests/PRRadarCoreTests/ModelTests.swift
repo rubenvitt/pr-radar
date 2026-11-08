@@ -4,6 +4,8 @@ import Testing
 @testable import PRRadarCore
 
 @Suite struct ModelTests {
+
+    init() { L10n.setLanguage("en") }  // Texte unabhängig von der Systemsprache
     @Test func diffMeldetRotGruenUndMerge() {
         let prev = Snapshot(open: [makePR("1", state: .running), makePR("2", state: .running), makePR("3", state: .passed)])
         let next = Snapshot(
@@ -36,6 +38,8 @@ import Testing
 }
 
 @Suite struct ConfigTests {
+
+    init() { L10n.setLanguage("en") }  // Texte unabhängig von der Systemsprache
     @Test func parstRepoAngaben() {
         let cases: [(String, String?)] = [
             ("rubeen/pr-radar", "rubeen/pr-radar"),
@@ -80,6 +84,8 @@ import Testing
 }
 
 @Suite struct TimeTests {
+
+    init() { L10n.setLanguage("en") }  // Texte unabhängig von der Systemsprache
     let en = Locale(identifier: "en_US")
     let de = Locale(identifier: "de_DE")
 

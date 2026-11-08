@@ -4,6 +4,8 @@ import Testing
 @testable import PRRadarCore
 
 @Suite struct PresentationTests {
+
+    init() { L10n.setLanguage("en") }  // Texte unabhängig von der Systemsprache
     @Test func filterSucheUndZaehler() {
         var a = makePR("1", state: .failed, repo: "o/a")
         a.title = "Login reparieren"
