@@ -43,10 +43,15 @@ impl RepoSettings {
         }
     }
 
-    /// Vor dem Öffnen: alte Fehlermeldung verwerfen und Eingabe fokussieren.
+    /// Beim Öffnen (nach `open_sheet`): alte Fehlermeldung verwerfen und Eingabe fokussieren.
     pub fn reset(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.error = None;
         self.input.update(cx, |s, cx| s.focus(window, cx));
+    }
+
+    #[cfg(test)]
+    pub fn input_focused(&self, window: &Window, cx: &App) -> bool {
+        self.input.focus_handle(cx).is_focused(window)
     }
 
     fn add(&mut self, window: &mut Window, cx: &mut Context<Self>) {

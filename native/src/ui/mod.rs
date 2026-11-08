@@ -444,6 +444,10 @@ impl Workspace {
                 cx.notify();
             }),
             cx.subscribe_in(&radar, window, Self::on_radar_event),
+            // Hängt der Fokus an keinem Element mehr (etwa nach einem geschlossenen Popup
+            // oder Dialog), zurück in den Workspace – sonst greifen ⌘F, ⌘1–3 usw. nicht,
+            // weil sie nur im Kontext „Workspace“ gebunden sind.
+            cx.on_focus_lost(window, |this, window, cx| this.focus.focus(window, cx)),
         ];
 
         // Defekte config.json: einmal deutlich melden (nach dem Aufbau des Fensters).
@@ -637,13 +641,19 @@ impl Workspace {
 
     fn open_settings(&mut self, _: &OpenSettings, window: &mut Window, cx: &mut Context<Self>) {
         let settings = self.settings.clone();
-        settings.update(cx, |s, cx| s.reset(window, cx));
-        window.open_sheet(cx, move |sheet, window, _| {
-            sheet
-                .title("Repositories")
-                .size((window.rem_size() * 26.).min(window.viewport_size().width - px(16.)))
-                .child(settings.clone())
+        // Erst öffnen, dann das Eingabefeld fokussieren: Das Sheet merkt sich beim Öffnen
+        // den aktuellen Fokus und gibt ihn beim Schließen zurück. Andersherum wäre das
+        // Eingabefeld (danach nicht mehr sichtbar) das Ziel, und kein Kürzel griffe mehr.
+        window.open_sheet(cx, {
+            let settings = settings.clone();
+            move |sheet, window, _| {
+                sheet
+                    .title("Repositories")
+                    .size((window.rem_size() * 26.).min(window.viewport_size().width - px(16.)))
+                    .child(settings.clone())
+            }
         });
+        settings.update(cx, |s, cx| s.reset(window, cx));
     }
 
     fn toggle_expanded(&mut self, id: &str, cx: &mut Context<Self>) {
@@ -1238,5 +1248,170 @@ impl Render for Workspace {
                         )
                     }),
             )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use gpui_kit::component::WindowExt as _;
+    use gpui_kit::http_client::BlockedHttpClient;
+    use gpui_kit::test::{TestAppContextExt as _, TestWindowExt as _};
+    use gpui_kit::{
+        AnyWindowHandle, AppContext as _, Bounds, Entity, Focusable as _, Point, TestAppContext,
+        WindowBounds, WindowOptions, px, size,
+    };
+
+    // Kein `use super::*`: Der Glob brächte GPUIs `test`-Makro mit und verdeckte `#[test]`.
+    use super::{Radar, Tab, Workspace, init};
+    use crate::github::GitHub;
+    use std::sync::Arc;
+
+    const WAIT: Duration = Duration::from_secs(1);
+
+    /// Hauptfenster wie in der App (Kürzel aus `init`), aber ohne Datei und Netz.
+    fn open(cx: &mut TestAppContext) -> (AnyWindowHandle, Entity<Workspace>, Entity<Radar>) {
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            let github = Arc::new(GitHub::new(Arc::new(BlockedHttpClient::new())));
+            let radar = cx.new(|_| Radar::for_tests(github));
+            init(radar.clone(), cx);
+            let options = WindowOptions {
+                window_bounds: Some(WindowBounds::Windowed(Bounds {
+                    origin: Point::default(),
+                    size: size(px(1000.), px(700.)),
+                })),
+                ..Default::default()
+            };
+            let (handle, workspace) = gpui_kit::open_window(options, cx, |window, cx| {
+                cx.new(|cx| Workspace::new(radar.clone(), window, cx))
+            })
+            .expect("Testfenster");
+            (handle, workspace, radar)
+        })
+    }
+
+    fn press(cx: &mut TestAppContext, handle: AnyWindowHandle, key: &str) {
+        cx.update_window(handle, |_, window, cx| window.press(key, cx))
+            .unwrap();
+        cx.run_until_parked();
+    }
+
+    fn tab(cx: &mut TestAppContext, radar: &Entity<Radar>) -> Tab {
+        cx.read(|cx| radar.read(cx).prefs().tab)
+    }
+
+    fn workspace_focused(
+        cx: &mut TestAppContext,
+        handle: AnyWindowHandle,
+        workspace: &Entity<Workspace>,
+    ) -> bool {
+        cx.update_window(handle, |_, window, cx| {
+            workspace.read(cx).focus.contains_focused(window, cx)
+        })
+        .unwrap()
+    }
+
+    #[gpui_kit::test]
+    async fn kuerzel_greifen_nach_dem_repositories_sheet(cx: &mut TestAppContext) {
+        let (handle, workspace, radar) = open(cx);
+        cx.update_window(handle, |_, window, cx| window.render_frame(cx))
+            .unwrap();
+        press(cx, handle, "cmd-2");
+        assert_eq!(tab(cx, &radar), Tab::Merged);
+
+        // ⌘, öffnet das Sheet, Escape schließt es wieder.
+        press(cx, handle, "cmd-,");
+        cx.wait_for(handle, WAIT, |window, cx| window.has_active_sheet(cx))
+            .await;
+        cx.update_window(handle, |_, window, cx| {
+            window.render_frame(cx);
+            window.press("escape", cx);
+        })
+        .unwrap();
+        cx.wait_for(handle, WAIT, |window, cx| !window.has_active_sheet(cx))
+            .await;
+
+        assert!(
+            workspace_focused(cx, handle, &workspace),
+            "nach dem Schließen des Sheets muss der Fokus wieder im Workspace liegen"
+        );
+        press(cx, handle, "cmd-3");
+        assert_eq!(tab(cx, &radar), Tab::Releases);
+        press(cx, handle, "cmd-1");
+        assert_eq!(tab(cx, &radar), Tab::Open);
+    }
+
+    #[gpui_kit::test]
+    async fn sheet_fokussiert_das_eingabefeld(cx: &mut TestAppContext) {
+        let (handle, workspace, _) = open(cx);
+        press(cx, handle, "cmd-,");
+        cx.wait_for(handle, WAIT, |window, cx| window.has_active_sheet(cx))
+            .await;
+        let input_focused = cx
+            .update_window(handle, |_, window, cx| {
+                let settings = workspace.read(cx).settings.clone();
+                settings.read(cx).input_focused(window, cx)
+            })
+            .unwrap();
+        assert!(
+            input_focused,
+            "das Eingabefeld im Sheet soll den Fokus haben"
+        );
+    }
+
+    #[gpui_kit::test]
+    async fn klick_in_die_seitenleiste_gibt_den_fokus_an_den_workspace(cx: &mut TestAppContext) {
+        let (handle, workspace, radar) = open(cx);
+        cx.update_window(handle, |_, window, cx| window.render_frame(cx))
+            .unwrap();
+        // ⌘F: Fokus im Suchfeld, dort tippen Einzeltasten Text statt Kürzel auszulösen.
+        press(cx, handle, "cmd-f");
+        let search_focused = cx
+            .update_window(handle, |_, window, cx| {
+                workspace
+                    .read(cx)
+                    .search
+                    .focus_handle(cx)
+                    .is_focused(window)
+            })
+            .unwrap();
+        assert!(search_focused);
+
+        // Klick auf „Gemergt“ in der Seitenleiste holt den Fokus aus dem Suchfeld.
+        cx.update_window(handle, |_, window, cx| {
+            window.render_frame(cx);
+            window.within("nav").click("0-0-1", cx);
+        })
+        .unwrap();
+        cx.run_until_parked();
+        assert_eq!(tab(cx, &radar), Tab::Merged);
+        assert!(workspace_focused(cx, handle, &workspace));
+        press(cx, handle, "3");
+        assert_eq!(tab(cx, &radar), Tab::Releases);
+        press(cx, handle, "cmd-1");
+        assert_eq!(tab(cx, &radar), Tab::Open);
+    }
+
+    #[gpui_kit::test]
+    async fn verlorener_fokus_kehrt_in_den_workspace_zurueck(cx: &mut TestAppContext) {
+        let (handle, workspace, radar) = open(cx);
+        cx.update_window(handle, |_, window, cx| window.render_frame(cx))
+            .unwrap();
+        // Fokus auf ein Element, das gleich nicht mehr gerendert wird (etwa ein
+        // geschlossenes Popup): danach hängt der Fokus an keinem Element.
+        cx.update_window(handle, |_, window, cx| {
+            let gone = cx.focus_handle();
+            gone.focus(window, cx);
+            window.render_frame(cx);
+        })
+        .unwrap();
+        cx.wait_for(handle, WAIT, |window, cx| {
+            workspace.read(cx).focus.contains_focused(window, cx)
+        })
+        .await;
+        press(cx, handle, "cmd-2");
+        assert_eq!(tab(cx, &radar), Tab::Merged);
     }
 }
