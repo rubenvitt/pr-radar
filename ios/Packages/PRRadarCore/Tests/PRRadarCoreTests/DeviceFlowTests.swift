@@ -110,7 +110,8 @@ private struct Offline: Error {}
     @Test func dauerhafteServerfehlerBrechenAb() async {
         let transport = QueuedTransport(Array(repeating: .success("<html>"), count: 10), statuses: Array(repeating: 503, count: 10))
         let flow = DeviceFlow(clientID: "id", transport: transport, timing: FakeClock().timing)
-        await #expect(throws: GitHubError.self) { _ = try await flow.waitForToken(code) }
+        await #expect(throws: DeviceFlowError.unavailable) { _ = try await flow.waitForToken(code) }
+        #expect(DeviceFlowError.unavailable.localizedDescription.contains("erneut anmelden"))
         #expect(transport.requests.count == 4, "drei Fehler toleriert, der vierte bricht ab")
     }
 
