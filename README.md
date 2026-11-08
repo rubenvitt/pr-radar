@@ -34,6 +34,8 @@ Konfiguration: `~/Library/Application Support/pr-radar/config.json`. Repos im Re
 
 Protokoll: `~/Library/Logs/PR Radar/pr-radar.log` (Fehler, Warnungen und Abstürze, keine Tokens; Menü Hilfe → „Protokoll im Finder zeigen“).
 
+Website, Support, Datenschutz, EULA und Impressum: <https://pr-radar.rubeen.dev> (auch im Menü Hilfe).
+
 ## Token
 
 Reihenfolge: `GITHUB_TOKEN` / `GH_TOKEN` → GitHub CLI (`gh auth token`, funktioniert auch beim Start aus dem Finder).
@@ -52,6 +54,7 @@ Auto-Merge muss im Repo erlaubt sein (Settings → General → *Allow auto-merge
 | `native/src/radar.rs` | Poll-Zyklus, Snapshot, Merge/Auto-Merge inkl. Wiederholung |
 | `native/src/ui/` | Fenster, Seitenleiste, Liste, Flow, Einstellungen |
 | `ios/` | iOS-/iPadOS-App (SwiftUI) mit plattformunabhängigem Kern `PRRadarCore` |
+| `site/` | Produktseite mit Support, Datenschutz, EULA und Impressum (Cloudflare Pages, siehe [`site/README.md`](site/README.md)) |
 
 ## Ideen / nächste Schritte
 

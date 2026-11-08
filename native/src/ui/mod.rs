@@ -34,6 +34,7 @@ use gpui_kit::*;
 use crate::config::{Prefs, Quick, Tab, View};
 use crate::model::{MergeMethod, OpenPr, PipelineState, Snapshot, TransitionKind};
 use crate::radar::{PollState, Radar, RadarEvent};
+use crate::site;
 use crate::time::ago;
 use parts::state_color;
 use pr_row::MergeAction;
@@ -64,6 +65,11 @@ actions!(
         About,
         OpenHelp,
         OpenLicense,
+        OpenWebsite,
+        OpenSupport,
+        OpenPrivacy,
+        OpenTerms,
+        OpenImprint,
         RevealLog,
         ToggleLoginItem
     ]
@@ -117,6 +123,11 @@ pub fn init(radar: Entity<Radar>, cx: &mut App) {
     cx.on_action(|_: &ShowAll, cx| cx.unhide_other_apps());
     cx.on_action(|_: &OpenHelp, cx| cx.open_url(&format!("{REPO_URL}#readme")));
     cx.on_action(|_: &OpenLicense, cx| cx.open_url(&format!("{REPO_URL}/blob/main/LICENSE.md")));
+    cx.on_action(|_: &OpenWebsite, cx| cx.open_url(&site::url(site::Page::Home)));
+    cx.on_action(|_: &OpenSupport, cx| cx.open_url(&site::url(site::Page::Support)));
+    cx.on_action(|_: &OpenPrivacy, cx| cx.open_url(&site::url(site::Page::Privacy)));
+    cx.on_action(|_: &OpenTerms, cx| cx.open_url(&site::url(site::Page::Terms)));
+    cx.on_action(|_: &OpenImprint, cx| cx.open_url(&site::url(site::Page::Imprint)));
     cx.on_action(|_: &RevealLog, cx| cx.reveal_path(crate::logging::log_path()));
     cx.on_action(|_: &CloseWindow, cx| {
         with_active_window(cx, |window, cx| {
@@ -196,8 +207,15 @@ pub fn refresh_menus(cx: &mut App) {
             MenuItem::action("PR Radar", ShowMainWindow),
         ]),
         Menu::new("Hilfe").items([
+            MenuItem::action("PR-Radar-Website", OpenWebsite),
+            MenuItem::action("Support", OpenSupport),
+            MenuItem::separator(),
+            MenuItem::action("Datenschutz", OpenPrivacy),
+            MenuItem::action("Lizenzvereinbarung (EULA)", OpenTerms),
+            MenuItem::action("Impressum", OpenImprint),
+            MenuItem::separator(),
             MenuItem::action("PR Radar auf GitHub", OpenHelp),
-            MenuItem::action("Lizenz", OpenLicense),
+            MenuItem::action("Lizenz des Quellcodes", OpenLicense),
             MenuItem::separator(),
             MenuItem::action("Protokoll im Finder zeigen", RevealLog),
         ]),

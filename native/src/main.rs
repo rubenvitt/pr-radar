@@ -8,6 +8,7 @@ mod macos;
 mod menubar;
 mod model;
 mod radar;
+mod site;
 mod time;
 mod ui;
 

@@ -3,7 +3,7 @@ name: macOS
 on:
   push:
     branches: [main]
-    paths: ["native/**", ".github/workflows/native.yml"]
+    paths: ["native/**", "site/public/**", ".github/workflows/native.yml"]
   pull_request:
 
 concurrency:

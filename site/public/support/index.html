@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Support – PR Radar</title>
+  <meta name="description" content="Help with PR Radar: contact, token permissions, auto-merge, notifications and refunds.">
+  <link rel="alternate" hreflang="en" href="/support/">
+  <link rel="alternate" hreflang="de" href="/de/support/">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="site-header">
+    <div class="wrap">
+      <a class="brand" href="/"><img src="/icon.svg" alt="" width="30" height="30">PR Radar</a>
+      <nav class="site-nav" aria-label="Main">
+        <a href="/#features">Features</a>
+        <a href="/privacy/">Privacy</a>
+        <a href="/support/" aria-current="page">Support</a>
+      </nav>
+      <a class="lang" href="/de/support/" hreflang="de" lang="de">Deutsch</a>
+    </div>
+  </header>
+
+  <main id="main" class="prose">
+    <h1>Support</h1>
+    <p class="meta">Questions, bugs, ideas – write to us. We usually answer within a few working days, in English or German.</p>
+
+    <div class="callout">
+      <h3>Contact</h3>
+      <p>Email: <a href="mailto:pr-radar@rubeen.dev?subject=PR%20Radar%20support">pr-radar@rubeen.dev</a></p>
+      <p class="note">Bugs and feature requests can also go to <a href="https://github.com/rubenvitt/pr-radar/issues">GitHub Issues</a>. Issues there are public.</p>
+    </div>
+
+    <h2>What helps us help you</h2>
+    <ul>
+      <li>App and version: on the Mac under <em>PR Radar → About PR Radar</em>, on iPhone and iPad under <em>Settings → Info</em></li>
+      <li>Your macOS or iOS version</li>
+      <li>What you did, what you expected and what happened instead</li>
+      <li>On the Mac: the log file, via <em>Help → Show log in Finder</em>. It contains no tokens, but may contain repository names.</li>
+    </ul>
+    <p><strong>Never send us your GitHub token.</strong> We will never ask for it.</p>
+
+    <h2>Frequently asked questions</h2>
+
+    <details>
+      <summary>Which permissions does my GitHub token need?</summary>
+      <p>A fine-grained personal access token for the repositories you want to see, with <em>Metadata</em>, <em>Contents</em>, <em>Commit statuses</em> and <em>Actions/Checks</em> (read) and <em>Pull requests</em> (write, needed for merge and auto-merge). If your organization does not allow fine-grained tokens, use a classic token with the <code>repo</code> scope or the GitHub CLI.</p>
+    </details>
+
+    <details>
+      <summary>Where does the Mac app get my token from?</summary>
+      <p>From the environment variables <code>GITHUB_TOKEN</code> or <code>GH_TOKEN</code>, otherwise from the GitHub CLI (<code>gh auth token</code>). This also works when you start the app from the Finder. The token never leaves your Mac except in requests to GitHub.</p>
+    </details>
+
+    <details>
+      <summary>Why can't I turn on auto-merge?</summary>
+      <p>Auto-merge has to be allowed in the repository (<em>Settings → General → Allow auto-merge</em>) and only works when the target branch has branch protection or a ruleset with required checks or reviews.</p>
+    </details>
+
+    <details>
+      <summary>A merge method is missing.</summary>
+      <p>PR Radar only offers the methods that both the repository settings and the rulesets of the target branch allow. If, for example, a ruleset requires squash merges, “merge commit” is not offered.</p>
+    </details>
+
+    <details>
+      <summary>A repository shows “read only”.</summary>
+      <p>Your token can read the repository but not write pull requests. Give the token <em>Pull requests: write</em> for that repository, or ask an owner of the organization to approve the token.</p>
+    </details>
+
+    <details>
+      <summary>PR Radar says the rate limit is used up.</summary>
+      <p>GitHub limits how many requests a token may make per hour. PR Radar then pauses automatically until GitHub allows requests again and continues on its own. With many repositories, other tools using the same token share this limit.</p>
+    </details>
+
+    <details>
+      <summary>I don't get notifications.</summary>
+      <p>Check that notifications are on in the app and allowed for PR Radar in the system settings. On iPhone and iPad, iOS decides how often apps may refresh in the background, so notifications can arrive late while the app is closed.</p>
+    </details>
+
+    <details>
+      <summary>How do I remove all my data?</summary>
+      <p>Remove the token in the app and delete the app. On the Mac, also delete <code>~/Library/Application Support/pr-radar/</code> and <code>~/Library/Logs/PR Radar/</code>. We store nothing about you on any server. See the <a href="/privacy/">privacy policy</a>.</p>
+    </details>
+
+    <details>
+      <summary>How do I get a refund?</summary>
+      <p>For purchases in the App Store, request a refund from Apple at <a href="https://reportaproblem.apple.com">reportaproblem.apple.com</a>. For Mac licenses bought directly, the reseller named on your invoice handles refunds. Write to us if you are unsure, we will help.</p>
+    </details>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <span>© 2026 Ruben Vitt</span>
+      <nav aria-label="Legal">
+        <a href="/support/" aria-current="page">Support</a>
+        <a href="/privacy/">Privacy</a>
+        <a href="/terms/">Terms (EULA)</a>
+        <a href="/imprint/">Imprint</a>
+        <a href="https://github.com/rubenvitt/pr-radar">GitHub</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>

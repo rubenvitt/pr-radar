@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Datenschutzerklärung – PR Radar</title>
+  <meta name="description" content="Wie PR Radar mit deinen Daten umgeht: Token nur auf dem Gerät, Verbindungen nur direkt zu GitHub, kein Tracking.">
+  <link rel="alternate" hreflang="en" href="/privacy/">
+  <link rel="alternate" hreflang="de" href="/de/datenschutz/">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <a class="skip" href="#main">Zum Inhalt</a>
+  <header class="site-header">
+    <div class="wrap">
+      <a class="brand" href="/de/"><img src="/icon.svg" alt="" width="30" height="30">PR Radar</a>
+      <nav class="site-nav" aria-label="Hauptmenü">
+        <a href="/de/#funktionen">Funktionen</a>
+        <a href="/de/datenschutz/" aria-current="page">Datenschutz</a>
+        <a href="/de/support/">Support</a>
+      </nav>
+      <a class="lang" href="/privacy/" hreflang="en" lang="en">English</a>
+    </div>
+  </header>
+
+  <main id="main" class="prose">
+    <h1>Datenschutzerklärung</h1>
+    <p class="meta">Stand: 8. November 2026 · gilt für die Apps „PR Radar“ für macOS, iOS und iPadOS und für diese Website</p>
+
+    <div class="callout">
+      <h3>Kurz gesagt</h3>
+      <ul>
+        <li>Die Apps schicken uns keine Daten. Es gibt keinen PR-Radar-Server, kein Konto, keine Analyse und kein Tracking.</li>
+        <li>Dein GitHub-Token bleibt auf deinem Gerät. Die Apps verbinden sich nur direkt mit GitHub.</li>
+        <li>Personenbezogene Daten erhalten wir nur, wenn du uns schreibst oder eine Lizenz direkt kaufst.</li>
+      </ul>
+    </div>
+
+    <h2>1. Verantwortlicher</h2>
+    <address>
+      Ruben Vitt<br>
+      <span class="todo">TODO-RUBEN: Straße und Hausnummer</span><br>
+      <span class="todo">TODO-RUBEN: PLZ und Ort</span><br>
+      Deutschland<br>
+      E-Mail: <a href="mailto:pr-radar@rubeen.dev">pr-radar@rubeen.dev</a>
+    </address>
+    <p>Einen Datenschutzbeauftragten haben wir nicht benannt, weil keine gesetzliche Pflicht dazu besteht.</p>
+
+    <h2>2. Die Apps</h2>
+
+    <h3>2.1 Keine Übermittlung an uns</h3>
+    <p>PR Radar läuft vollständig auf deinem Gerät. Die Apps senden weder Nutzungsdaten noch Absturzberichte, Gerätekennungen oder Inhalte an uns oder an Analyse- und Werbedienste. Wir haben keinen Zugriff auf deinen Token, deine Repositories oder deine Pull Requests.</p>
+    <p>Ausnahme bei Apple: Hast du auf iPhone oder iPad zugestimmt, Analysedaten mit App-Entwicklern zu teilen, stellt Apple uns Absturzberichte und Nutzungsstatistiken ohne Personenbezug bereit. Das steuerst du unter Einstellungen → Datenschutz &amp; Sicherheit → Analyse &amp; Verbesserungen.</p>
+
+    <h3>2.2 Was auf deinem Gerät gespeichert wird</h3>
+    <table>
+      <thead><tr><th>Daten</th><th>Wo</th><th>Wozu</th></tr></thead>
+      <tbody>
+        <tr><td>GitHub-Zugangstoken</td><td>iPhone/iPad: Schlüsselbund des Geräts, ohne iCloud-Synchronisierung. Mac: aus der Umgebung oder der GitHub CLI (<code>gh</code>) gelesen bzw. im Schlüsselbund</td><td>Anfragen an GitHub in deinem Namen</td></tr>
+        <tr><td>Liste der Repositories, Filter und Einstellungen</td><td>App-Ordner auf dem Gerät</td><td>damit die App beim nächsten Start weiß, was sie zeigen soll</td></tr>
+        <tr><td>Zuletzt geladener Stand (Pull Requests, Checks, Releases)</td><td>Zwischenspeicher auf dem Gerät</td><td>schneller Start, Anzeige ohne Netz</td></tr>
+        <tr><td>Protokoll (nur Mac)</td><td><code>~/Library/Logs/PR Radar/</code></td><td>Fehlersuche. Enthält Fehlermeldungen und Warnungen, etwa mit Repository-Namen, aber keine Tokens. Bleibt auf dem Mac, bis du es selbst schickst.</td></tr>
+      </tbody>
+    </table>
+    <p>Diese Daten löschst du, indem du den Token in der App entfernst oder die App deinstallierst. Auf dem Mac liegen Einstellungen und Protokoll außerdem unter <code>~/Library/Application Support/pr-radar/</code> und <code>~/Library/Logs/PR Radar/</code>.</p>
+
+    <h3>2.3 Verbindung zu GitHub</h3>
+    <p>Um Pull Requests, Pipelines und Releases anzuzeigen und Aktionen wie Mergen auszuführen, verbinden sich die Apps direkt mit Servern von GitHub:</p>
+    <ul>
+      <li><code>api.github.com</code> – Abfragen und Aktionen über die GitHub-API, mit deinem Token</li>
+      <li><code>avatars.githubusercontent.com</code> – Profilbilder der Autorinnen und Autoren</li>
+      <li><code>github.com</code> – Anmeldung mit GitHub und Links, die du im Browser öffnest</li>
+    </ul>
+    <p>Dabei erhält GitHub technisch bedingt deine IP-Adresse, deinen Token und die Anfragen. Anbieter ist GitHub, Inc., 88 Colin P. Kelly Jr. Street, San Francisco, CA 94107, USA. GitHub verarbeitet diese Daten in eigener Verantwortung auf Grundlage deines Vertrags mit GitHub, siehe die <a href="https://docs.github.com/de/site-policy/privacy-policies/github-general-privacy-statement">Datenschutzerklärung von GitHub</a>. Wir erhalten davon nichts.</p>
+
+    <h3>2.4 Benachrichtigungen und Hintergrundaktualisierung</h3>
+    <p>Mitteilungen über rote oder grüne Pipelines und gemergte Pull Requests erzeugt die App selbst auf dem Gerät. Es gibt keinen Push-Server. Auf iPhone und iPad aktualisiert die App im Hintergrund, so oft iOS es zulässt. Mitteilungen kannst du in der App oder in den Systemeinstellungen jederzeit abschalten.</p>
+
+    <h3>2.5 Käufe und Lizenzen</h3>
+    <p><strong>App Store:</strong> Kaufst du in der iPhone- oder iPad-App, ist Apple Verkäufer und verarbeitet die Zahlung nach der <a href="https://www.apple.com/de/legal/privacy/">Datenschutzrichtlinie von Apple</a>. Wir erhalten von Apple keine Daten, mit denen wir dich identifizieren können.</p>
+    <p><strong>Direktkauf (Mac):</strong> Lizenzen für den Mac verkauft ein Wiederverkäufer, der als Verkäufer gegenüber dir auftritt (Merchant of Record). Er wird auf der Kaufseite und in deiner Rechnung genannt und verarbeitet Zahlungs- und Bestelldaten in eigener Verantwortung. Von ihm erhalten wir Name, E-Mail-Adresse, Land, Bestelldaten und den Lizenzschlüssel. Wir nutzen sie, um Lizenzen zu verwalten, Support zu leisten und gesetzliche Aufzeichnungs- und Aufbewahrungspflichten zu erfüllen (Art. 6 Abs. 1 lit. b und c DSGVO). Wir speichern sie, solange die Lizenz besteht, und darüber hinaus nur so lange, wie gesetzliche Aufbewahrungsfristen es verlangen (bis zu zehn Jahre).</p>
+    <p>Gibst du in der App einen Lizenzschlüssel ein, sendet die App ihn zur Prüfung an die Lizenz-Schnittstelle dieses Wiederverkäufers.</p>
+    <!-- TODO nach PRR-7/PRR-20: Wiederverkäufer namentlich nennen (mit Link zu seiner
+         Datenschutzerklärung) und genau beschreiben, was die Lizenzprüfung überträgt
+         (z. B. eine Aktivierungs- oder Gerätekennung). -->
+
+    <h2>3. Diese Website</h2>
+    <p>Die Website wird über Cloudflare Pages ausgeliefert. Anbieter ist Cloudflare, Inc., 101 Townsend St., San Francisco, CA 94107, USA. Beim Aufruf verarbeitet Cloudflare technisch notwendige Daten wie IP-Adresse, Zeitpunkt, aufgerufene Seite und Browserkennung, um die Seite auszuliefern und vor Angriffen zu schützen. Rechtsgrundlage ist unser berechtigtes Interesse an einer sicheren, stabilen Website (Art. 6 Abs. 1 lit. f DSGVO). Cloudflare ist unter dem EU-US Data Privacy Framework zertifiziert. Einzelheiten stehen in der <a href="https://www.cloudflare.com/de-de/privacypolicy/">Datenschutzerklärung von Cloudflare</a>.</p>
+    <p>Die Website setzt keine Cookies, nutzt keine Analyse- oder Werbedienste und lädt keine Schriften, Skripte oder Inhalte von Dritten.</p>
+
+    <h2>4. Kontakt per E-Mail</h2>
+    <p>Wenn du uns schreibst, verarbeiten wir deine E-Mail-Adresse und den Inhalt deiner Nachricht, um deine Anfrage zu beantworten. Rechtsgrundlage ist Art. 6 Abs. 1 lit. b DSGVO, wenn es um einen Kauf oder eine Lizenz geht, sonst unser berechtigtes Interesse, Anfragen zu beantworten (Art. 6 Abs. 1 lit. f DSGVO). Wir löschen die Nachrichten, sobald die Anfrage erledigt ist und keine Aufbewahrungspflicht besteht. Unser E-Mail-Anbieter verarbeitet die Nachrichten in unserem Auftrag.</p>
+    <p>Bitte schick uns niemals deinen GitHub-Token. Falls du uns ein Protokoll schickst, prüfe es vorher auf Inhalte, die du nicht teilen möchtest.</p>
+
+    <h2>5. Empfänger</h2>
+    <p>Wir verkaufen keine Daten und geben sie nicht zu Werbezwecken weiter. Empfänger sind nur die oben genannten Dienstleister (Wiederverkäufer, Hosting, E-Mail) und Behörden, wenn wir gesetzlich dazu verpflichtet sind.</p>
+
+    <h2>6. Deine Rechte</h2>
+    <p>Du hast das Recht auf Auskunft (Art. 15 DSGVO), Berichtigung (Art. 16), Löschung (Art. 17), Einschränkung der Verarbeitung (Art. 18) und Datenübertragbarkeit (Art. 20). Eine Einwilligung kannst du jederzeit mit Wirkung für die Zukunft widerrufen. Eine E-Mail an <a href="mailto:pr-radar@rubeen.dev">pr-radar@rubeen.dev</a> genügt.</p>
+    <p><strong>Widerspruchsrecht:</strong> Verarbeiten wir Daten auf Grundlage von Art. 6 Abs. 1 lit. f DSGVO, kannst du aus Gründen, die sich aus deiner besonderen Situation ergeben, jederzeit widersprechen (Art. 21 DSGVO).</p>
+    <p>Du kannst dich außerdem bei einer Datenschutz-Aufsichtsbehörde beschweren, insbesondere in dem Mitgliedstaat, in dem du lebst oder arbeitest (Art. 77 DSGVO).</p>
+
+    <h2>7. Sonstiges</h2>
+    <p>Du bist nicht verpflichtet, uns Daten bereitzustellen. Ohne Token kann die App aber keine Daten von GitHub laden. Eine automatisierte Entscheidungsfindung oder Profilbildung findet nicht statt.</p>
+    <p>Ändern sich die Apps oder die Website so, dass diese Erklärung nicht mehr stimmt, passen wir sie an. Es gilt die jeweils hier veröffentlichte Fassung.</p>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <span>© 2026 Ruben Vitt</span>
+      <nav aria-label="Rechtliches">
+        <a href="/de/support/">Support</a>
+        <a href="/de/datenschutz/" aria-current="page">Datenschutz</a>
+        <a href="/de/eula/">Lizenzvereinbarung (EULA)</a>
+        <a href="/imprint/">Impressum</a>
+        <a href="https://github.com/rubenvitt/pr-radar">GitHub</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>
