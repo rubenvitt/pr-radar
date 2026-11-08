@@ -7,8 +7,12 @@
 //!
 //! Doppelte Meldungen vermeiden: Ist ein Fenster der App gerade aktiv, sieht man
 //! den Toast, und die Systembenachrichtigung entfällt. Sonst (Fenster geschlossen,
-//! App im Hintergrund) kommt sie über das System.
+//! App im Hintergrund) kommt sie über das System. Mehr Übergänge auf einmal, als
+//! der Toast-Stapel zeigt, gehen für den Überhang trotzdem ans System.
 
+use std::ops::Range;
+
+use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::*;
 
 use crate::model::{Transition, TransitionKind};
@@ -28,6 +32,7 @@ pub(super) struct Alert {
 }
 
 impl Alert {
+    /// Titel, Text, Tag und URL zu einem Übergang.
     pub fn new(t: &Transition) -> Self {
         let label = match t.kind {
             TransitionKind::Failed => "Pipeline rot",
@@ -43,6 +48,7 @@ impl Alert {
     }
 }
 
+/// Tag der Systembenachrichtigung: Präfix, Art und URL des PR.
 fn tag(kind: TransitionKind, url: &str) -> String {
     format!("{TAG_PREFIX}{kind:?}/{url}")
 }
@@ -64,10 +70,11 @@ pub fn init(radar: Entity<Radar>, cx: &mut App) {
         let RadarEvent::Transitions(transitions) = event else {
             return;
         };
-        if !radar.read(cx).prefs().notify || window_active(cx) {
+        if !radar.read(cx).prefs().notify {
             return;
         }
-        for t in transitions {
+        let shown_as_toast = window_active(cx).then(|| cx.theme().notification.max_items);
+        for t in &transitions[for_system(transitions.len(), shown_as_toast)] {
             let alert = Alert::new(t);
             cx.show_system_notification(SystemNotification {
                 tag: alert.tag.into(),
@@ -90,6 +97,18 @@ pub fn init(radar: Entity<Radar>, cx: &mut App) {
     });
 }
 
+/// Welche Übergänge (in Reihenfolge des Radars) als Systembenachrichtigung gehen.
+///
+/// `toasts` ist die Zahl der Toasts, die das aktive Fenster gleichzeitig zeigt,
+/// `None` ohne aktives Fenster. Der Stapel zeigt die neuesten; ältere, die nicht
+/// hineinpassen, liefen ungesehen ab und gehen deshalb ans System.
+fn for_system(count: usize, toasts: Option<usize>) -> Range<usize> {
+    match toasts {
+        None => 0..count,
+        Some(limit) => 0..count.saturating_sub(limit),
+    }
+}
+
 /// Ob ein Fenster der App gerade den Fokus hat (dann reicht der Toast).
 fn window_active(cx: &mut App) -> bool {
     cx.windows().into_iter().any(|handle| {
@@ -102,7 +121,7 @@ fn window_active(cx: &mut App) -> bool {
 #[cfg(test)]
 mod tests {
     // Kein `super::*`: `gpui_kit::*` brächte GPUIs eigenes `test`-Makro mit.
-    use super::{tag, url_from_tag};
+    use super::{for_system, tag, url_from_tag};
     use crate::model::TransitionKind;
 
     #[test]
@@ -120,5 +139,18 @@ mod tests {
         assert_eq!(url_from_tag("gpui-component/notification/Id(1)"), None);
         assert_eq!(url_from_tag("pr-radar/transition/Failed"), None);
         assert_eq!(url_from_tag("pr-radar/transition/Failed/"), None);
+    }
+
+    #[test]
+    fn ohne_aktives_fenster_geht_alles_ans_system() {
+        assert_eq!(for_system(3, None), 0..3);
+    }
+
+    #[test]
+    fn bei_aktivem_fenster_nur_der_ueberhang_des_toast_stapels() {
+        assert_eq!(for_system(3, Some(10)), 0..0);
+        assert_eq!(for_system(10, Some(10)), 0..0);
+        // Die ältesten zwei passen nicht in den Stapel.
+        assert_eq!(for_system(12, Some(10)), 0..2);
     }
 }
