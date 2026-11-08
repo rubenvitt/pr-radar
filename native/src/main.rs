@@ -103,6 +103,14 @@ fn main() {
         ui::init(radar.clone(), cx);
         #[cfg(target_os = "macos")]
         menubar::init(radar.clone(), cx);
+
+        // Beim Anmelden still starten: Der Radar pollt, das Menüleisten-Symbol zeigt
+        // die Zahl. Menüleiste und Dock-Klick öffnen das Fenster (`show_main_window`).
+        #[cfg(target_os = "macos")]
+        if macos::launched_as_login_item() {
+            log::info!("Als Anmeldeobjekt gestartet, ohne Fenster");
+            return;
+        }
         if let Err(e) = ui::open_main_window(radar, cx) {
             logging::fatal("Fenster konnte nicht geöffnet werden", e);
         }
