@@ -2,7 +2,9 @@
 //!
 //! Das Protokoll liegt unter macOS in `~/Library/Logs/PR Radar/pr-radar.log`
 //! (sonst im lokalen Datenordner) und wird beim Start ab 2 MB nach
-//! `pr-radar.old.log` verschoben. Es enthält keine Tokens oder Inhalte von PRs,
+//! `pr-radar.old.log` verschoben. Lässt sich die Datei dort nicht öffnen,
+//! schreibt die App nach `<temp>/pr-radar/pr-radar.log`; `log_path()` nennt
+//! dann diesen Pfad. Es enthält keine Tokens oder Inhalte von PRs,
 //! nur Fehler und Warnungen der App.
 
 use std::fs::{File, OpenOptions};
@@ -87,9 +89,72 @@ fn default_path() -> PathBuf {
         .join("pr-radar.log")
 }
 
-/// Pfad der Log-Datei (auch wenn sie sich nicht öffnen ließ).
+/// Ausweichpfad, falls sich der Hauptpfad nicht öffnen lässt.
+fn fallback_path() -> PathBuf {
+    std::env::temp_dir().join("pr-radar").join("pr-radar.log")
+}
+
+/// Pfad der Log-Datei, in die tatsächlich geschrieben wird. Ließ sich keine
+/// Datei öffnen, ist es der Hauptpfad.
 pub fn log_path() -> &'static Path {
     LOG_PATH.get_or_init(default_path)
+}
+
+/// Ergebnis von [`choose_log_file`].
+struct LogFile {
+    /// Benutzter Pfad; ließ sich keine Datei öffnen, der Hauptpfad.
+    path: PathBuf,
+    file: Option<File>,
+    /// Hinweis aufs Ausweichen, gehört nach dem Einrichten des Loggers ins Protokoll.
+    warning: Option<String>,
+}
+
+/// Öffnet das Protokoll am Hauptpfad, sonst am Ausweichpfad.
+fn choose_log_file(primary: PathBuf, fallback: PathBuf) -> LogFile {
+    let (path, file, warning) = match open_log(&primary) {
+        Ok(file) => (primary, Some(file), None),
+        Err(primary_err) if fallback != primary => match open_log(&fallback) {
+            Ok(file) => {
+                let warning = format!(
+                    "Protokoll {} nicht beschreibbar ({primary_err}), schreibe nach {}",
+                    primary.display(),
+                    fallback.display()
+                );
+                (fallback, Some(file), Some(warning))
+            }
+            Err(fallback_err) => {
+                eprintln!(
+                    "Protokoll weder unter {} ({primary_err}) noch unter {} ({fallback_err}) beschreibbar",
+                    primary.display(),
+                    fallback.display()
+                );
+                (primary, None, None)
+            }
+        },
+        Err(e) => {
+            eprintln!("Protokoll {} nicht beschreibbar: {e}", primary.display());
+            (primary, None, None)
+        }
+    };
+    if let Some(warning) = &warning {
+        eprintln!("{warning}");
+    }
+    LogFile {
+        path,
+        file,
+        warning,
+    }
+}
+
+/// Wie [`choose_log_file`], merkt sich den benutzten Pfad aber für `log_path()`.
+fn open_with_fallback(primary: PathBuf, fallback: PathBuf) -> (Option<File>, Option<String>) {
+    let LogFile {
+        path,
+        file,
+        warning,
+    } = choose_log_file(primary, fallback);
+    let _ = LOG_PATH.set(path);
+    (file, warning)
 }
 
 /// Verschiebt ein zu großes Protokoll nach `<name>.old.log` und öffnet es zum Anhängen.
@@ -103,17 +168,11 @@ fn open_log(path: &Path) -> std::io::Result<File> {
     OpenOptions::new().create(true).append(true).open(path)
 }
 
-/// Richtet Logger und Panic-Hook ein. Schlägt das Öffnen der Datei fehl,
-/// läuft die App ohne Datei weiter (Meldungen dann nur auf stderr im Debug-Build).
+/// Richtet Logger und Panic-Hook ein. Lässt sich weder der Haupt- noch der
+/// Ausweichpfad öffnen, läuft die App ohne Datei weiter (Meldungen dann nur
+/// auf stderr im Debug-Build).
 pub fn init() {
-    let path = log_path();
-    let file = match open_log(path) {
-        Ok(file) => Some(file),
-        Err(e) => {
-            eprintln!("Protokoll {} nicht beschreibbar: {e}", path.display());
-            None
-        }
-    };
+    let (file, warning) = open_with_fallback(default_path(), fallback_path());
     let logger = Box::leak(Box::new(FileLogger {
         file: Mutex::new(file),
     }));
@@ -127,6 +186,9 @@ pub fn init() {
         std::env::consts::OS,
         std::env::consts::ARCH
     );
+    if let Some(warning) = warning {
+        log::warn!("{warning}");
+    }
 }
 
 fn install_panic_hook() {
@@ -231,6 +293,49 @@ mod tests {
                 .unwrap()
                 .len(),
             MAX_BYTES + 1
+        );
+    }
+
+    #[test]
+    fn hauptpfad_bleibt_wenn_beschreibbar() {
+        let dir = std::env::temp_dir().join(format!("pr-radar-primary-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let primary = dir.join("haupt").join("pr-radar.log");
+        let fallback = dir.join("ausweich").join("pr-radar.log");
+
+        let chosen = choose_log_file(primary.clone(), fallback.clone());
+
+        assert_eq!(chosen.path, primary);
+        assert!(chosen.file.is_some());
+        assert!(chosen.warning.is_none());
+        assert!(!fallback.exists());
+    }
+
+    #[test]
+    fn ausweichpfad_wenn_hauptpfad_nicht_beschreibbar() {
+        let dir = std::env::temp_dir().join(format!("pr-radar-fallback-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        // Eine Datei an Stelle des Ordners blockiert den Hauptpfad, auch für root.
+        let blocker = dir.join("blockiert");
+        std::fs::write(&blocker, b"").unwrap();
+        let primary = blocker.join("pr-radar.log");
+        let fallback = dir.join("ausweich").join("pr-radar.log");
+
+        let (file, warning) = open_with_fallback(primary.clone(), fallback.clone());
+        file.unwrap().write_all(b"neu\n").unwrap();
+
+        // Einziger Test, der `LOG_PATH` setzt; andere Tests rufen `log_path()` nicht auf.
+        assert_eq!(log_path(), fallback.as_path());
+        assert_eq!(std::fs::read_to_string(&fallback).unwrap(), "neu\n");
+        let warning = warning.unwrap();
+        assert!(
+            warning.contains(&primary.display().to_string()),
+            "{warning}"
+        );
+        assert!(
+            warning.contains(&fallback.display().to_string()),
+            "{warning}"
         );
     }
 
