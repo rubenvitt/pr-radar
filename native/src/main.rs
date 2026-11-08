@@ -3,6 +3,9 @@
 mod config;
 mod github;
 mod logging;
+#[cfg(target_os = "macos")]
+mod macos;
+mod menubar;
 mod model;
 mod radar;
 mod time;
@@ -97,6 +100,8 @@ fn main() {
         let radar = cx.new(|cx| Radar::new(github, cx));
 
         ui::init(radar.clone(), cx);
+        #[cfg(target_os = "macos")]
+        menubar::init(radar.clone(), cx);
         if let Err(e) = ui::open_main_window(radar, cx) {
             logging::fatal("Fenster konnte nicht geöffnet werden", e);
         }

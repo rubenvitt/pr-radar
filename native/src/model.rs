@@ -266,6 +266,13 @@ impl Snapshot {
         self.repos.iter().find(|r| r.full_name == full_name)
     }
 
+    /// Offene PRs mit roter Pipeline.
+    pub fn failed(&self) -> impl Iterator<Item = &OpenPr> {
+        self.open
+            .iter()
+            .filter(|p| p.pipeline.state == PipelineState::Failed)
+    }
+
     pub fn any_running(&self) -> bool {
         self.open
             .iter()
