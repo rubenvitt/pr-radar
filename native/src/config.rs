@@ -108,6 +108,62 @@ impl Config {
         }
         save_to(&path(), self)
     }
+
+    /// Nimmt ein Repo (owner/name oder GitHub-URL) auf und speichert. Liefert den Namen.
+    /// Scheitert das Speichern, bleibt die Konfiguration unverändert.
+    pub fn add_repo(&mut self, input: &str) -> Result<String> {
+        self.add_repo_with(input, Config::save)
+    }
+
+    /// Entfernt ein Repo samt Filtereintrag und speichert.
+    /// Scheitert das Speichern, bleibt die Konfiguration unverändert.
+    pub fn remove_repo(&mut self, full: &str) -> Result<()> {
+        self.remove_repo_with(full, Config::save)
+    }
+
+    fn add_repo_with(
+        &mut self,
+        input: &str,
+        save: impl FnOnce(&Config) -> Result<()>,
+    ) -> Result<String> {
+        let full = parse_repo(input).ok_or_else(|| {
+            anyhow::anyhow!("Ungültiges Repo – erwartet owner/name oder eine GitHub-URL.")
+        })?;
+        if self.repos.iter().any(|r| r.eq_ignore_ascii_case(&full)) {
+            anyhow::bail!("{full} ist schon in der Liste.");
+        }
+        self.commit(|next| next.repos.push(full.clone()), save)?;
+        Ok(full)
+    }
+
+    fn remove_repo_with(
+        &mut self,
+        full: &str,
+        save: impl FnOnce(&Config) -> Result<()>,
+    ) -> Result<()> {
+        self.commit(
+            |next| {
+                next.repos.retain(|r| r != full);
+                next.prefs.repo_filter.retain(|r| r != full);
+            },
+            save,
+        )
+    }
+
+    /// Ändert eine Kopie, speichert sie und übernimmt sie erst danach. So landet eine
+    /// Änderung, deren Speichern gescheitert ist, weder im nächsten Poll noch im
+    /// nächsten erfolgreichen Save.
+    fn commit(
+        &mut self,
+        change: impl FnOnce(&mut Config),
+        save: impl FnOnce(&Config) -> Result<()>,
+    ) -> Result<()> {
+        let mut next = self.clone();
+        change(&mut next);
+        save(&next)?;
+        *self = next;
+        Ok(())
+    }
 }
 
 fn save_to(path: &Path, cfg: &Config) -> Result<()> {
@@ -357,6 +413,71 @@ mod tests {
             ..Default::default()
         };
         assert!(cfg.save().is_err());
+    }
+
+    fn mit_repo(repo: &str) -> Config {
+        let mut cfg = Config {
+            repos: vec![repo.into()],
+            ..Default::default()
+        };
+        cfg.prefs.repo_filter = vec![repo.into()];
+        cfg
+    }
+
+    #[test]
+    fn repo_aendern_bei_schreibschutz_laesst_konfiguration_unveraendert() {
+        let mut cfg = Config {
+            read_only: true,
+            ..mit_repo("a/b")
+        };
+        let before = cfg.clone();
+
+        assert!(cfg.add_repo("c/d").is_err());
+        assert_eq!(cfg, before, "add_repo");
+        // Ein erneuter Versuch meldet nicht „schon in der Liste“, sondern wieder den Schreibschutz.
+        let err = cfg.add_repo("c/d").unwrap_err().to_string();
+        assert!(!err.contains("schon in der Liste"), "{err}");
+
+        assert!(cfg.remove_repo("a/b").is_err());
+        assert_eq!(cfg, before, "remove_repo");
+    }
+
+    #[test]
+    fn repo_aendern_bei_schreibfehler_laesst_konfiguration_unveraendert() {
+        let dir = temp_dir("repo-schreibfehler");
+        let path = dir.join("config.json");
+        // Ein Ordner an der Stelle der Zwischendatei lässt das Speichern scheitern.
+        std::fs::create_dir(path.with_extension(format!("json.tmp-{}", std::process::id())))
+            .unwrap();
+        let mut cfg = mit_repo("a/b");
+        let before = cfg.clone();
+
+        assert!(cfg.add_repo_with("c/d", |c| save_to(&path, c)).is_err());
+        assert_eq!(cfg, before);
+        assert!(cfg.remove_repo_with("a/b", |c| save_to(&path, c)).is_err());
+        assert_eq!(cfg, before);
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn repo_aendern_uebernimmt_nach_erfolgreichem_speichern() {
+        let dir = temp_dir("repo-aendern");
+        let path = dir.join("config.json");
+        let mut cfg = mit_repo("a/b");
+
+        let added = cfg
+            .add_repo_with("https://github.com/c/d", |c| save_to(&path, c))
+            .unwrap();
+        assert_eq!(added, "c/d");
+        assert_eq!(cfg.repos, ["a/b", "c/d"]);
+        assert_eq!(load_from(&path, "", now()).config, cfg);
+        let err = cfg.add_repo_with("C/D", |_| unreachable!()).unwrap_err();
+        assert!(err.to_string().contains("schon in der Liste"), "{err}");
+
+        cfg.remove_repo_with("a/b", |c| save_to(&path, c)).unwrap();
+        assert_eq!(cfg.repos, ["c/d"]);
+        assert!(cfg.prefs.repo_filter.is_empty());
+        assert_eq!(load_from(&path, "", now()).config, cfg);
     }
 
     #[test]
