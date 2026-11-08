@@ -10,6 +10,7 @@ use gpui_kit::{AppContext as _, AsyncApp, Context, EventEmitter, Task, WeakEntit
 
 use crate::config::{Config, Loaded, Prefs};
 use crate::demo;
+use crate::github::oauth::{self, PollStep};
 use crate::github::{GitHub, RateLimit, RateLimited, TokenSource, UNKNOWN_RATE_LIMIT_WAIT};
 use crate::model::{AutoMerge, MergeMethod, Snapshot, Transition, diff_snapshots};
 
@@ -74,6 +75,22 @@ pub struct Status {
     pub error: Option<String>,
     pub rate_limit: Option<RateLimit>,
     pub token_source: Option<TokenSource>,
+    /// Letzter Abruf scheiterte, weil kein (gültiger) Token da ist.
+    pub needs_login: bool,
+}
+
+/// Stand der GitHub-Anmeldung per Device Flow.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Login {
+    Idle,
+    /// Code wird bei GitHub angefordert.
+    Starting,
+    /// Nutzer soll `user_code` auf `verification_uri` eingeben.
+    Waiting {
+        user_code: String,
+        verification_uri: String,
+    },
+    Failed(String),
 }
 
 pub enum RadarEvent {
@@ -113,6 +130,8 @@ pub struct Radar {
     failures: u32,
     /// Demo-Modus: fester Beispielstand, kein Netzwerk, nichts wird gespeichert.
     demo: bool,
+    login: Login,
+    login_task: Option<Task<()>>,
 }
 
 impl EventEmitter<RadarEvent> for Radar {}
@@ -139,6 +158,7 @@ impl Radar {
                 error: None,
                 rate_limit: None,
                 token_source: None,
+                needs_login: false,
             },
             pending: HashSet::new(),
             awaiting_refresh: HashSet::new(),
@@ -148,6 +168,8 @@ impl Radar {
             config_warning: loaded.warning,
             failures: 0,
             demo: demo.enabled,
+            login: Login::Idle,
+            login_task: None,
         };
         this.refresh(cx);
         this
@@ -177,6 +199,7 @@ impl Radar {
                 error: None,
                 rate_limit: None,
                 token_source: None,
+                needs_login: false,
             },
             pending: HashSet::new(),
             awaiting_refresh: HashSet::new(),
@@ -186,6 +209,8 @@ impl Radar {
             config_warning: None,
             failures: 0,
             demo: false,
+            login: Login::Idle,
+            login_task: None,
         }
     }
 
@@ -212,6 +237,52 @@ impl Radar {
 
     pub fn prefs(&self) -> &Prefs {
         &self.config.prefs
+    }
+
+    pub fn login(&self) -> &Login {
+        &self.login
+    }
+
+    /// „Mit GitHub anmelden“: Code anfordern, Browser öffnen, Code in die Zwischenablage, dann
+    /// warten, bis der Nutzer bestätigt. Danach gilt der neue Token sofort.
+    pub fn start_login(&mut self, cx: &mut Context<Self>) {
+        if self.demo_only("Bei GitHub anmelden", cx) {
+            return;
+        }
+        let Some(client_id) = oauth::client_id() else {
+            self.login = Login::Failed(
+                "Die Anmeldung ist in diesem Build nicht eingerichtet (keine Client-ID).".into(),
+            );
+            cx.notify();
+            return;
+        };
+        self.login = Login::Starting;
+        let github = self.github.clone();
+        self.login_task = Some(cx.spawn(async move |this, cx| {
+            let result = run_login(&this, github, client_id, cx).await;
+            this.update(cx, |this, cx| {
+                match result {
+                    Ok(()) => {
+                        log::info!("Bei GitHub angemeldet");
+                        this.login = Login::Idle;
+                        this.refresh(cx);
+                    }
+                    Err(e) => {
+                        log::warn!("Anmeldung fehlgeschlagen: {e:#}");
+                        this.login = Login::Failed(format!("{e:#}"));
+                    }
+                }
+                cx.notify();
+            })
+            .ok();
+        }));
+        cx.notify();
+    }
+
+    pub fn cancel_login(&mut self, cx: &mut Context<Self>) {
+        self.login_task = None;
+        self.login = Login::Idle;
+        cx.notify();
     }
 
     pub fn is_pending(&self, pr_id: &str) -> bool {
@@ -277,6 +348,7 @@ impl Radar {
             error: None,
             rate_limit: None,
             token_source: None,
+            needs_login: false,
         };
         cx.notify();
     }
@@ -297,6 +369,7 @@ impl Radar {
         cx: &mut Context<Self>,
     ) -> Duration {
         self.status.token_source = self.github.token_source();
+        self.status.needs_login = fetched.is_err() && self.status.token_source.is_none();
         let now = Utc::now();
         let error = match fetched {
             Ok(f) => {
@@ -700,6 +773,57 @@ async fn merge_until_done(
         cx.background_executor().timer(delay).await;
         delay = (delay * 3 / 2).min(MERGE_RETRY_MAX);
     }
+}
+
+/// Device Flow bis zum Token. Netzwerkfehler beim Warten werden kurz toleriert.
+async fn run_login(
+    this: &WeakEntity<Radar>,
+    github: Arc<GitHub>,
+    client_id: String,
+    cx: &mut AsyncApp,
+) -> Result<()> {
+    let code = {
+        let (gh, id) = (github.clone(), client_id.clone());
+        cx.background_spawn(async move { gh.request_device_code(&id).await })
+            .await?
+    };
+    let deadline = Instant::now() + Duration::from_secs(code.expires_in);
+    let mut interval = Duration::from_secs(code.interval.max(1));
+    this.update(cx, |this, cx| {
+        this.login = Login::Waiting {
+            user_code: code.user_code.clone(),
+            verification_uri: code.verification_uri.clone(),
+        };
+        cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(code.user_code.clone()));
+        cx.open_url(&code.verification_uri);
+        cx.notify();
+    })?;
+    let mut failures = 0;
+    loop {
+        cx.background_executor().timer(interval).await;
+        if Instant::now() >= deadline {
+            bail!("Der Anmeldecode ist abgelaufen. Bitte erneut anmelden.");
+        }
+        let (gh, id, device) = (github.clone(), client_id.clone(), code.device_code.clone());
+        let step = cx
+            .background_spawn(async move { gh.poll_device_token(&id, &device, interval).await })
+            .await;
+        match step {
+            Ok(PollStep::Token(token)) => {
+                github.sign_in(token);
+                return Ok(());
+            }
+            Ok(PollStep::Pending) => failures = 0,
+            Ok(PollStep::SlowDown(next)) => interval = next,
+            // Ablehnung, Ablauf usw. beenden die Anmeldung sofort; Netzwerkfehler erst nach mehreren Versuchen.
+            Err(e) if is_network_error(&e) && failures < 3 => failures += 1,
+            Err(e) => return Err(e),
+        }
+    }
+}
+
+fn is_network_error(e: &anyhow::Error) -> bool {
+    format!("{e:#}").contains("GitHub nicht erreichbar")
 }
 
 /// Ablehnungen, die sich von selbst erledigen – etwa direkt nachdem ein anderer PR in denselben

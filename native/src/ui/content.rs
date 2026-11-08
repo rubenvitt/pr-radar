@@ -241,6 +241,21 @@ impl Workspace {
                 .into_any_element();
         }
         let Some(d) = d else {
+            if radar.status().needs_login {
+                let mut state = EmptyState::new(Lucide::CircleUser, "Nicht bei GitHub angemeldet")
+                    .action(
+                        Button::new("sign-in")
+                            .primary()
+                            .label("Anmelden…")
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.open_settings(&OpenSettings, window, cx)
+                            })),
+                    );
+                if let Some(e) = radar.status().error.clone() {
+                    state = state.hint(e);
+                }
+                return state.into_any_element();
+            }
             let polling = radar.status().state == PollState::Polling;
             return match radar.status().error.clone() {
                 Some(e) => EmptyState::new(Lucide::CircleX, "GitHub nicht erreichbar")
