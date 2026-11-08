@@ -444,10 +444,16 @@ impl Workspace {
                 cx.notify();
             }),
             cx.subscribe_in(&radar, window, Self::on_radar_event),
-            // Hängt der Fokus an keinem Element mehr (etwa nach einem geschlossenen Popup
-            // oder Dialog), zurück in den Workspace – sonst greifen ⌘F, ⌘1–3 usw. nicht,
-            // weil sie nur im Kontext „Workspace“ gebunden sind.
-            cx.on_focus_lost(window, |this, window, cx| this.focus.focus(window, cx)),
+            // Hängt der Fokus an keinem Element mehr, zum nächsten noch sichtbaren
+            // fokussierbaren Vorfahren (etwa das offene Sheet, wenn dort ein fokussierter
+            // Knopf verschwindet), sonst in den Workspace. Ohne das greifen ⌘F, ⌘1–3 usw.
+            // nicht, weil sie nur im Kontext „Workspace“ gebunden sind.
+            cx.on_focus_lost(window, |this, window, cx| {
+                let target = window
+                    .focus_lost_restore_target(cx)
+                    .unwrap_or_else(|| this.focus.clone());
+                target.focus(window, cx);
+            }),
         ];
 
         // Defekte config.json: einmal deutlich melden (nach dem Aufbau des Fensters).
@@ -1392,6 +1398,59 @@ mod tests {
         assert_eq!(tab(cx, &radar), Tab::Releases);
         press(cx, handle, "cmd-1");
         assert_eq!(tab(cx, &radar), Tab::Open);
+    }
+
+    #[gpui_kit::test]
+    async fn verschwundener_knopf_im_sheet_laesst_den_fokus_im_sheet(cx: &mut TestAppContext) {
+        let (handle, workspace, radar) = open(cx);
+        cx.update(|cx| {
+            radar.update(cx, |r, cx| {
+                r.set_repos_for_tests(vec!["octo/demo".into()], cx)
+            })
+        });
+        press(cx, handle, "cmd-,");
+        cx.wait_for(handle, WAIT, |window, cx| window.has_active_sheet(cx))
+            .await;
+        // Per Tastatur (Tab) zum Entfernen-Knopf, ein Mausklick fokussiert Knöpfe nicht.
+        let mut on_button = false;
+        for _ in 0..5 {
+            press(cx, handle, "tab");
+            on_button = cx
+                .update_window(handle, |_, window, cx| {
+                    window.render_frame(cx);
+                    window.find("remove-octo/demo").focused() == Some(true)
+                })
+                .unwrap();
+            if on_button {
+                break;
+            }
+        }
+        assert!(on_button, "Entfernen-Knopf per Tab nicht erreichbar");
+
+        // Die Zeile samt fokussiertem Knopf verschwindet (wie nach dem Entfernen).
+        cx.update(|cx| radar.update(cx, |r, cx| r.set_repos_for_tests(Vec::new(), cx)));
+        cx.update_window(handle, |_, window, cx| window.render_frame(cx))
+            .unwrap();
+        cx.run_until_parked();
+        let in_sheet = cx
+            .update_window(handle, |_, window, cx| {
+                window.has_active_sheet(cx)
+                    && window.focused(cx).is_some()
+                    && !workspace.read(cx).focus.contains_focused(window, cx)
+            })
+            .unwrap();
+        assert!(
+            in_sheet,
+            "der Fokus soll im offenen Sheet bleiben, nicht dahinter"
+        );
+
+        // Escape schließt das Sheet weiterhin, danach greifen die Kürzel wieder.
+        press(cx, handle, "escape");
+        cx.wait_for(handle, WAIT, |window, cx| !window.has_active_sheet(cx))
+            .await;
+        assert!(workspace_focused(cx, handle, &workspace));
+        press(cx, handle, "cmd-2");
+        assert_eq!(tab(cx, &radar), Tab::Merged);
     }
 
     #[gpui_kit::test]
