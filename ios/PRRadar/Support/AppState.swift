@@ -1,4 +1,4 @@
-// App-weiter Zustand neben `Radar`: Token-Status und Hinweis-Banner (Toasts).
+// App-weiter Zustand neben `Radar`: Token-Status, Demo-Modus und Hinweis-Banner (Toasts).
 
 import Observation
 import PRRadarCore
@@ -16,22 +16,66 @@ struct Toast: Identifiable, Equatable {
 @MainActor
 @Observable
 final class AppState {
-    let radar: Radar
+    /// Der echte Radar mit Token, Konfiguration und Cache.
+    let liveRadar: Radar
+    /// Gesetzt, solange der Demo-Modus läuft: Beispieldaten ohne GitHub, nichts wird gespeichert.
+    private(set) var demoRadar: Radar?
     private(set) var tokenSource: TokenSource?
     var toast: Toast?
 
+    /// Startargument für Screenshots und UI-Tests: App startet direkt im Demo-Modus.
+    static let demoLaunchArgument = "--demo"
+
     init() {
         let tokens = TokenStore.shared
-        radar = Radar(github: GitHubClient(token: { tokens.token }))
+        liveRadar = Radar(github: GitHubClient(token: { tokens.token }))
         tokenSource = tokens.source
-        radar.onEvent = { [weak self] event in self?.handle(event) }
+        liveRadar.onEvent = { [weak self] event in self?.handle(event) }
+        if ProcessInfo.processInfo.arguments.contains(Self.demoLaunchArgument) {
+            startDemo()
+        }
     }
 
+    /// Der Radar, den die Oberfläche gerade zeigt.
+    var radar: Radar { demoRadar ?? liveRadar }
+
+    var isDemo: Bool { demoRadar != nil }
+
     var hasToken: Bool { tokenSource != nil }
+
+    /// Beispieldaten zeigen, ohne Token und Repos – für App-Review und zum Ausprobieren.
+    /// Ansichts-Einstellungen (Liste/Flow, gruppiert) kommen aus dem echten Radar.
+    func startDemo() {
+        guard demoRadar == nil else { return }
+        liveRadar.stop()
+        var prefs = liveRadar.prefs
+        prefs.tab = .open
+        prefs.quick = .all
+        prefs.repoFilter = []
+        prefs.notify = false
+        let demo = Radar.demo(prefs: prefs)
+        demo.onEvent = { [weak self] event in self?.handle(event) }
+        demoRadar = demo
+        demo.refresh()
+        updateBadge()
+    }
+
+    /// Zurück zu den eigenen Daten, auf demselben Tab.
+    func endDemo() {
+        guard let demo = demoRadar else { return }
+        demo.stop()
+        demoRadar = nil
+        let tab = demo.prefs.tab
+        liveRadar.updatePrefs { $0.tab = tab }
+        liveRadar.refresh()
+        updateBadge()
+    }
 
     func saveToken(_ token: String) throws {
         try TokenStore.shared.save(token)
         tokenSource = TokenStore.shared.source
+        // Wer einen Token einträgt, will seine eigenen Daten sehen.
+        endDemo()
         radar.refresh()
     }
 

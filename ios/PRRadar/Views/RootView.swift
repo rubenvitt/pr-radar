@@ -10,20 +10,20 @@ struct RootView: View {
     var body: some View {
         TabView(selection: Binding(get: { radar.prefs.tab }, set: { t in radar.updatePrefs { $0.tab = t } })) {
             SwiftUI.Tab("Offen", systemImage: "arrow.triangle.pull", value: RadarTab.open) {
-                OpenPRsView()
+                OpenPRsView().safeAreaInset(edge: .top, spacing: 0) { DemoBanner() }
             }
             .badge(failedCount)
 
             SwiftUI.Tab("Gemergt", systemImage: "arrow.triangle.merge", value: RadarTab.merged) {
-                MergedView()
+                MergedView().safeAreaInset(edge: .top, spacing: 0) { DemoBanner() }
             }
 
             SwiftUI.Tab("Releases", systemImage: "tag", value: RadarTab.releases) {
-                ReleasesView()
+                ReleasesView().safeAreaInset(edge: .top, spacing: 0) { DemoBanner() }
             }
 
             SwiftUI.Tab("Einstellungen", systemImage: "gearshape", value: RadarTab.settings) {
-                SettingsView()
+                SettingsView().safeAreaInset(edge: .top, spacing: 0) { DemoBanner() }
             }
         }
         .tabViewStyle(.sidebarAdaptable)

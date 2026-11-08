@@ -14,6 +14,7 @@ Die iPhone-/iPad-App zur macOS-App – gleiche Funktionen, in SwiftUI. Spricht G
 - **Benachrichtigungen**, wenn eine Pipeline rot/grün wird oder ein PR gemergt wurde, rote PRs als Badge; im Hintergrund per App-Refresh, so oft iOS es zulässt
 - iPad: Seitenleiste, Tastatur `⌘R` neu laden, `⌘1–4` Bereiche, `⌘L` Liste/Flow, `⌘G` gruppieren
 - Hell/Dunkel, Dynamic Type, VoiceOver-Beschriftungen; der wandernde Punkt im Flow entfällt bei „Bewegung reduzieren“
+- **Demo-Modus** mit Beispieldaten: ohne Token und Repos ausprobieren (Knopf „Mit Beispieldaten ausprobieren“ im leeren Zustand)
 
 ## Start
 
@@ -28,6 +29,21 @@ Den Token trägt man in der App unter **Einstellungen** ein – er liegt nur im 
 Für die Entwicklung kann man ihn alternativ im Scheme als Umgebungsvariable `GITHUB_TOKEN` setzen (ist vorbereitet, aber deaktiviert).
 
 Token-Rechte wie bei der macOS-App: Fine-grained PAT mit Metadata, Contents, Commit statuses, Actions/Checks (read) und Pull requests (**write** für Merge und Auto-Merge).
+
+## Demo-Modus
+
+Ohne Token oder ohne Repos bietet die App „Mit Beispieldaten ausprobieren“ an. Dann zeigt sie drei erfundene
+Repos (`acme/web`, `acme/api`, `acme/mobile`) mit allen wichtigen Zuständen: Pipeline läuft, rot, grün, Konflikt,
+Draft, Auto-Merge, angefragtes Review, Releases und eine Gemergt-Timeline. Die Daten kommen aus
+`PRRadarCore/Demo.swift` (`DemoData`, `DemoGitHub`), nicht aus dem Netz. Mergen und Auto-Merge wirken auf den
+Demo-Stand, laufende Pipelines werden nach 20 bzw. 60 s grün. Konfiguration, Cache und Schlüsselbund bleiben unberührt.
+
+Eine Leiste oben zeigt den Modus an und beendet ihn. Wer einen Token speichert, verlässt den Demo-Modus automatisch.
+Für Screenshots und UI-Tests startet die App mit dem Startargument `--demo` direkt in der Demo
+(Xcode: Scheme → Run → Arguments, Simulator: `xcrun simctl launch booted email.rubeen.prradar --demo`).
+
+Hinweis für die App-Review-Notizen: „Die App braucht ein GitHub-Konto. Ohne Anmeldung lässt sie sich über
+‚Mit Beispieldaten ausprobieren‘ auf dem Startbildschirm vollständig mit Beispieldaten testen.“
 
 ## Aufbau
 

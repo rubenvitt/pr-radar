@@ -12,6 +12,8 @@ struct SettingsView: View {
             Form {
                 TokenSection()
                 ReposSection()
+                    // Die Demo-Repos sind fest; eigene Repos gibt es erst nach dem Beenden.
+                    .disabled(app.isDemo)
                 NotificationsSection()
                 StatusSection()
                 Section("Info") {
