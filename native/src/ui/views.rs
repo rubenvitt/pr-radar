@@ -7,7 +7,7 @@ use gpui_kit::component::{
     button::{Button, ButtonVariants as _},
     h_flex,
     tag::Tag,
-    text::TextView,
+    text::{TextView, TextViewStyle},
     v_flex,
 };
 use gpui_kit::prelude::FluentBuilder as _;
@@ -19,6 +19,23 @@ use super::theme;
 use super::typography::TypeScale as _;
 use crate::model::{MergedPr, Release};
 use crate::time::{ago, clock, full};
+
+/// Höhe, auf die aufgeklappte Release Notes gekappt werden, bis „Mehr anzeigen“ geklickt ist.
+const NOTES_MAX_HEIGHT: f32 = 16.;
+/// Höhe des Verlaufs, der gekappte Notes nach unten ausblendet.
+const NOTES_FADE_HEIGHT: f32 = 2.5;
+
+/// Stil der Release Notes: Überschriften nie größer als der Release-Name (Grundschrift,
+/// halbfett), Absätze und Listen enger als im Standard (1 rem).
+fn notes_style(cx: &App) -> TextViewStyle {
+    let name = cx.theme().font_size;
+    TextViewStyle::default()
+        .paragraph_gap(rems(0.5))
+        .heading_font_size(move |level, _| match level {
+            1 | 2 => name * 0.9375,
+            _ => name * 0.875,
+        })
+}
 
 impl Workspace {
     pub(super) fn render_merged_row(
@@ -214,20 +231,109 @@ impl Workspace {
                     }),
             )
             .when(open && has_body, |this| {
-                this.child(
-                    div()
-                        .border_t_1()
-                        .border_color(cx.theme().border)
-                        .px_5()
-                        .py_4()
-                        .text_body()
-                        // descriptionHTML ist von GitHub gerendertes und bereinigtes HTML
-                        .child(TextView::html(
-                            SharedString::from(format!("notes-{}", r.id)),
-                            r.description_html.clone(),
-                        )),
-                )
+                this.child(self.render_notes(r, cx))
             })
             .into_any_element()
+    }
+
+    /// Aufgeklappte Release Notes, gekappt auf [`NOTES_MAX_HEIGHT`] mit „Mehr anzeigen“.
+    ///
+    /// Ob die Notes über die Kappung hinausgehen, hängt von der Fensterbreite ab und lässt sich
+    /// erst nach dem Layout sagen: Die volle Höhe des Inhalts wird beim Zeichnen gemessen und
+    /// in `long_notes` gemerkt; erst dann erscheinen Verlauf und Knopf.
+    fn render_notes(&self, r: &Release, cx: &mut Context<Self>) -> Div {
+        let full = self.full_notes.contains(&r.id);
+        let long = self.long_notes.contains(&r.id);
+        let clipped = long && !full;
+        let card = cx.theme().group_box;
+        let workspace = cx.entity().downgrade();
+        let id = r.id.clone();
+
+        let clip = div()
+            .relative()
+            .when(!full, |d| d.max_h(rems(NOTES_MAX_HEIGHT)).overflow_hidden())
+            .on_children_prepainted(move |bounds, window, cx| {
+                let Some(content) = bounds.first() else {
+                    return;
+                };
+                let is_long =
+                    content.size.height > rems(NOTES_MAX_HEIGHT).to_pixels(window.rem_size());
+                if is_long == long {
+                    return;
+                }
+                let (workspace, id) = (workspace.clone(), id.clone());
+                // Nicht mitten im Zeichnen ändern: erst danach, dann neu messen und zeichnen.
+                cx.defer(move |cx| {
+                    workspace
+                        .update(cx, |this, cx| {
+                            let changed = if is_long {
+                                this.long_notes.insert(id.clone())
+                            } else {
+                                this.long_notes.remove(&id)
+                            };
+                            if changed {
+                                this.remeasure_key(&format!("release:{id}"));
+                                cx.notify();
+                            }
+                        })
+                        .ok();
+                });
+            })
+            .child(
+                div().flex_shrink_0().child(
+                    // descriptionHTML ist von GitHub gerendertes und bereinigtes HTML
+                    TextView::html(
+                        SharedString::from(format!("notes-{}", r.id)),
+                        r.description_html.clone(),
+                    )
+                    .style(notes_style(cx)),
+                ),
+            )
+            .when(clipped, |d| {
+                d.child(
+                    div()
+                        .absolute()
+                        .left_0()
+                        .right_0()
+                        .bottom_0()
+                        .h(rems(NOTES_FADE_HEIGHT))
+                        .bg(linear_gradient(
+                            180.,
+                            linear_color_stop(card.opacity(0.), 0.),
+                            linear_color_stop(card, 1.),
+                        )),
+                )
+            });
+
+        let id = r.id.clone();
+        v_flex()
+            .border_t_1()
+            .border_color(cx.theme().border)
+            .px_5()
+            .py_4()
+            .gap_2()
+            .text_body()
+            .child(clip)
+            .when(long, |this| {
+                this.child(
+                    div().child(
+                        Button::new(SharedString::from(format!("release-more-{}", r.id)))
+                            .ghost()
+                            .xsmall()
+                            .label(if full {
+                                "Weniger anzeigen"
+                            } else {
+                                "Mehr anzeigen"
+                            })
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                if !this.full_notes.remove(&id) {
+                                    this.full_notes.insert(id.clone());
+                                }
+                                this.remeasure_key(&format!("release:{id}"));
+                                cx.notify();
+                            })),
+                    ),
+                )
+            })
     }
 }
