@@ -21,6 +21,8 @@ private struct FixedTransport: HTTPTransport {
 }
 
 @Suite struct RateLimitTests {
+
+    init() { L10n.setLanguage("en") }  // Texte unabhängig von der Systemsprache
     let now = Date(timeIntervalSince1970: 1_000)
 
     @Test func erkenntErschoepftesKontingent() {

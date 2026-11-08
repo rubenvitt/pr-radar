@@ -7,6 +7,8 @@ import Testing
 @testable import PRRadarCore
 
 @Suite struct L10nTests {
+
+    init() { L10n.setLanguage("en") }  // Texte unabhängig von der Systemsprache
     /// Wurzel des Repos `ios/`, ermittelt aus dem Pfad dieser Datei.
     static let iosRoot = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent()  // PRRadarCoreTests
@@ -70,6 +72,15 @@ import Testing
                 }
             }
         }
+    }
+
+    @Test func festeSprache() {
+        #expect(L10n.tr("No checks", language: "en") == "No checks")
+        #if canImport(Darwin)
+            // Nur auf Apple-Plattformen kompiliert SwiftPM den Catalog zu de.lproj.
+            #expect(L10n.tr("No checks", language: "de") == "Keine Checks")
+            #expect(L10n.tr("%lld/%lld passed", language: "de") == "%lld/%lld grün")
+        #endif
     }
 
     @Test func kernSchluesselStehenImCatalog() throws {

@@ -16,6 +16,8 @@ private final class ManualClock: @unchecked Sendable {
 }
 
 @Suite struct DemoTests {
+
+    init() { L10n.setLanguage("en") }  // Texte unabhängig von der Systemsprache
     @Test func beispieldatenZeigenAlleWichtigenZustaende() {
         let s = DemoData.snapshot()
         let states = Set(s.open.map(\.pipeline.state))

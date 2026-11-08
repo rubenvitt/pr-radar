@@ -13,6 +13,8 @@ private func run(_ status: String, _ conclusion: String?, _ name: String) -> Str
 }
 
 @Suite struct PipelineTests {
+
+    init() { L10n.setLanguage("en") }  // Texte unabhängig von der Systemsprache
     @Test func noneOhneChecks() {
         #expect(buildPipeline(nil).state == .none)
     }
@@ -58,6 +60,8 @@ private func run(_ status: String, _ conclusion: String?, _ name: String) -> Str
 }
 
 @Suite struct RepoTests {
+
+    init() { L10n.setLanguage("en") }  // Texte unabhängig von der Systemsprache
     private func rawRepo(_ flags: String) throws -> RawRepo {
         let json = #"{ "nameWithOwner": "a/b", "url": "u", "autoMergeAllowed": true, "viewerPermission": null, "defaultBranchRef": null \#(flags) }"#
         return try gitHubDecoder().decode(RawRepo.self, from: Data(json.utf8))
@@ -109,6 +113,8 @@ private func run(_ status: String, _ conclusion: String?, _ name: String) -> Str
 }
 
 @Suite struct QueryTests {
+
+    init() { L10n.setLanguage("en") }  // Texte unabhängig von der Systemsprache
     @Test func aliastReposUndEscapedNamen() {
         let q = Queries.dashboard(["a/b", "c/d"])
         #expect(q.contains(#"r0: repository(owner: "a", name: "b")"#))
@@ -122,6 +128,8 @@ private func run(_ status: String, _ conclusion: String?, _ name: String) -> Str
 }
 
 @Suite struct FetchTests {
+
+    init() { L10n.setLanguage("en") }  // Texte unabhängig von der Systemsprache
     @Test func liestDashboardMitRegelnUndFehlendemRepo() async throws {
         let rules = Data(#"[{ "type": "pull_request", "parameters": { "allowed_merge_methods": ["squash"] } }]"#.utf8)
         let transport = FakeTransport(

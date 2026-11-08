@@ -572,7 +572,7 @@ impl Workspace {
                                 Icon::new(Lucide::GitBranch).small(),
                                 div().font_family(mono).child(pr.base_ref.clone()),
                                 if on_default {
-                                    format!("Pipeline {}", base_state.label())
+                                    trf!("Pipeline {}", "Pipeline {}", base_state.label())
                                 } else {
                                     tr!("Target branch", "Ziel-Branch").into()
                                 },

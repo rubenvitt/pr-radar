@@ -108,6 +108,7 @@ import Testing
 
     @Test func fehlermeldungNenntDenSchluesselbund() {
         let text = KeychainError(status: errSecInteractionNotAllowed).localizedDescription
-        #expect(text.lowercased().contains("keychain"))
+        // Simulator auf Englisch oder Deutsch
+        #expect(text.lowercased().contains("keychain") || text.contains("Schlüsselbund"))
     }
 }

@@ -9,6 +9,8 @@ import Testing
 
 /// Fehlerpfade des `GitHubClient`: HTTP-Status, Netz, Abbruch, unlesbare Antworten, GraphQL-Fehler.
 @Suite struct ClientErrorTests {
+
+    init() { L10n.setLanguage("en") }  // Texte unabhängig von der Systemsprache
     private func fetchError(_ transport: HTTPTransport, repos: [String] = ["a/b"]) async -> Error? {
         do {
             _ = try await GitHubClient(transport: transport, token: { "t" }).fetch(repos: repos)
@@ -137,6 +139,8 @@ import Testing
 
 /// Form der Requests und Mutationen.
 @Suite struct ClientRequestTests {
+
+    init() { L10n.setLanguage("en") }  // Texte unabhängig von der Systemsprache
     @Test func requestFormUndGetrimmterToken() async throws {
         let transport = ScriptedTransport(status: 200, body: #"{"data":{"viewer":{"login":"me"}}}"#)
         _ = try await GitHubClient(transport: transport, token: { "  t0k\n" }).fetch(repos: [])
@@ -226,6 +230,8 @@ import Testing
 
 /// Branch-Regeln (Rulesets) über den Client: Abruf, Kodierung, Fehler, Cache.
 @Suite struct ClientRulesTests {
+
+    init() { L10n.setLanguage("en") }  // Texte unabhängig von der Systemsprache
     private let squashOnly = #"[{ "type": "pull_request", "parameters": { "allowed_merge_methods": ["squash"] } }]"#
 
     /// GraphQL aus der Fixture, Regeln über `rules`; protokolliert alle Requests.
