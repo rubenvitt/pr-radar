@@ -421,14 +421,21 @@ impl GitHub {
             .header("Content-Type", "application/x-www-form-urlencoded")
             .header("User-Agent", "pr-radar-native")
             .body(AsyncBody::from(form.into_bytes()))?;
-        let mut res = self
-            .http
-            .send(req)
-            .await
-            .context("GitHub nicht erreichbar")?;
-        let status = res.status();
-        let mut text = String::new();
-        res.body_mut().read_to_string(&mut text).await?;
+        let (status, text) = within(self.timeout, async {
+            let mut res = self
+                .http
+                .send(req)
+                .await
+                .context("GitHub nicht erreichbar")?;
+            let status = res.status();
+            let mut text = String::new();
+            res.body_mut()
+                .read_to_string(&mut text)
+                .await
+                .context("GitHub nicht erreichbar")?;
+            Ok((status, text))
+        })
+        .await?;
         // Fehler des Device Flows kommen als JSON mit `error`, auch bei HTTP 4xx.
         if !status.is_success() && !text.contains("\"error\"") {
             bail!("{}", describe_http_error(status.as_u16(), &text));

@@ -1,8 +1,9 @@
-// App-weiter Zustand neben `Radar`: Token-Status, Demo-Modus und Hinweis-Banner (Toasts).
+// App-weiter Zustand neben `Radar`: Token-Status, GitHub-Anmeldung, Demo-Modus und Hinweis-Banner (Toasts).
 
 import Observation
 import PRRadarCore
 import SwiftUI
+import UIKit
 
 struct Toast: Identifiable, Equatable {
     enum Kind { case success, error, info }
@@ -13,6 +14,16 @@ struct Toast: Identifiable, Equatable {
     var message: String
 }
 
+/// Stand der GitHub-Anmeldung per Device Flow.
+enum LoginState: Equatable {
+    case idle
+    /// Code wird bei GitHub angefordert.
+    case starting
+    /// Nutzer soll `code.userCode` auf `code.verificationURI` eingeben.
+    case waiting(DeviceCode)
+    case failed(String)
+}
+
 @MainActor
 @Observable
 final class AppState {
@@ -21,6 +32,8 @@ final class AppState {
     /// Gesetzt, solange der Demo-Modus läuft: Beispieldaten ohne GitHub, nichts wird gespeichert.
     private(set) var demoRadar: Radar?
     private(set) var tokenSource: TokenSource?
+    private(set) var login: LoginState = .idle
+    @ObservationIgnored private var loginTask: Task<Void, Never>?
     var toast: Toast?
 
     /// Startargument für Screenshots und UI-Tests: App startet direkt im Demo-Modus.
@@ -42,6 +55,48 @@ final class AppState {
     var isDemo: Bool { demoRadar != nil }
 
     var hasToken: Bool { tokenSource != nil }
+
+    /// In diesem Build ist eine OAuth App für die Anmeldung hinterlegt.
+    var canLogin: Bool { GitHubOAuth.clientID != nil }
+
+    /// „Mit GitHub anmelden“: Code anfordern, Code in die Zwischenablage, GitHub im Browser
+    /// öffnen und warten, bis der Nutzer bestätigt. Der Token landet im Schlüsselbund.
+    func startLogin() {
+        guard let clientID = GitHubOAuth.clientID else {
+            login = .failed(DeviceFlowError.notConfigured.localizedDescription)
+            return
+        }
+        loginTask?.cancel()
+        login = .starting
+        loginTask = Task {
+            let flow = DeviceFlow(clientID: clientID)
+            do {
+                let code = try await flow.start()
+                try Task.checkCancellation()
+                login = .waiting(code)
+                UIPasteboard.general.string = code.userCode
+                _ = await UIApplication.shared.open(code.verificationURI)
+                let token = try await flow.waitForToken(code)
+                try Task.checkCancellation()
+                try TokenStore.shared.save(token, fromLogin: true)
+                tokenSource = TokenStore.shared.source
+                login = .idle
+                // Wer sich anmeldet, will seine eigenen Daten sehen.
+                endDemo()
+                radar.refresh()
+                show(.success, "Angemeldet", "PR Radar ist mit GitHub verbunden.")
+            } catch {
+                guard !Task.isCancelled, !(error is CancellationError) else { return }
+                login = .failed(error.localizedDescription)
+            }
+        }
+    }
+
+    func cancelLogin() {
+        loginTask?.cancel()
+        loginTask = nil
+        login = .idle
+    }
 
     /// Beispieldaten zeigen, ohne Token und Repos – für App-Review und zum Ausprobieren.
     /// Ansichts-Einstellungen (Liste/Flow, gruppiert) kommen aus dem echten Radar.
@@ -72,6 +127,7 @@ final class AppState {
     }
 
     func saveToken(_ token: String) throws {
+        cancelLogin()
         try TokenStore.shared.save(token)
         tokenSource = TokenStore.shared.source
         // Wer einen Token einträgt, will seine eigenen Daten sehen.
@@ -80,6 +136,7 @@ final class AppState {
     }
 
     func deleteToken() {
+        cancelLogin()
         TokenStore.shared.delete()
         tokenSource = TokenStore.shared.source
         radar.refresh()

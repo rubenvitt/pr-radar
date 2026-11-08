@@ -87,6 +87,25 @@ import Testing
         #expect(store.source == .environment)
     }
 
+    @Test func merktSichDieHerkunftAusDerAnmeldung() throws {
+        let service = "email.rubeen.prradar.tests.\(UUID().uuidString)"
+        let store = makeStore(service: service)
+        defer { store.delete() }
+
+        try store.save("gho_login", fromLogin: true)
+        #expect(store.source == .login)
+        #expect(makeStore(service: service).source == .login, "Herkunft überlebt einen Neustart")
+
+        // Ein eingetragener PAT ersetzt die Anmeldung
+        try store.save("ghp_pat")
+        #expect(store.source == .keychain)
+
+        try store.save("gho_login", fromLogin: true)
+        store.delete()
+        try store.save("ghp_neu")
+        #expect(store.source == .keychain, "Entfernen vergisst die Herkunft")
+    }
+
     @Test func fehlermeldungNenntDenSchluesselbund() {
         let text = KeychainError(status: errSecInteractionNotAllowed).localizedDescription
         #expect(text.contains("Schlüsselbund"))
