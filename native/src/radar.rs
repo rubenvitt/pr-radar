@@ -8,7 +8,8 @@ use anyhow::{Result, anyhow, bail};
 use chrono::{DateTime, Utc};
 use gpui_kit::{AppContext as _, AsyncApp, Context, EventEmitter, Task, WeakEntity};
 
-use crate::config::{Config, Prefs};
+use crate::config::{Config, Loaded, Prefs};
+use crate::demo;
 use crate::github::{GitHub, RateLimit, RateLimited, TokenSource, UNKNOWN_RATE_LIMIT_WAIT};
 use crate::model::{AutoMerge, MergeMethod, Snapshot, Transition, diff_snapshots};
 
@@ -82,6 +83,8 @@ pub enum RadarEvent {
     Changed(Vec<String>),
     /// Eine Nutzeraktion (Merge, Auto-Merge) ist fehlgeschlagen.
     ActionFailed(String),
+    /// Demo-Modus: Eine Aktion wurde nur angedeutet, GitHub blieb unberührt.
+    DemoNotice(String),
     /// „Alle mergen“ ist durch.
     MergeAllFinished {
         merged: usize,
@@ -108,13 +111,23 @@ pub struct Radar {
     config_warning: Option<String>,
     /// Fehlgeschlagene Polls in Folge, für den Backoff
     failures: u32,
+    /// Demo-Modus: fester Beispielstand, kein Netzwerk, nichts wird gespeichert.
+    demo: bool,
 }
 
 impl EventEmitter<RadarEvent> for Radar {}
 
 impl Radar {
-    pub fn new(github: Arc<GitHub>, cx: &mut Context<Self>) -> Self {
-        let loaded = Config::load();
+    pub fn new(github: Arc<GitHub>, demo: &demo::Options, cx: &mut Context<Self>) -> Self {
+        // Im Demo-Modus wird die echte config.json weder gelesen noch geschrieben.
+        let loaded = if demo.enabled {
+            Loaded {
+                config: demo.config(),
+                warning: None,
+            }
+        } else {
+            Config::load()
+        };
         let mut this = Self {
             github,
             config: loaded.config,
@@ -134,6 +147,7 @@ impl Radar {
             poll_task: None,
             config_warning: loaded.warning,
             failures: 0,
+            demo: demo.enabled,
         };
         this.refresh(cx);
         this
@@ -171,6 +185,7 @@ impl Radar {
             poll_task: None,
             config_warning: None,
             failures: 0,
+            demo: false,
         }
     }
 
@@ -181,6 +196,10 @@ impl Radar {
     /// Liefert den Hinweis zur Konfiguration genau einmal.
     pub fn take_config_warning(&mut self) -> Option<String> {
         self.config_warning.take()
+    }
+
+    pub fn is_demo(&self) -> bool {
+        self.demo
     }
 
     pub fn status(&self) -> &Status {
@@ -205,6 +224,10 @@ impl Radar {
 
     pub fn update_prefs(&mut self, cx: &mut Context<Self>, f: impl FnOnce(&mut Prefs)) {
         f(&mut self.config.prefs);
+        if self.demo {
+            cx.notify();
+            return;
+        }
         // Einstellungen sind Komfort – ein Schreibfehler soll die Bedienung nicht stören.
         if let Err(e) = self.config.save() {
             log::warn!("Einstellungen nicht gespeichert: {e:#}");
@@ -214,6 +237,10 @@ impl Radar {
 
     /// Sofort neu laden und den Poll-Zyklus neu starten.
     pub fn refresh(&mut self, cx: &mut Context<Self>) {
+        if self.demo {
+            self.load_demo(cx);
+            return;
+        }
         self.poll_task = Some(cx.spawn(async move |this, cx| {
             loop {
                 let Ok((github, repos)) = this.update(cx, |this, cx| {
@@ -235,6 +262,32 @@ impl Radar {
             }
         }));
         cx.notify();
+    }
+
+    /// Demo-Modus: Beispielstand statt GitHub, ohne Poll-Zyklus.
+    fn load_demo(&mut self, cx: &mut Context<Self>) {
+        let now = Utc::now();
+        self.poll_task = None;
+        self.snapshot = Some(Arc::new(demo::snapshot(now)));
+        self.awaiting_refresh.clear();
+        self.status = Status {
+            state: PollState::Idle,
+            last_success: Some(now),
+            interval: NORMAL,
+            error: None,
+            rate_limit: None,
+            token_source: None,
+        };
+        cx.notify();
+    }
+
+    /// Im Demo-Modus statt einer GitHub-Änderung nur einen Hinweis zeigen. Liefert `true`,
+    /// wenn die Aktion damit erledigt ist.
+    fn demo_only(&self, what: &str, cx: &mut Context<Self>) -> bool {
+        if self.demo {
+            cx.emit(RadarEvent::DemoNotice(demo::action_notice(what)));
+        }
+        self.demo
     }
 
     /// Übernimmt ein Poll-Ergebnis und liefert die Wartezeit bis zum nächsten Poll.
@@ -292,12 +345,18 @@ impl Radar {
     }
 
     pub fn add_repo(&mut self, input: &str, cx: &mut Context<Self>) -> Result<()> {
+        if self.demo {
+            bail!("Im Demo-Modus lassen sich keine Repositories ändern.");
+        }
         self.config.add_repo(input)?;
         self.refresh(cx);
         Ok(())
     }
 
     pub fn remove_repo(&mut self, full: &str, cx: &mut Context<Self>) -> Result<()> {
+        if self.demo {
+            bail!("Im Demo-Modus lassen sich keine Repositories ändern.");
+        }
         self.config.remove_repo(full)?;
         self.refresh(cx);
         Ok(())
@@ -310,6 +369,14 @@ impl Radar {
         method: Option<MergeMethod>,
         cx: &mut Context<Self>,
     ) {
+        let what = if method.is_some() {
+            "Auto-Merge aktivieren"
+        } else {
+            "Auto-Merge ausschalten"
+        };
+        if self.demo_only(what, cx) {
+            return;
+        }
         if let Some(m) = method
             && let Err(e) = self.check_method(pr_id, m)
         {
@@ -327,6 +394,9 @@ impl Radar {
     /// Jetzt mergen. Lehnt GitHub vorübergehend ab (z. B. weil gerade ein anderer PR in den
     /// Ziel-Branch gemergt wurde), wird erneut versucht bzw. Auto-Merge aktiviert.
     pub fn merge(&mut self, pr_id: &str, method: MergeMethod, cx: &mut Context<Self>) {
+        if self.demo_only(&format!("Mergen ({})", method.label()), cx) {
+            return;
+        }
         if let Err(e) = self.check_method(pr_id, method) {
             log::warn!("Aktion fehlgeschlagen: {e:#}");
             cx.emit(RadarEvent::ActionFailed(e.to_string()));
@@ -353,6 +423,9 @@ impl Radar {
     /// Mergt mehrere PRs: je Repo und Ziel-Branch nacheinander (parallele Merges in denselben
     /// Branch lehnt GitHub ab), verschiedene Ziele parallel. Ein Fehlschlag stoppt die anderen nicht.
     pub fn merge_all(&mut self, items: Vec<(String, MergeMethod)>, cx: &mut Context<Self>) {
+        if self.demo_only(&format!("{} PRs mergen", items.len()), cx) {
+            return;
+        }
         let Some(snapshot) = self.snapshot.clone() else {
             return;
         };

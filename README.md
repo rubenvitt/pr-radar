@@ -29,6 +29,22 @@ cargo run                       # Entwicklung
 scripts/bundle.sh --install     # „PR Radar.app“ bauen und nach /Applications kopieren
 ```
 
+### Demo-Modus
+
+```bash
+cargo run -- --demo                 # Beispieldaten statt GitHub, ohne Token
+cargo run -- --demo --dark --tab releases
+scripts/screenshots.sh              # alle Ansichten hell/dunkel nach native/screenshots/
+```
+
+Auch per `PR_RADAR_DEMO=1`. Die App zeigt dann einen festen Stand (7 offene PRs in 4 Repos mit Konflikt, Auto-Merge,
+Draft, Review-Anfrage und roter Pipeline, ein nicht erreichbares Repo, 7 gemergte PRs, 2 Releases), fragt GitHub
+nicht ab, liest und schreibt die `config.json` nicht und zeigt bei Merge und Auto-Merge nur einen Hinweis.
+Weitere Schalter nur im Demo-Modus: `--dark`/`--light`, `--tab open|merged|releases`, `--view list|flow`,
+`--quick failed|running|…` (oder `PR_RADAR_APPEARANCE`, `PR_RADAR_TAB`, `PR_RADAR_VIEW`, `PR_RADAR_QUICK`).
+`scripts/screenshots.sh` läuft auf macOS (`screencapture`) und unter Linux mit Xvfb, `xdotool`, ImageMagick und
+Software-Vulkan (`libxkbcommon-dev`, `libxkbcommon-x11-dev`, `mesa-vulkan-drivers`).
+
 Konfiguration: `~/Library/Application Support/pr-radar/config.json`. Repos im Repositories-Sheet hinzufügen
 (`owner/repo`, GitHub-URL oder SSH-URL) oder beim ersten Start per `REPOS=owner/a,owner/b`.
 
