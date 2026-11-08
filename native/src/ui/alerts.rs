@@ -101,7 +101,9 @@ fn window_active(cx: &mut App) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    // Kein `super::*`: `gpui_kit::*` brächte GPUIs eigenes `test`-Makro mit.
+    use super::{tag, url_from_tag};
+    use crate::model::TransitionKind;
 
     #[test]
     fn tag_traegt_die_url_und_ist_je_art_eindeutig() {
