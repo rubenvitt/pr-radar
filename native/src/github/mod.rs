@@ -381,7 +381,17 @@ impl GitHub {
 
     /// Führt eine Mutation aus; GraphQL-Fehler werden zu einem `Err`.
     async fn mutate(&self, query: &str, variables: Value) -> Result<()> {
-        let res = self.request(query, variables).await?;
+        // Aktionen wiederholt niemand automatisch, und GitHub kann sie trotz Zeitüberschreitung
+        // ausgeführt haben: Die Meldung darf weder Erfolg noch einen neuen Versuch versprechen.
+        let res = self.request(query, variables).await.map_err(|e| {
+            match e.downcast_ref::<TimedOut>() {
+                Some(TimedOut(limit)) => anyhow!(
+                    "GitHub hat nicht innerhalb von {} s geantwortet. Ob die Aktion ausgeführt wurde, zeigt die nächste Aktualisierung.",
+                    limit.as_secs()
+                ),
+                None => e,
+            }
+        })?;
         if !res.errors.is_empty() {
             bail!(
                 "{}",
@@ -709,6 +719,17 @@ mod tests {
             );
             assert!(format!("{err:#}").contains("nicht innerhalb"), "{err:#}");
         }
+    }
+
+    #[test]
+    fn haengende_aktion_verspricht_keinen_neuen_versuch() {
+        let gh = hanging_github(false);
+        let err = futures::executor::block_on(gh.merge("PR_1", MergeMethod::Squash, "abc"))
+            .expect_err("hängende Aktion darf nicht gelingen");
+        let msg = err.to_string();
+        assert!(msg.contains("nicht innerhalb"), "{msg}");
+        assert!(msg.contains("nächste Aktualisierung"), "{msg}");
+        assert!(!msg.contains("Neuer Versuch"), "{msg}");
     }
 
     #[test]
