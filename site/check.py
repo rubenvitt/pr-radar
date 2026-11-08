@@ -10,6 +10,12 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 
+def is_external(url: str) -> bool:
+    """Alles mit Schema (https:, data: …) oder Host (//cdn…) gilt als fremde Ressource."""
+    parts = urlsplit(url)
+    return bool(parts.scheme or parts.netloc)
+
+
 class Page(HTMLParser):
     def __init__(self):
         super().__init__()
@@ -37,15 +43,16 @@ class Page(HTMLParser):
             self.links.append(a["href"])
         if tag == "link" and a.get("href"):
             href = a["href"]
-            if a.get("rel") in ("stylesheet", "icon", "apple-touch-icon"):
-                if urlsplit(href).netloc:
+            rel = set((a.get("rel") or "").lower().split())
+            if rel & {"stylesheet", "icon", "apple-touch-icon", "preload", "modulepreload"}:
+                if is_external(href):
                     self.external_assets.append(href)
                 else:
                     self.links.append(href)
-            elif a.get("rel") == "alternate":
+            elif "alternate" in rel:
                 self.links.append(href)
         if tag == "img" and a.get("src"):
-            if urlsplit(a["src"]).netloc:
+            if is_external(a["src"]):
                 self.external_assets.append(a["src"])
             else:
                 self.links.append(a["src"])
