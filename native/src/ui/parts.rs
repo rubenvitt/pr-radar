@@ -80,28 +80,73 @@ pub fn label_tag(label: &Label) -> Tag {
         .child(label.name.clone())
 }
 
-/// Leerer Zustand mit Symbol, Titel und optionalem Hinweis.
-pub fn empty_state(
-    icon: impl Into<Icon>,
-    title: impl Into<SharedString>,
+/// Leerer Zustand: Symbol, Titel, ein Satz, warum hier nichts steht, und eine Aktion,
+/// die weiterhilft. Das Symbol trägt den Akzent, sofern nicht ein Zustand (z. B. Erfolg)
+/// eine eigene Farbe braucht.
+#[derive(IntoElement)]
+pub struct EmptyState {
+    icon: Icon,
+    title: SharedString,
     hint: Option<SharedString>,
-    cx: &App,
-) -> Div {
-    v_flex()
-        .flex_1()
-        .items_center()
-        .justify_center()
-        .gap_2()
-        .py_16()
-        .text_color(cx.theme().muted_foreground)
-        .child(Icon::new(icon).large())
-        .child(
-            div()
-                .text_color(cx.theme().foreground)
-                .font_medium()
-                .child(title.into()),
-        )
-        .when_some(hint, |this, hint| this.child(div().text_sm().child(hint)))
+    action: Option<AnyElement>,
+    color: Option<Hsla>,
+}
+
+impl EmptyState {
+    pub fn new(icon: impl Into<Icon>, title: impl Into<SharedString>) -> Self {
+        Self {
+            icon: icon.into(),
+            title: title.into(),
+            hint: None,
+            action: None,
+            color: None,
+        }
+    }
+
+    /// Ein Satz, warum der Bereich leer ist.
+    pub fn hint(mut self, hint: impl Into<SharedString>) -> Self {
+        self.hint = Some(hint.into());
+        self
+    }
+
+    /// Was man jetzt tun kann (meist ein Button).
+    pub fn action(mut self, action: impl IntoElement) -> Self {
+        self.action = Some(action.into_any_element());
+        self
+    }
+
+    /// Farbe des Symbols statt des Akzents.
+    pub fn color(mut self, color: Hsla) -> Self {
+        self.color = Some(color);
+        self
+    }
+}
+
+impl RenderOnce for EmptyState {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        let color = self.color.unwrap_or(cx.theme().primary);
+        v_flex()
+            .size_full()
+            .items_center()
+            .justify_center()
+            .gap_2()
+            .px_6()
+            .py_16()
+            .text_color(cx.theme().muted_foreground)
+            .child(self.icon.with_size(px(32.)).text_color(color).mb_1())
+            .child(
+                div()
+                    .text_color(cx.theme().foreground)
+                    .font_medium()
+                    .child(self.title),
+            )
+            .when_some(self.hint, |this, hint| {
+                this.child(div().max_w(rems(28.)).text_sm().text_center().child(hint))
+            })
+            .when_some(self.action, |this, action| {
+                this.child(div().mt_2().child(action))
+            })
+    }
 }
 
 /// Schmale Metadatenzeile; bricht in engen Fenstern um.

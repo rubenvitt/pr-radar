@@ -409,6 +409,20 @@ impl Derived {
     }
 }
 
+/// Name eines Schnellfilters, wie er in der Seitenleiste steht.
+fn quick_label(quick: Quick) -> &'static str {
+    match quick {
+        Quick::All => "Alle",
+        Quick::Running => "Pipeline läuft",
+        Quick::Failed => "Rot",
+        Quick::Passed => "Grün",
+        Quick::Auto => "Auto-Merge",
+        Quick::Conflict => "Konflikt",
+        Quick::Review => "Dein Review",
+        Quick::Mine => "Von dir",
+    }
+}
+
 fn quick_matches(quick: Quick, pr: &OpenPr, viewer: Option<&str>) -> bool {
     match quick {
         Quick::All => true,
@@ -636,6 +650,16 @@ impl Workspace {
         self.update_prefs(cx, |p| p.tab = tab);
     }
 
+    /// Schnellfilter, Repo-Auswahl und Suche zurücksetzen; die Ansicht bleibt.
+    fn reset_filters(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.search.update(cx, |s, cx| s.set_value("", window, cx));
+        self.query.clear();
+        self.update_prefs(cx, |p| {
+            p.quick = Quick::All;
+            p.repo_filter.clear();
+        });
+    }
+
     /// Breit: Seitenleiste dauerhaft ein-/ausblenden. Schmal: Overlay öffnen/schließen.
     fn toggle_sidebar(&mut self, _: &ToggleSidebar, _: &mut Window, cx: &mut Context<Self>) {
         if self.narrow {
@@ -695,8 +719,14 @@ impl Workspace {
         let status = radar.status().clone();
         let notify = radar.prefs().notify;
         let loading = radar.snapshot().is_none();
+        // Ohne Repos fragt PR Radar nichts ab – dann auch kein „Live“.
+        let no_repos = radar.repos().is_empty();
 
         let (dot, label) = match status.state {
+            _ if no_repos => (
+                cx.theme().muted_foreground,
+                "Keine Repositories".to_string(),
+            ),
             PollState::Error => (cx.theme().danger, "Fehler".to_string()),
             PollState::Polling if loading => (cx.theme().warning, "Lädt …".to_string()),
             _ => (
@@ -705,6 +735,7 @@ impl Workspace {
             ),
         };
         let tooltip: SharedString = match status.last_success {
+            _ if no_repos => "Füge Repositories hinzu, damit PR Radar sie beobachtet".into(),
             Some(t) => format!(
                 "Letzte Aktualisierung {} · alle {} s",
                 crate::time::clock(t),
@@ -763,7 +794,7 @@ impl Workspace {
                             dot,
                             status
                                 .last_success
-                                .filter(|_| status.state != PollState::Error)
+                                .filter(|_| status.state != PollState::Error && !no_repos)
                                 .map(|t| t.timestamp_millis()),
                             cx,
                         ))
@@ -822,6 +853,8 @@ impl Workspace {
 
     fn render_sidebar(&self, d: Option<&Derived>, cx: &mut Context<Self>) -> impl IntoElement {
         let prefs = self.radar.read(cx).prefs().clone();
+        // Ohne Repos gibt es nichts zu zählen oder zu filtern: Zähler und Filter weglassen.
+        let no_repos = self.radar.read(cx).repos().is_empty();
         let collapsed = self.sidebar_collapsed(&prefs);
         let count = |n: usize| {
             move |_: &mut Window, cx: &mut App| {
@@ -836,7 +869,7 @@ impl Workspace {
             SidebarMenuItem::new(label)
                 .icon(icon)
                 .active(prefs.tab == tab)
-                .suffix(count(n))
+                .when(!no_repos, |item| item.suffix(count(n)))
                 .on_click(cx.listener(move |this, _, _, cx| this.show_tab(tab, cx)))
         };
         let views = SidebarMenu::new().children([
@@ -860,8 +893,8 @@ impl Workspace {
             ),
         ]);
 
-        let quick_item = |label: &'static str, icon: Icon, quick: Quick| {
-            SidebarMenuItem::new(label)
+        let quick_item = |icon: Icon, quick: Quick| {
+            SidebarMenuItem::new(quick_label(quick))
                 .icon(icon)
                 .active(prefs.tab == Tab::Open && prefs.quick == quick)
                 .suffix(count(d.map_or(0, |d| d.count(quick))))
@@ -874,25 +907,32 @@ impl Workspace {
                 }))
         };
         let filters = SidebarMenu::new().children([
-            quick_item("Alle", Lucide::Layers.into(), Quick::All),
-            quick_item("Pipeline läuft", Lucide::Hourglass.into(), Quick::Running),
-            quick_item("Rot", Lucide::CircleX.into(), Quick::Failed),
-            quick_item("Grün", Lucide::CircleCheck.into(), Quick::Passed),
-            quick_item("Auto-Merge", Lucide::Zap.into(), Quick::Auto),
-            quick_item("Konflikt", Lucide::TriangleAlert.into(), Quick::Conflict),
-            quick_item("Dein Review", Lucide::Inbox.into(), Quick::Review),
-            quick_item("Von dir", Lucide::CircleUser.into(), Quick::Mine),
+            quick_item(Lucide::Layers.into(), Quick::All),
+            quick_item(Lucide::Hourglass.into(), Quick::Running),
+            quick_item(Lucide::CircleX.into(), Quick::Failed),
+            quick_item(Lucide::CircleCheck.into(), Quick::Passed),
+            quick_item(Lucide::Zap.into(), Quick::Auto),
+            quick_item(Lucide::TriangleAlert.into(), Quick::Conflict),
+            quick_item(Lucide::Inbox.into(), Quick::Review),
+            quick_item(Lucide::CircleUser.into(), Quick::Mine),
         ]);
 
         let snapshot = d.map(|d| d.snapshot.clone());
-        let mut repos = vec![
-            SidebarMenuItem::new("Alle Repositories")
-                .icon(Lucide::LayoutDashboard)
-                .active(prefs.repo_filter.is_empty())
-                .on_click(
-                    cx.listener(|this, _, _, cx| this.update_prefs(cx, |p| p.repo_filter.clear())),
-                ),
-        ];
+        let mut repos =
+            vec![if no_repos {
+                SidebarMenuItem::new("Hinzufügen…")
+                    .icon(IconName::Plus)
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.open_settings(&OpenSettings, window, cx)
+                    }))
+            } else {
+                SidebarMenuItem::new("Alle Repositories")
+                    .icon(Lucide::LayoutDashboard)
+                    .active(prefs.repo_filter.is_empty())
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.update_prefs(cx, |p| p.repo_filter.clear())
+                    }))
+            }];
         for full in self.radar.read(cx).repos().to_vec() {
             let info = snapshot.as_ref().and_then(|s| s.repo(&full).cloned());
             let open = snapshot
@@ -952,7 +992,9 @@ impl Workspace {
             .collapsible(SidebarCollapsible::Offcanvas)
             .collapsed(collapsed)
             .child(SidebarGroup::new("Ansicht").child(views))
-            .child(SidebarGroup::new("Filter").child(filters))
+            .when(!no_repos, |this| {
+                this.child(SidebarGroup::new("Filter").child(filters))
+            })
             .child(SidebarGroup::new("Repositories").child(SidebarMenu::new().children(repos)))
             .footer(
                 SidebarFooter::new().child(

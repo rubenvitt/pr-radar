@@ -6,16 +6,21 @@ use std::sync::Arc;
 use gpui_kit::assets::IconName as Lucide;
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::{
-    ActiveTheme as _, IconName, Sizable as _, button::Button, h_flex,
-    scroll::ScrollableElement as _, spinner::Spinner, v_flex,
+    ActiveTheme as _, IconName, Sizable as _,
+    button::{Button, ButtonVariants as _},
+    h_flex,
+    scroll::ScrollableElement as _,
+    spinner::Spinner,
+    v_flex,
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
-use super::parts::{empty_state, pipeline_icon, repo_name};
-use super::{Derived, OpenSettings, Workspace};
-use crate::config::{Tab, View};
+use super::parts::{EmptyState, pipeline_icon, repo_name};
+use super::{Derived, OpenSettings, Refresh, Workspace, quick_label};
+use crate::config::{Prefs, Quick, Tab, View};
 use crate::model::Snapshot;
+use crate::radar::PollState;
 use crate::time::day_label;
 
 /// Ein Eintrag der Inhaltsliste. Zeilen einer Karte tragen `first`/`last`, damit sie
@@ -219,9 +224,15 @@ impl Workspace {
     ) -> AnyElement {
         let radar = self.radar.read(cx);
         if radar.repos().is_empty() {
-            return empty_state(Lucide::GitPullRequest, "Noch keine Repositories", None, cx)
-                .child(
+            return EmptyState::new(Lucide::GitPullRequest, "Noch keine Repositories")
+                .hint(
+                    "PR Radar zeigt offene Pull Requests, Pipelines, Merges und Releases \
+                     aus deinen GitHub-Repositories an einem Ort. Wähle aus, welche du beobachten willst.",
+                )
+                .action(
                     Button::new("add-repos")
+                        .primary()
+                        .icon(IconName::Plus)
                         .label("Repositories hinzufügen…")
                         .on_click(cx.listener(|this, _, window, cx| {
                             this.open_settings(&OpenSettings, window, cx)
@@ -230,14 +241,22 @@ impl Workspace {
                 .into_any_element();
         }
         let Some(d) = d else {
+            let polling = radar.status().state == PollState::Polling;
             return match radar.status().error.clone() {
-                Some(e) => empty_state(
-                    Lucide::CircleX,
-                    "GitHub nicht erreichbar",
-                    Some(e.into()),
-                    cx,
-                )
-                .into_any_element(),
+                Some(e) => EmptyState::new(Lucide::CircleX, "GitHub nicht erreichbar")
+                    .color(cx.theme().danger)
+                    .hint(e)
+                    .action(
+                        Button::new("retry")
+                            .primary()
+                            .icon(IconName::RefreshCw)
+                            .label("Erneut versuchen")
+                            .loading(polling)
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.refresh(&Refresh, window, cx)
+                            })),
+                    )
+                    .into_any_element(),
                 None => v_flex()
                     .flex_1()
                     .items_center()
@@ -252,16 +271,7 @@ impl Workspace {
 
         self.sync_list(d);
         if self.list_model.rows.is_empty() {
-            let (icon, title, hint): (Lucide, &str, Option<SharedString>) = match d.prefs.tab {
-                Tab::Open => (
-                    IconName::Inbox.into(),
-                    "Nichts offen",
-                    Some("Keine Pull Requests für diesen Filter.".into()),
-                ),
-                Tab::Merged => (Lucide::GitMerge, "Noch nichts gemergt", None),
-                Tab::Releases => (Lucide::Tag, "Keine Releases", None),
-            };
-            return empty_state(icon, title, hint, cx).into_any_element();
+            return self.render_empty(d, cx);
         }
 
         let count = self.list_model.rows.len();
@@ -290,6 +300,65 @@ impl Workspace {
             .child(body)
             .vertical_scrollbar(&self.list)
             .into_any_element()
+    }
+
+    /// Die Liste ist leer: sagen, warum, und eine Aktion anbieten, die weiterhilft.
+    fn render_empty(&self, d: &Derived, cx: &mut Context<Self>) -> AnyElement {
+        let filters = active_filters(&d.prefs, &self.query);
+        if !filters.is_empty() {
+            let what = match d.prefs.tab {
+                Tab::Open => "Keine offenen Pull Requests",
+                Tab::Merged => "Keine gemergten Pull Requests",
+                Tab::Releases => "Keine Releases",
+            };
+            return EmptyState::new(IconName::Search, "Keine Treffer")
+                .hint(format!("{what} für {}.", filters.join(" · ")))
+                .action(
+                    Button::new("reset-filters")
+                        .primary()
+                        .label("Filter zurücksetzen")
+                        .on_click(
+                            cx.listener(|this, _, window, cx| this.reset_filters(window, cx)),
+                        ),
+                )
+                .into_any_element();
+        }
+
+        let repos = in_repos(self.radar.read(cx).repos().len());
+        let failed = d
+            .snapshot
+            .repos
+            .iter()
+            .filter(|r| r.error.is_some())
+            .count();
+        let to_tab = |id: &'static str, label: &'static str, tab: Tab| {
+            Button::new(id)
+                .label(label)
+                .on_click(cx.listener(move |this, _, _, cx| this.show_tab(tab, cx)))
+        };
+        let state = match d.prefs.tab {
+            // Nicht erreichbare Repos können offene PRs verbergen: dann kein Erfolg melden.
+            Tab::Open if failed > 0 => {
+                EmptyState::new(IconName::Inbox, "Nichts offen").hint(format!(
+                    "{repos} ist kein Pull Request offen, aber {} – siehe Seitenleiste.",
+                    not_loaded(failed)
+                ))
+            }
+            Tab::Open => EmptyState::new(Lucide::CircleCheck, "Alles erledigt")
+                .color(cx.theme().success)
+                .hint(format!("{repos} ist gerade kein Pull Request offen.")),
+            Tab::Merged => EmptyState::new(Lucide::GitMerge, "Noch nichts gemergt")
+                .hint(format!("{repos} wurde bisher kein Pull Request gemergt.")),
+            Tab::Releases => EmptyState::new(Lucide::Tag, "Keine Releases")
+                .hint(format!("{repos} gibt es noch kein Release.")),
+        };
+        let action = match d.prefs.tab {
+            Tab::Open => to_tab("show-merged", "Zuletzt gemergt ansehen", Tab::Merged),
+            Tab::Merged | Tab::Releases => {
+                to_tab("show-open", "Offene Pull Requests ansehen", Tab::Open)
+            }
+        };
+        state.action(action).into_any_element()
     }
 
     fn render_row(&mut self, ix: usize, count: usize, cx: &mut Context<Self>) -> AnyElement {
@@ -408,5 +477,95 @@ impl Workspace {
                     )
                 },
             )
+    }
+}
+
+/// Aktive Filter als lesbare Teile, z. B. `„Konflikt“`, `Repo „infra“`, `Suche „fix“`.
+/// Der Schnellfilter zählt nur bei den offenen PRs.
+fn active_filters(prefs: &Prefs, query: &str) -> Vec<String> {
+    let mut parts = Vec::new();
+    if prefs.tab == Tab::Open && prefs.quick != Quick::All {
+        parts.push(format!("„{}“", quick_label(prefs.quick)));
+    }
+    if !prefs.repo_filter.is_empty() {
+        let names: Vec<String> = prefs
+            .repo_filter
+            .iter()
+            .map(|r| {
+                let name = r.split_once('/').map_or(r.as_str(), |(_, n)| n);
+                format!("„{name}“")
+            })
+            .collect();
+        let noun = if names.len() == 1 { "Repo" } else { "Repos" };
+        parts.push(format!("{noun} {}", names.join(", ")));
+    }
+    let query = query.trim();
+    if !query.is_empty() {
+        parts.push(format!("Suche „{query}“"));
+    }
+    parts
+}
+
+/// „In deinem Repository“ / „In deinen 3 Repositories“
+fn in_repos(n: usize) -> String {
+    if n == 1 {
+        "In deinem Repository".into()
+    } else {
+        format!("In deinen {n} Repositories")
+    }
+}
+
+/// „eins konnte nicht abgefragt werden“ / „2 konnten nicht abgefragt werden“
+fn not_loaded(n: usize) -> String {
+    if n == 1 {
+        "eins konnte nicht abgefragt werden".into()
+    } else {
+        format!("{n} konnten nicht abgefragt werden")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // Kein `use super::*`: Der Glob aus gpui_kit bringt ein eigenes `test`-Makro mit.
+    use super::{active_filters, in_repos, not_loaded};
+    use crate::config::{Prefs, Quick, Tab};
+
+    fn prefs(tab: Tab, quick: Quick, repos: &[&str]) -> Prefs {
+        Prefs {
+            tab,
+            quick,
+            repo_filter: repos.iter().map(|r| r.to_string()).collect(),
+            ..Prefs::default()
+        }
+    }
+
+    #[test]
+    fn ohne_filter_ist_nichts_aktiv() {
+        assert!(active_filters(&prefs(Tab::Open, Quick::All, &[]), "  ").is_empty());
+    }
+
+    #[test]
+    fn nennt_schnellfilter_repos_und_suche() {
+        let p = prefs(Tab::Open, Quick::Conflict, &["acme/infra"]);
+        assert_eq!(
+            active_filters(&p, " fix "),
+            ["„Konflikt“", "Repo „infra“", "Suche „fix“"]
+        );
+        let p = prefs(Tab::Open, Quick::All, &["acme/infra", "acme/api"]);
+        assert_eq!(active_filters(&p, ""), ["Repos „infra“, „api“"]);
+    }
+
+    #[test]
+    fn schnellfilter_zaehlt_nur_bei_offenen() {
+        let p = prefs(Tab::Merged, Quick::Conflict, &[]);
+        assert!(active_filters(&p, "").is_empty());
+    }
+
+    #[test]
+    fn repo_anzahl_im_satz() {
+        assert_eq!(in_repos(1), "In deinem Repository");
+        assert_eq!(in_repos(3), "In deinen 3 Repositories");
+        assert_eq!(not_loaded(1), "eins konnte nicht abgefragt werden");
+        assert_eq!(not_loaded(2), "2 konnten nicht abgefragt werden");
     }
 }
