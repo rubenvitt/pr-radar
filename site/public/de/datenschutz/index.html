@@ -61,11 +61,11 @@
         <tr><td>GitHub-Zugangstoken</td><td>iPhone/iPad: Schlüsselbund des Geräts, ohne iCloud-Synchronisierung. Mac: bei Bedarf aus der Umgebung oder der GitHub CLI (<code>gh</code>) gelesen, nicht von der App gespeichert</td><td>Anfragen an GitHub in deinem Namen</td></tr>
         <tr><td>Liste der Repositories, Filter und Einstellungen</td><td>App-Ordner auf dem Gerät</td><td>damit die App beim nächsten Start weiß, was sie zeigen soll</td></tr>
         <tr><td>Zuletzt geladener Stand (Pull Requests, Checks, Releases)</td><td>Zwischenspeicher auf dem Gerät</td><td>schneller Start, Anzeige ohne Netz</td></tr>
-        <tr><td>Protokoll (nur Mac)</td><td><code>~/Library/Logs/PR Radar/</code></td><td>Fehlersuche. Enthält Fehlermeldungen und Warnungen, etwa mit Repository-Namen, aber keine Tokens. Bleibt auf dem Mac, bis du es selbst schickst.</td></tr>
+        <tr><td>Protokoll (nur Mac)</td><td><code>~/Library/Logs/PR Radar/</code>, falls sich das nicht öffnen lässt im temporären Ordner (<code>$TMPDIR/pr-radar/</code>)</td><td>Fehlersuche. Enthält Fehlermeldungen und Warnungen, etwa mit Repository-Namen, aber keine Tokens. Bleibt auf dem Mac, bis du es selbst schickst.</td></tr>
       </tbody>
     </table>
-    <p><strong>iPhone und iPad:</strong> Entferne den Token in der App und lösche die App. Damit sind alle diese Daten gelöscht.</p>
-    <p><strong>Mac:</strong> Lösche die App und zusätzlich die Ordner <code>~/Library/Application Support/pr-radar/</code> (Einstellungen) und <code>~/Library/Logs/PR Radar/</code> (Protokoll). Den Token speichert die Mac-App nicht selbst. Du entfernst ihn dort, wo du ihn hinterlegt hast: <code>GITHUB_TOKEN</code> bzw. <code>GH_TOKEN</code> entfernen oder dich mit <code>gh auth logout</code> von der GitHub CLI abmelden.</p>
+    <p><strong>iPhone und iPad:</strong> Entferne den Token in der App und lösche die App. Damit sind alle diese Daten vom Gerät gelöscht. Bestehende Geräte-Backups (iCloud oder Computer) können die Einstellungen der App noch enthalten, bis sie ersetzt oder gelöscht werden. Das verwaltest du in den Backup-Einstellungen deines Geräts.</p>
+    <p><strong>Mac:</strong> Lösche die App und zusätzlich die Ordner <code>~/Library/Application Support/pr-radar/</code> (Einstellungen) und <code>~/Library/Logs/PR Radar/</code> (Protokoll). Musste die App auf das Ausweich-Protokoll ausweichen, zeigt <em>Hilfe → Protokoll im Finder zeigen</em> es im temporären Ordner; diesen leert macOS auch selbst. Den Token speichert die Mac-App nicht selbst. Du entfernst ihn dort, wo du ihn hinterlegt hast: <code>GITHUB_TOKEN</code> bzw. <code>GH_TOKEN</code> entfernen oder dich mit <code>gh auth logout</code> von der GitHub CLI abmelden.</p>
 
     <h3>2.3 Verbindung zu GitHub</h3>
     <p>Um Pull Requests, Pipelines und Releases anzuzeigen und Aktionen wie Mergen auszuführen, verbinden sich die Apps direkt mit Servern von GitHub:</p>
@@ -98,7 +98,7 @@
     <h2>5. Empfänger</h2>
     <p>Wir verkaufen keine Daten und geben sie nicht zu Werbezwecken weiter. Empfänger sind nur die oben genannten Dienstleister (Wiederverkäufer, Hosting, E-Mail) und Behörden, wenn wir gesetzlich dazu verpflichtet sind.</p>
 
-    <h2>6. Deine Rechte</h2>
+    <h2 id="rechte">6. Deine Rechte</h2>
     <p>Du hast das Recht auf Auskunft (Art. 15 DSGVO), Berichtigung (Art. 16), Löschung (Art. 17), Einschränkung der Verarbeitung (Art. 18) und Datenübertragbarkeit (Art. 20). Eine Einwilligung kannst du jederzeit mit Wirkung für die Zukunft widerrufen. Eine E-Mail an <a href="mailto:pr-radar@rubeen.dev">pr-radar@rubeen.dev</a> genügt.</p>
     <p><strong>Widerspruchsrecht:</strong> Verarbeiten wir Daten auf Grundlage von Art. 6 Abs. 1 lit. f DSGVO, kannst du aus Gründen, die sich aus deiner besonderen Situation ergeben, jederzeit widersprechen (Art. 21 DSGVO).</p>
     <p>Du kannst dich außerdem bei einer Datenschutz-Aufsichtsbehörde beschweren, insbesondere in dem Mitgliedstaat, in dem du lebst oder arbeitest (Art. 77 DSGVO).</p>
