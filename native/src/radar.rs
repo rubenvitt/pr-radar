@@ -704,6 +704,15 @@ mod tests {
     }
 
     #[test]
+    fn zeitueberschreitung_laeuft_in_den_normalen_backoff() {
+        let e = anyhow::Error::new(crate::github::TimedOut(Duration::from_secs(30)));
+        let waits: Vec<u64> = (1..=3)
+            .map(|n| wait_after_error(&e, n, ACTIVE, at(0)).as_secs())
+            .collect();
+        assert_eq!(waits, [30, 60, 120]);
+    }
+
+    #[test]
     fn drosselung_wartet_bis_zum_reset() {
         let e = anyhow::Error::new(RateLimited {
             reset_at: Some(at(1_000 + 600)),

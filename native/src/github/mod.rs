@@ -4,6 +4,7 @@ mod normalize;
 mod queries;
 
 use std::collections::HashMap;
+use std::future::Future;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -21,6 +22,8 @@ use normalize::RawRepo;
 const ENDPOINT: &str = "https://api.github.com/graphql";
 /// Repos pro GraphQL-Request
 const CHUNK: usize = 8;
+/// Höchstdauer eines Requests samt Body-Lesen (wie `timeoutInterval` in der iOS-App).
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TokenSource {
@@ -114,6 +117,36 @@ impl std::fmt::Display for RateLimited {
 }
 
 impl std::error::Error for RateLimited {}
+
+/// GitHub hat innerhalb der Frist nicht vollständig geantwortet (Verbindung, Header oder Body).
+/// Läuft wie jeder andere Fehler in den Backoff des Radars.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TimedOut(pub Duration);
+
+impl std::fmt::Display for TimedOut {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "GitHub hat nicht innerhalb von {} s geantwortet. Neuer Versuch folgt automatisch.",
+            self.0.as_secs()
+        )
+    }
+}
+
+impl std::error::Error for TimedOut {}
+
+/// Bricht `work` nach `limit` mit `TimedOut` ab. Der Timer läuft unabhängig vom Executor
+/// (`async-io`), damit auch ein Request abbricht, dessen Client nie wieder aufweckt.
+async fn within<T>(limit: Duration, work: impl Future<Output = Result<T>>) -> Result<T> {
+    let timeout = async {
+        async_io::Timer::after(limit).await;
+        Err(TimedOut(limit).into())
+    };
+    futures::future::select(std::pin::pin!(work), std::pin::pin!(timeout))
+        .await
+        .factor_first()
+        .0
+}
 
 /// Drosselung ohne Zeitangabe (z. B. sekundäres Limit ohne `Retry-After`): so lange warten,
 /// bei wiederholter Drosselung verdoppelt der Radar die Pause.
@@ -209,6 +242,8 @@ pub struct GitHub {
     http: Arc<dyn HttpClient>,
     token: Mutex<Option<Token>>,
     rules: Mutex<RulesCache>,
+    /// Frist je Request samt Body (`REQUEST_TIMEOUT`, in Tests kürzer).
+    timeout: Duration,
 }
 
 /// Wie lange Branch-Regeln gültig bleiben – sie ändern sich selten, kosten aber REST-Kontingent.
@@ -252,6 +287,7 @@ impl GitHub {
             http,
             token: Mutex::new(None),
             rules: Mutex::new(RulesCache::default()),
+            timeout: REQUEST_TIMEOUT,
         }
     }
 
@@ -295,20 +331,29 @@ impl GitHub {
             .header("Content-Type", "application/json")
             .header("User-Agent", "pr-radar-native")
             .body(AsyncBody::from(body))?;
-        let mut res = self
-            .http
-            .send(req)
-            .await
-            .context("GitHub nicht erreichbar")?;
-        let status = res.status();
-        let headers = res.headers().clone();
-        // Was schon Status und Header als Drosselung zeigen, geht ohne Body an den Poller:
-        // Ein hängender oder nicht lesbarer Body darf die Wartezeit nicht verschlucken.
-        if let Some(limited) = rate_limited(status.as_u16(), &headers, "") {
-            return Err(limited.into());
-        }
-        let mut text = String::new();
-        res.body_mut().read_to_string(&mut text).await?;
+        // Senden und Body-Lesen teilen sich eine Frist: Hängt GitHub an irgendeiner Stelle,
+        // meldet der Poll-Zyklus einen Fehler und wartet mit Backoff, statt still zu stehen.
+        let (status, headers, text) = within(self.timeout, async {
+            let mut res = self
+                .http
+                .send(req)
+                .await
+                .context("GitHub nicht erreichbar")?;
+            let status = res.status();
+            let headers = res.headers().clone();
+            // Was schon Status und Header als Drosselung zeigen, geht ohne Body an den Poller:
+            // Ein hängender oder nicht lesbarer Body darf die Wartezeit nicht verschlucken.
+            if let Some(limited) = rate_limited(status.as_u16(), &headers, "") {
+                return Err(limited.into());
+            }
+            let mut text = String::new();
+            res.body_mut()
+                .read_to_string(&mut text)
+                .await
+                .context("Antwort von GitHub nicht vollständig gelesen")?;
+            Ok((status, headers, text))
+        })
+        .await?;
         // Sekundäres Limit ohne Header-Hinweis erkennt man nur an GitHubs Meldung im Body.
         if let Some(limited) = rate_limited(status.as_u16(), &headers, &text) {
             return Err(limited.into());
@@ -336,7 +381,17 @@ impl GitHub {
 
     /// Führt eine Mutation aus; GraphQL-Fehler werden zu einem `Err`.
     async fn mutate(&self, query: &str, variables: Value) -> Result<()> {
-        let res = self.request(query, variables).await?;
+        // Aktionen wiederholt niemand automatisch, und GitHub kann sie trotz Zeitüberschreitung
+        // ausgeführt haben: Die Meldung darf weder Erfolg noch einen neuen Versuch versprechen.
+        let res = self.request(query, variables).await.map_err(|e| {
+            match e.downcast_ref::<TimedOut>() {
+                Some(TimedOut(limit)) => anyhow!(
+                    "GitHub hat nicht innerhalb von {} s geantwortet. Ob die Aktion ausgeführt wurde, zeigt die nächste Aktualisierung.",
+                    limit.as_secs()
+                ),
+                None => e,
+            }
+        })?;
         if !res.errors.is_empty() {
             bail!(
                 "{}",
@@ -518,12 +573,18 @@ impl GitHub {
             .header("User-Agent", "pr-radar-native")
             .body(AsyncBody::empty())
             .ok()?;
-        let mut res = self.http.send(req).await.ok()?;
-        if !res.status().is_success() {
-            return None;
-        }
-        let mut text = String::new();
-        res.body_mut().read_to_string(&mut text).await.ok()?;
+        // Bei Zeitüberschreitung gilt wie bei jedem Abruffehler der letzte bekannte Stand.
+        let text = within(self.timeout, async {
+            let mut res = self.http.send(req).await?;
+            if !res.status().is_success() {
+                bail!("HTTP {}", res.status());
+            }
+            let mut text = String::new();
+            res.body_mut().read_to_string(&mut text).await?;
+            Ok(text)
+        })
+        .await
+        .ok()?;
         serde_json::from_str(&text).ok()
     }
 
@@ -586,6 +647,112 @@ fn encode_path(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use futures::future::BoxFuture;
+    use gpui_kit::http_client::{Response, Url, http::HeaderValue};
+    use std::pin::Pin;
+    use std::task::{Context, Poll};
+
+    /// Fake-Client, der hängt: entweder schon beim Senden oder beim Lesen des Bodys.
+    struct HangingClient {
+        hang_in_body: bool,
+    }
+
+    /// Body, der nie Daten liefert und nie endet.
+    struct NeverBody;
+
+    impl futures::AsyncRead for NeverBody {
+        fn poll_read(
+            self: Pin<&mut Self>,
+            _: &mut Context<'_>,
+            _: &mut [u8],
+        ) -> Poll<std::io::Result<usize>> {
+            Poll::Pending
+        }
+    }
+
+    impl HttpClient for HangingClient {
+        fn user_agent(&self) -> Option<&HeaderValue> {
+            None
+        }
+
+        fn proxy(&self) -> Option<&Url> {
+            None
+        }
+
+        fn send(&self, _: Request<AsyncBody>) -> BoxFuture<'static, Result<Response<AsyncBody>>> {
+            if self.hang_in_body {
+                Box::pin(async {
+                    Ok(Response::builder()
+                        .status(200)
+                        .body(AsyncBody::from_reader(NeverBody))?)
+                })
+            } else {
+                Box::pin(futures::future::pending())
+            }
+        }
+    }
+
+    fn hanging_github(hang_in_body: bool) -> GitHub {
+        let mut gh = GitHub::new(Arc::new(HangingClient { hang_in_body }));
+        gh.timeout = Duration::from_millis(50);
+        *gh.token.lock().unwrap() = Some(Token {
+            value: "test".into(),
+            source: TokenSource::Env,
+        });
+        gh
+    }
+
+    #[test]
+    fn haengender_request_bricht_nach_der_frist_ab() {
+        for hang_in_body in [false, true] {
+            let gh = hanging_github(hang_in_body);
+            let started = Instant::now();
+            let err = match futures::executor::block_on(gh.fetch(&["a/b".into()])) {
+                Ok(_) => panic!("hängender Request darf nicht gelingen"),
+                Err(e) => e,
+            };
+            assert!(started.elapsed() < Duration::from_secs(5));
+            assert_eq!(
+                err.downcast_ref::<TimedOut>(),
+                Some(&TimedOut(Duration::from_millis(50))),
+                "{err:#}"
+            );
+            assert!(format!("{err:#}").contains("nicht innerhalb"), "{err:#}");
+        }
+    }
+
+    #[test]
+    fn haengende_aktion_verspricht_keinen_neuen_versuch() {
+        let gh = hanging_github(false);
+        let err = futures::executor::block_on(gh.merge("PR_1", MergeMethod::Squash, "abc"))
+            .expect_err("hängende Aktion darf nicht gelingen");
+        let msg = err.to_string();
+        assert!(msg.contains("nicht innerhalb"), "{msg}");
+        assert!(msg.contains("nächste Aktualisierung"), "{msg}");
+        assert!(!msg.contains("Neuer Versuch"), "{msg}");
+    }
+
+    #[test]
+    fn haengende_branch_regeln_gelten_als_nicht_abrufbar() {
+        // `None` heißt: Repo-Einstellungen gelten, ein älterer Cache-Stand bliebe erhalten
+        // (siehe `regeln_bleiben_bei_abruffehler_erhalten`).
+        for hang_in_body in [false, true] {
+            let gh = hanging_github(hang_in_body);
+            let got = futures::executor::block_on(gh.fetch_branch_rules("a/b", "main"));
+            assert_eq!(got, None);
+        }
+    }
+
+    #[test]
+    fn frist_gilt_nur_fuer_haengende_arbeit() {
+        let fast = futures::executor::block_on(within(Duration::from_secs(5), async { Ok(7) }));
+        assert_eq!(fast.unwrap(), 7);
+        let err = futures::executor::block_on(within(Duration::from_millis(10), async {
+            futures::future::pending::<Result<()>>().await
+        }))
+        .unwrap_err();
+        assert!(err.downcast_ref::<TimedOut>().is_some());
+    }
 
     fn headers(pairs: &[(&'static str, &str)]) -> gpui_kit::http_client::http::HeaderMap {
         let mut map = gpui_kit::http_client::http::HeaderMap::new();
