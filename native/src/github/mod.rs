@@ -309,10 +309,13 @@ impl GitHub {
         let status = res.status();
         let headers = res.headers().clone();
         let mut text = String::new();
-        res.body_mut().read_to_string(&mut text).await?;
+        // Erst die Drosselung prüfen: Status und Header reichen dafür auch, wenn der Body
+        // nicht lesbar ist – sonst ginge die Wartezeit verloren.
+        let read = res.body_mut().read_to_string(&mut text).await;
         if let Some(limited) = rate_limited(status.as_u16(), &headers, &text) {
             return Err(limited.into());
         }
+        read?;
         if status.as_u16() == 401 {
             self.forget_token();
             bail!("GitHub lehnt den Token ab (401). Token prüfen.");
