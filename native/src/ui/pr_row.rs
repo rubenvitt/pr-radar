@@ -17,6 +17,7 @@ use super::Workspace;
 use super::parts::{
     avatar, card_segment, label_tag, meta_row, pipeline_icon, repo_name, state_color,
 };
+use super::typography::TypeScale as _;
 use crate::model::{CheckState, MergeMethod, OpenPr, ReviewDecision, Snapshot};
 use crate::time::ago;
 
@@ -88,7 +89,7 @@ impl Workspace {
             .min_w_0()
             .flex_wrap()
             .when(show_repo, |this| {
-                this.child(div().text_xs().child(repo_name(&pr.repo, cx)))
+                this.child(div().text_small().child(repo_name(&pr.repo, cx)))
             })
             .child(
                 div()
@@ -108,16 +109,16 @@ impl Workspace {
             )
             .child(
                 div()
-                    .text_sm()
+                    .text_small()
                     .text_color(cx.theme().muted_foreground)
                     .child(format!("#{}", pr.number)),
             )
             .when(pr.is_draft, |this| {
-                this.child(Tag::secondary().xsmall().child("Draft"))
+                this.child(Tag::secondary().xsmall().text_small().child("Draft"))
             })
             .when(conflict, |this| {
                 this.child(
-                    Tag::danger().xsmall().child(
+                    Tag::danger().xsmall().text_small().child(
                         h_flex()
                             .gap_1()
                             .child(Icon::new(IconName::TriangleAlert).xsmall())
@@ -126,7 +127,7 @@ impl Workspace {
                 )
             })
             .when(pr.requests_review_from(viewer), |this| {
-                this.child(Tag::primary().xsmall().child("Dein Review"))
+                this.child(Tag::primary().xsmall().text_small().child("Dein Review"))
             })
             .children(pr.labels.iter().map(label_tag));
 
@@ -172,7 +173,7 @@ impl Workspace {
 
         let review = match pr.review_decision {
             Some(ReviewDecision::Approved) => Some(
-                Tag::success().xsmall().child(
+                Tag::success().xsmall().text_small().child(
                     h_flex()
                         .gap_1()
                         .child(Icon::new(Lucide::ShieldCheck).xsmall())
@@ -180,7 +181,7 @@ impl Workspace {
                 ),
             ),
             Some(ReviewDecision::ChangesRequested) => Some(
-                Tag::danger().xsmall().outline().child(
+                Tag::danger().xsmall().outline().text_small().child(
                     h_flex()
                         .gap_1()
                         .child(Icon::new(Lucide::MessageSquareWarning).xsmall())
@@ -201,7 +202,7 @@ impl Workspace {
             .when(p.total > 0, |this| {
                 this.child(
                     div()
-                        .text_xs()
+                        .text_small()
                         .text_color(state_color(p.state, cx))
                         .child(format!("{}/{}", p.passed, p.total)),
                 )
@@ -273,7 +274,7 @@ impl Workspace {
             .when(pr.pipeline.checks.is_empty(), |this| {
                 this.child(
                     div()
-                        .text_sm()
+                        .text_small()
                         .text_color(muted)
                         .py_1()
                         .child("Keine Checks für den letzten Commit."),
@@ -291,7 +292,7 @@ impl Workspace {
                     .px_2()
                     .py_1()
                     .rounded(cx.theme().radius)
-                    .text_sm()
+                    .text_small()
                     .when(url.is_some(), |this| {
                         this.cursor_pointer().hover(|s| s.bg(cx.theme().list_hover))
                     })
@@ -304,10 +305,10 @@ impl Workspace {
                     })
                     .child(div().truncate().child(c.name.clone()))
                     .when_some(c.group.clone(), |this, g| {
-                        this.child(div().text_xs().text_color(muted).child(g))
+                        this.child(div().text_small().text_color(muted).child(g))
                     })
                     .when(matches!(c.state, CheckState::Skipped), |this| {
-                        this.child(div().text_xs().text_color(muted).child("übersprungen"))
+                        this.child(div().text_small().text_color(muted).child("übersprungen"))
                     })
                     .child(div().flex_1())
                     .when(url.is_some(), |this| {

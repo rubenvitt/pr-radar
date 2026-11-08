@@ -16,6 +16,7 @@ use gpui_kit::*;
 use super::Workspace;
 use super::parts::{avatar, card_segment, meta_row, repo_name};
 use super::theme;
+use super::typography::TypeScale as _;
 use crate::model::{MergedPr, Release};
 use crate::time::{ago, clock, full};
 
@@ -56,7 +57,7 @@ impl Workspace {
                                     .child(div().font_medium().truncate().child(m.title.clone()))
                                     .child(
                                         div()
-                                            .text_sm()
+                                            .text_small()
                                             .text_color(muted)
                                             .child(format!("#{}", m.number)),
                                     ),
@@ -87,7 +88,7 @@ impl Workspace {
                     .child(
                         v_flex()
                             .items_end()
-                            .text_xs()
+                            .text_small()
                             .text_color(muted)
                             .child(clock(m.merged_at))
                             .child(ago(Some(m.merged_at))),
@@ -143,17 +144,24 @@ impl Workspace {
                                     .when(r.name != r.tag_name, |this| {
                                         this.child(
                                             div()
-                                                .text_xs()
+                                                .text_small()
                                                 .text_color(muted)
                                                 .font_family(cx.theme().mono_font_family.clone())
                                                 .child(r.tag_name.clone()),
                                         )
                                     })
                                     .when(r.is_latest, |this| {
-                                        this.child(Tag::success().xsmall().child("Latest"))
+                                        this.child(
+                                            Tag::success().xsmall().text_small().child("Latest"),
+                                        )
                                     })
                                     .when(r.is_prerelease, |this| {
-                                        this.child(Tag::warning().xsmall().child("Pre-Release"))
+                                        this.child(
+                                            Tag::warning()
+                                                .xsmall()
+                                                .text_small()
+                                                .child("Pre-Release"),
+                                        )
                                     }),
                             )
                             .child(
@@ -212,7 +220,7 @@ impl Workspace {
                         .border_color(cx.theme().border)
                         .px_5()
                         .py_4()
-                        .text_sm()
+                        .text_body()
                         // descriptionHTML ist von GitHub gerendertes und bereinigtes HTML
                         .child(TextView::html(
                             SharedString::from(format!("notes-{}", r.id)),

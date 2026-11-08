@@ -12,6 +12,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use super::parts::{pipeline_icon, repo_name};
+use super::typography::TypeScale as _;
 use crate::model::PipelineState;
 use crate::radar::Radar;
 use crate::time::ago;
@@ -100,7 +101,7 @@ impl Render for RepoSettings {
                             ),
                     )
                     .when_some(self.error.clone(), |this, e| {
-                        this.child(div().text_sm().text_color(cx.theme().danger).child(e))
+                        this.child(div().text_small().text_color(cx.theme().danger).child(e))
                     }),
             )
             .child(
@@ -111,7 +112,7 @@ impl Render for RepoSettings {
                         this.child(
                             div()
                                 .py_6()
-                                .text_sm()
+                                .text_small()
                                 .text_color(muted)
                                 .text_center()
                                 .child("Noch keine Repos – füge oben eins hinzu."),
@@ -149,13 +150,16 @@ impl Render for RepoSettings {
                                 v_flex()
                                     .flex_1()
                                     .min_w_0()
-                                    .child(div().text_sm().child(repo_name(&full, cx)))
+                                    .child(div().text_body().child(repo_name(&full, cx)))
                                     .when_some(detail, |this, d| {
-                                        this.child(div().text_xs().text_color(muted).child(d))
+                                        this.child(div().text_small().text_color(muted).child(d))
                                     })
                                     .when_some(error, |this, e| {
                                         this.child(
-                                            div().text_xs().text_color(cx.theme().danger).child(e),
+                                            div()
+                                                .text_small()
+                                                .text_color(cx.theme().danger)
+                                                .child(e),
                                         )
                                     }),
                             )
@@ -177,7 +181,7 @@ impl Render for RepoSettings {
                     .pt_3()
                     .border_t_1()
                     .border_color(cx.theme().border)
-                    .text_xs()
+                    .text_small()
                     .text_color(muted)
                     .child(format!(
                         "Token: {}",

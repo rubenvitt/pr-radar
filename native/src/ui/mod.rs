@@ -8,6 +8,7 @@ mod parts;
 mod pr_row;
 mod settings;
 pub mod theme;
+pub mod typography;
 mod views;
 
 use std::collections::{HashMap, HashSet};
@@ -15,7 +16,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use gpui_kit::assets::IconName as Lucide;
-use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::{
     ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _, TitleBar, WindowExt as _,
     button::{Button, ButtonGroup, ButtonVariants as _},
@@ -23,9 +23,7 @@ use gpui_kit::component::{
     input::{self, Input, InputEvent, InputState},
     menu::{DropdownMenu as _, PopupMenuItem},
     notification::Notification,
-    sidebar::{
-        Sidebar, SidebarCollapsible, SidebarFooter, SidebarGroup, SidebarMenu, SidebarMenuItem,
-    },
+    sidebar::{Sidebar, SidebarCollapsible, SidebarFooter, SidebarMenu, SidebarMenuItem},
     v_flex,
 };
 use gpui_kit::prelude::FluentBuilder as _;
@@ -36,9 +34,10 @@ use crate::model::{MergeMethod, OpenPr, PipelineState, Snapshot, TransitionKind}
 use crate::radar::{PollState, Radar, RadarEvent};
 use crate::site;
 use crate::time::ago;
-use parts::state_color;
+use parts::{SidebarSection, state_color};
 use pr_row::MergeAction;
 use settings::RepoSettings;
+use typography::TypeScale as _;
 
 actions!(
     pr_radar,
@@ -85,6 +84,9 @@ const SIDEBAR_W: Pixels = px(240.);
 const NARROW_W: Pixels = px(720.);
 /// Darunter rücken Steuerelemente in eigene Zeilen (gemessen an der Inhaltsbreite).
 const COMPACT_W: Pixels = px(600.);
+/// Breite des Repositories-Sheets: fest in px, damit sie nicht mit der Grundschrift schrumpft
+/// (früher 26 rem = 416 px bei 16 px, bei 13 px wären es nur 338 px).
+const SHEET_W: Pixels = px(400.);
 
 pub fn init(radar: Entity<Radar>, cx: &mut App) {
     // Einzeltasten nur, solange kein Eingabefeld den Fokus hat.
@@ -697,7 +699,7 @@ impl Workspace {
             move |sheet, window, _| {
                 sheet
                     .title("Repositories")
-                    .size((window.rem_size() * 26.).min(window.viewport_size().width - px(16.)))
+                    .size(SHEET_W.min(window.viewport_size().width - px(16.)))
                     .child(settings.clone())
             }
         });
@@ -774,9 +776,6 @@ impl Workspace {
                             this.toggle_sidebar(&ToggleSidebar, window, cx)
                         })),
                 )
-                .when(!self.narrow, |this| {
-                    this.child(div().text_sm().font_semibold().child("PR Radar"))
-                })
                 .child(
                     h_flex()
                         .id("live-status")
@@ -787,7 +786,7 @@ impl Workspace {
                         .rounded_full()
                         .border_1()
                         .border_color(cx.theme().border)
-                        .text_xs()
+                        .text_small()
                         .text_color(cx.theme().muted_foreground)
                         .child(motion::heartbeat(
                             div().rounded_full().bg(dot),
@@ -859,7 +858,7 @@ impl Workspace {
         let count = |n: usize| {
             move |_: &mut Window, cx: &mut App| {
                 div()
-                    .text_xs()
+                    .text_small()
                     .text_color(cx.theme().muted_foreground)
                     .child(n.to_string())
             }
@@ -867,6 +866,7 @@ impl Workspace {
 
         let tab_item = |label: &'static str, icon: Icon, tab: Tab, n: usize| {
             SidebarMenuItem::new(label)
+                .text_body()
                 .icon(icon)
                 .active(prefs.tab == tab)
                 .when(!no_repos, |item| item.suffix(count(n)))
@@ -895,6 +895,7 @@ impl Workspace {
 
         let quick_item = |icon: Icon, quick: Quick| {
             SidebarMenuItem::new(quick_label(quick))
+                .text_body()
                 .icon(icon)
                 .active(prefs.tab == Tab::Open && prefs.quick == quick)
                 .suffix(count(d.map_or(0, |d| d.count(quick))))
@@ -921,12 +922,14 @@ impl Workspace {
         let mut repos =
             vec![if no_repos {
                 SidebarMenuItem::new("Hinzufügen…")
+                    .text_body()
                     .icon(IconName::Plus)
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.open_settings(&OpenSettings, window, cx)
                     }))
             } else {
                 SidebarMenuItem::new("Alle Repositories")
+                    .text_body()
                     .icon(Lucide::LayoutDashboard)
                     .active(prefs.repo_filter.is_empty())
                     .on_click(cx.listener(|this, _, _, cx| {
@@ -949,6 +952,7 @@ impl Workspace {
             let key = full.clone();
             repos.push(
                 SidebarMenuItem::new(name)
+                    .text_body()
                     .icon(Lucide::BookMarked)
                     .active(prefs.repo_filter.contains(&full))
                     .suffix(move |_, cx: &mut App| {
@@ -956,7 +960,7 @@ impl Workspace {
                             .gap_2()
                             .child(
                                 div()
-                                    .text_xs()
+                                    .text_small()
                                     .text_color(cx.theme().muted_foreground)
                                     .child(open.to_string()),
                             )
@@ -991,16 +995,19 @@ impl Workspace {
             .w(SIDEBAR_W)
             .collapsible(SidebarCollapsible::Offcanvas)
             .collapsed(collapsed)
-            .child(SidebarGroup::new("Ansicht").child(views))
+            .child(SidebarSection::new("Ansicht", views))
             .when(!no_repos, |this| {
-                this.child(SidebarGroup::new("Filter").child(filters))
+                this.child(SidebarSection::new("Filter", filters))
             })
-            .child(SidebarGroup::new("Repositories").child(SidebarMenu::new().children(repos)))
+            .child(SidebarSection::new(
+                "Repositories",
+                SidebarMenu::new().children(repos),
+            ))
             .footer(
                 SidebarFooter::new().child(
                     h_flex()
                         .gap_2()
-                        .text_xs()
+                        .text_small()
                         .text_color(cx.theme().muted_foreground)
                         .child(Icon::new(Lucide::CircleUser).small())
                         .child(viewer.unwrap_or_else(|| "–".into())),
@@ -1176,8 +1183,7 @@ impl Workspace {
                 .flex_1()
                 .min_w_0()
                 .truncate()
-                .text_base()
-                .font_semibold()
+                .text_title()
                 .child(title),
         );
 

@@ -2,12 +2,14 @@
 
 use gpui_kit::assets::IconName as Lucide;
 use gpui_kit::component::StyledExt as _;
+use gpui_kit::component::sidebar::{SidebarItem, SidebarMenu};
 use gpui_kit::component::{
-    ActiveTheme as _, Icon, Sizable as _, avatar::Avatar, h_flex, tag::Tag, v_flex,
+    ActiveTheme as _, Collapsible, Icon, Sizable as _, avatar::Avatar, h_flex, tag::Tag, v_flex,
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
+use super::typography::TypeScale as _;
 use crate::model::{Label, Person, PipelineState};
 
 /// Statusfarbe einer Pipeline – Bedeutung, nie Dekoration.
@@ -76,6 +78,7 @@ pub fn label_tag(label: &Label) -> Tag {
     let color: Hsla = color.into();
     Tag::custom(color.opacity(0.14), color, color.opacity(0.4))
         .xsmall()
+        .text_small()
         .rounded_full()
         .child(label.name.clone())
 }
@@ -141,7 +144,13 @@ impl RenderOnce for EmptyState {
                     .child(self.title),
             )
             .when_some(self.hint, |this, hint| {
-                this.child(div().max_w(rems(28.)).text_sm().text_center().child(hint))
+                this.child(
+                    div()
+                        .max_w(rems(28.))
+                        .text_small()
+                        .text_center()
+                        .child(hint),
+                )
             })
             .when_some(self.action, |this, action| {
                 this.child(div().mt_2().child(action))
@@ -155,7 +164,7 @@ pub fn meta_row(cx: &App) -> Div {
         .flex_wrap()
         .gap_x_2()
         .gap_y_0p5()
-        .text_xs()
+        .text_small()
         .text_color(cx.theme().muted_foreground)
         .min_w_0()
 }
@@ -173,4 +182,65 @@ pub fn card_segment(first: bool, last: bool, cx: &App) -> Div {
         .overflow_hidden()
         .when(first, |d| d.border_t_1().rounded_tl(r).rounded_tr(r))
         .when(last, |d| d.rounded_bl(r).rounded_br(r))
+}
+
+/// Abschnitt der Seitenleiste mit Kopf in der Stufe „Gruppenkopf“. Ersetzt `SidebarGroup`,
+/// dessen Kopf fest `text_xs` setzt (bei 13 px Grundschrift 9,75 px).
+#[derive(Clone)]
+pub struct SidebarSection {
+    label: SharedString,
+    menu: SidebarMenu,
+    collapsed: bool,
+}
+
+impl SidebarSection {
+    pub fn new(label: impl Into<SharedString>, menu: SidebarMenu) -> Self {
+        Self {
+            label: label.into(),
+            menu,
+            collapsed: false,
+        }
+    }
+}
+
+impl Collapsible for SidebarSection {
+    fn collapsed(mut self, collapsed: bool) -> Self {
+        self.collapsed = collapsed;
+        self
+    }
+
+    fn is_collapsed(&self) -> bool {
+        self.collapsed
+    }
+}
+
+impl SidebarItem for SidebarSection {
+    fn render(
+        self,
+        id: impl Into<ElementId>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> impl IntoElement {
+        let id = id.into();
+        v_flex()
+            .relative()
+            .when(!self.collapsed, |this| {
+                this.child(
+                    h_flex()
+                        .flex_shrink_0()
+                        .px_2()
+                        .h_8()
+                        .text_heading()
+                        .text_color(cx.theme().sidebar_foreground.opacity(0.7))
+                        .child(self.label),
+                )
+            })
+            // Gleiches ID-Schema wie `SidebarGroup` (`{gruppe}-{kind}`), damit Einträge
+            // weiter unter `0-0-1` usw. erreichbar sind (UI-Tests).
+            .child(
+                self.menu
+                    .collapsed(self.collapsed)
+                    .render(format!("{id}-0"), window, cx),
+            )
+    }
 }
