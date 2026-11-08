@@ -6,13 +6,11 @@
 //! Das Fenster zeigt weiter nur In-App-Toasts (`Workspace::on_radar_event`).
 //!
 //! Doppelte Meldungen vermeiden: Ist ein Fenster der App gerade aktiv, sieht man
-//! den Toast, und die Systembenachrichtigung entfällt. Sonst (Fenster geschlossen,
-//! App im Hintergrund) kommt sie über das System. Mehr Übergänge auf einmal, als
-//! der Toast-Stapel zeigt, gehen für den Überhang trotzdem ans System.
+//! den neuesten Toast, und dafür entfällt die Systembenachrichtigung. Sonst
+//! (Fenster geschlossen, App im Hintergrund) kommt alles über das System.
 
 use std::ops::Range;
 
-use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::*;
 
 use crate::model::{Transition, TransitionKind};
@@ -73,8 +71,7 @@ pub fn init(radar: Entity<Radar>, cx: &mut App) {
         if !radar.read(cx).prefs().notify {
             return;
         }
-        let shown_as_toast = window_active(cx).then(|| cx.theme().notification.max_items);
-        for t in &transitions[for_system(transitions.len(), shown_as_toast)] {
+        for t in &transitions[for_system(transitions.len(), window_active(cx))] {
             let alert = Alert::new(t);
             cx.show_system_notification(SystemNotification {
                 tag: alert.tag.into(),
@@ -99,13 +96,15 @@ pub fn init(radar: Entity<Radar>, cx: &mut App) {
 
 /// Welche Übergänge (in Reihenfolge des Radars) als Systembenachrichtigung gehen.
 ///
-/// `toasts` ist die Zahl der Toasts, die das aktive Fenster gleichzeitig zeigt,
-/// `None` ohne aktives Fenster. Der Stapel zeigt die neuesten; ältere, die nicht
-/// hineinpassen, liefen ungesehen ab und gehen deshalb ans System.
-fn for_system(count: usize, toasts: Option<usize>) -> Range<usize> {
-    match toasts {
-        None => 0..count,
-        Some(limit) => 0..count.saturating_sub(limit),
+/// Ohne aktives Fenster alle. Mit aktivem Fenster alle außer dem neuesten (dem
+/// letzten): Der eingeklappte Toast-Stapel zeigt nur ihn ganz, ältere schauen nur
+/// als Kante dahinter hervor und liefen sonst ungesehen ab. Klappt man den Stapel
+/// auf, stehen sie doppelt da; ein Klick auf den Toast zieht die Systemmeldung zurück.
+fn for_system(count: usize, window_active: bool) -> Range<usize> {
+    if window_active {
+        0..count.saturating_sub(1)
+    } else {
+        0..count
     }
 }
 
@@ -143,14 +142,15 @@ mod tests {
 
     #[test]
     fn ohne_aktives_fenster_geht_alles_ans_system() {
-        assert_eq!(for_system(3, None), 0..3);
+        assert_eq!(for_system(0, false), 0..0);
+        assert_eq!(for_system(3, false), 0..3);
     }
 
     #[test]
-    fn bei_aktivem_fenster_nur_der_ueberhang_des_toast_stapels() {
-        assert_eq!(for_system(3, Some(10)), 0..0);
-        assert_eq!(for_system(10, Some(10)), 0..0);
-        // Die ältesten zwei passen nicht in den Stapel.
-        assert_eq!(for_system(12, Some(10)), 0..2);
+    fn bei_aktivem_fenster_alles_ausser_dem_neuesten_toast() {
+        assert_eq!(for_system(0, true), 0..0);
+        assert_eq!(for_system(1, true), 0..0);
+        // Nur der neueste (Index 2) ist im eingeklappten Stapel ganz zu sehen.
+        assert_eq!(for_system(3, true), 0..2);
     }
 }
