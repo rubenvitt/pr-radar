@@ -214,6 +214,9 @@ public struct DeviceFlow: Sendable {
         } catch {
             throw GitHubError.unreachable(error.localizedDescription)
         }
+        // 408/429/5xx sind vorübergehend, auch wenn der Body ein `error` enthält.
+        let http = GitHubError.http(status, gitHubMessage(data))
+        if http.isTransient { throw http }
         // Fehler des Device Flows kommen als JSON mit `error`, auch bei HTTP 4xx.
         let hasOAuthError = (try? JSONDecoder().decode(OAuthResponse.self, from: data))?.error != nil
         guard (200..<300).contains(status) || hasOAuthError else {

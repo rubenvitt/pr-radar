@@ -474,13 +474,14 @@ impl GitHub {
             Ok((status, text))
         })
         .await?;
+        let status = status.as_u16();
+        // 408/429/5xx sind vorübergehend, auch wenn der Body ein `error` enthält.
+        if is_transient_status(status) {
+            return Err(Transient(describe_http_error(status, &text)).into());
+        }
         // Fehler des Device Flows kommen als JSON mit `error`, auch bei HTTP 4xx.
-        if !status.is_success() && !text.contains("\"error\"") {
-            let message = describe_http_error(status.as_u16(), &text);
-            if is_transient_status(status.as_u16()) {
-                return Err(Transient(message).into());
-            }
-            bail!("{message}");
+        if !(200..300).contains(&status) && !text.contains("\"error\"") {
+            bail!("{}", describe_http_error(status, &text));
         }
         Ok(text)
     }
@@ -862,6 +863,52 @@ mod tests {
             source: TokenSource::Env,
         });
         gh
+    }
+
+    /// Fake-Client mit fester Antwort (Status und Body).
+    struct FixedClient {
+        status: u16,
+        body: &'static str,
+    }
+
+    impl HttpClient for FixedClient {
+        fn user_agent(&self) -> Option<&HeaderValue> {
+            None
+        }
+
+        fn proxy(&self) -> Option<&Url> {
+            None
+        }
+
+        fn send(&self, _: Request<AsyncBody>) -> BoxFuture<'static, Result<Response<AsyncBody>>> {
+            let (status, body) = (self.status, self.body);
+            Box::pin(async move {
+                Ok(Response::builder()
+                    .status(status)
+                    .body(AsyncBody::from(body.as_bytes().to_vec()))?)
+            })
+        }
+    }
+
+    fn poll_with(status: u16, body: &'static str) -> Result<oauth::PollStep> {
+        let gh = GitHub::new(Arc::new(FixedClient { status, body }));
+        futures::executor::block_on(gh.poll_device_token("id", "dc", Duration::from_secs(5)))
+    }
+
+    #[test]
+    fn serverfehler_beim_anmelden_sind_voruebergehend_auch_mit_error_body() {
+        let err = poll_with(503, r#"{"error":"server_error"}"#).unwrap_err();
+        assert!(Transient::matches(&err), "{err:#}");
+        let err = poll_with(502, "<html>Bad Gateway</html>").unwrap_err();
+        assert!(Transient::matches(&err), "{err:#}");
+        // Fehler des Device Flows bei 4xx bleiben endgültig
+        let err = poll_with(400, r#"{"error":"access_denied"}"#).unwrap_err();
+        assert!(!Transient::matches(&err), "{err:#}");
+        assert!(err.to_string().contains("abgelehnt"), "{err:#}");
+        assert_eq!(
+            poll_with(200, r#"{"error":"authorization_pending"}"#).unwrap(),
+            oauth::PollStep::Pending
+        );
     }
 
     #[test]

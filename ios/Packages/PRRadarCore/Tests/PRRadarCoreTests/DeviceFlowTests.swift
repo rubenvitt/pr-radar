@@ -100,8 +100,9 @@ private struct Offline: Error {}
             [
                 .success("<html>Bad Gateway</html>"),
                 .success(#"{"message":"Server Error"}"#),
+                .success(#"{"error":"server_error"}"#),
                 .success(#"{"access_token":"gho_abc"}"#),
-            ], statuses: [502, 500, 200])
+            ], statuses: [502, 500, 503, 200])
         let flow = DeviceFlow(clientID: "id", transport: transport, timing: FakeClock().timing)
         #expect(try await flow.waitForToken(code) == "gho_abc")
     }
