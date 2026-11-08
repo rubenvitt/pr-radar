@@ -5165,6 +5165,7 @@ name = "pr-radar"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-io",
  "chrono",
  "dirs 6.0.0",
  "futures",
