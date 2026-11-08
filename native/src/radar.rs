@@ -139,6 +139,13 @@ impl Radar {
         this
     }
 
+    /// Für UI-Tests: Repo-Liste setzen, ohne zu speichern oder neu zu laden.
+    #[cfg(test)]
+    pub fn set_repos_for_tests(&mut self, repos: Vec<String>, cx: &mut Context<Self>) {
+        self.config.repos = repos;
+        cx.notify();
+    }
+
     /// Für UI-Tests: ohne `config.json` (speichert nie) und ohne Poll-Zyklus.
     #[cfg(test)]
     pub fn for_tests(github: Arc<GitHub>) -> Self {
