@@ -251,10 +251,19 @@ impl Radar {
         if self.demo_only(tr!("Signing out", "Abmelden"), cx) {
             return;
         }
-        self.github.sign_out();
-        self.status.token_source = None;
-        log::info!("Von GitHub abgemeldet");
-        self.refresh(cx);
+        match self.github.sign_out() {
+            Ok(()) => {
+                self.login = Login::Idle;
+                self.status.token_source = None;
+                log::info!("Von GitHub abgemeldet");
+                self.refresh(cx);
+            }
+            Err(e) => {
+                log::warn!("Abmelden fehlgeschlagen: {e:#}");
+                self.login = Login::Failed(format!("{e:#}"));
+                cx.notify();
+            }
+        }
     }
 
     /// „Mit GitHub anmelden“: Code anfordern, Browser öffnen, Code in die Zwischenablage, dann
