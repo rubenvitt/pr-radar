@@ -1,3 +1,4 @@
 .DS_Store
 native/target
 native/screenshots
+site/dist
