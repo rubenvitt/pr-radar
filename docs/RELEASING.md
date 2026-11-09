@@ -1,55 +1,36 @@
 # Releases
 
-Releases laufen über Tags. Jede Plattform hat ihren eigenen Tag und ihre eigene Version.
+Releases laufen automatisch. Jeder Push auf `main` startet `.github/workflows/release.yml`. Der Workflow
+schaut pro Plattform auf die Commits seit deren letztem Tag, die ihren Ordner berühren, und leitet daraus die
+nächste Version ab (Conventional Commits, `.github/scripts/next-version.sh`):
 
-| Plattform | Tag | Version steht in | Workflow | Ergebnis |
+| Commit | Sprung |
+|---|---|
+| `feat: …` | Minor (0.1.0 → 0.2.0) |
+| `fix: …`, `perf: …` | Patch (0.1.0 → 0.1.1) |
+| `feat!: …` oder `BREAKING CHANGE:` im Text | Major, vor 1.0 nur Minor |
+| alles andere (`docs`, `ci`, `chore`, `refactor`, `test`, …) | kein Release |
+
+| Plattform | Ordner | Tag | Workflow | Ergebnis |
 |---|---|---|---|---|
-| macOS | `macos-vX.Y.Z` | `native/Cargo.toml` (`version`) | `.github/workflows/release-macos.yml` | GitHub-Release mit signierter, beglaubigter `PR-Radar-X.Y.Z-macOS-arm64.zip` und SHA-256 |
-| iOS | `ios-vX.Y.Z` | `MARKETING_VERSION` im Xcode-Projekt | `.github/workflows/release-ios.yml` | Build in App Store Connect bzw. TestFlight |
+| macOS | `native/` | `macos-vX.Y.Z` | `.github/workflows/release-macos.yml` | GitHub-Release mit signierter, beglaubigter `PR-Radar-X.Y.Z-macOS-arm64.zip` und SHA-256 |
+| iOS | `ios/` | `ios-vX.Y.Z` | `.github/workflows/release-ios.yml` | Build in App Store Connect bzw. TestFlight |
 
-Passt der Tag nicht zur Version im Code, bricht der Workflow ab, bevor er etwas signiert.
+Maßgeblich ist der Tag. Die Versionen in `native/Cargo.toml` und `MARKETING_VERSION` bleiben im Repo stehen;
+der Workflow setzt sie nur für den Build. Der Tag entsteht erst, wenn Build und Upload geklappt haben.
 
-## Ablauf
+macOS: Der Workflow baut, signiert mit der Developer ID, lässt die App von Apple beglaubigen, heftet das
+Ticket an und legt Tag und GitHub-Release mit automatischen Release Notes an (ab dem vorigen `macos-v*`-Tag).
 
-macOS:
+iOS: Der Workflow archiviert, signiert für den App Store, lädt hoch und setzt danach den Tag. Die Build-Nummer
+ist `Laufnummer.Versuch` von `release.yml` und steigt dadurch von selbst. Nach der Verarbeitung durch Apple
+(meist 10 bis 30 min) erscheint der Build in TestFlight. Für den App Store reicht man ihn dann in App Store
+Connect zur Prüfung ein.
 
-1. `version` in `native/Cargo.toml` erhöhen, `cargo check` (aktualisiert `Cargo.lock`), committen, nach `main`.
-2. Taggen und pushen:
-
-   ```bash
-   git tag macos-v0.2.0 && git push origin macos-v0.2.0
-   ```
-
-3. Der Workflow baut, signiert mit der Developer ID, lässt die App von Apple beglaubigen, heftet das Ticket an
-   und legt das GitHub-Release mit automatischen Release Notes an (ab dem vorigen `macos-v*`-Tag).
-   Versionen mit Bindestrich (`0.2.0-beta.1`) werden als Pre-Release markiert.
-
-iOS:
-
-1. `MARKETING_VERSION` in Xcode erhöhen (Target PR Radar → General → Version), committen, nach `main`.
-2. Taggen und pushen:
-
-   ```bash
-   git tag ios-v0.2.0 && git push origin ios-v0.2.0
-   ```
-
-3. Der Workflow archiviert, signiert für den App Store und lädt hoch. Die Build-Nummer ist die Laufnummer des
-   Workflows und steigt dadurch von selbst. Nach der Verarbeitung durch Apple (meist 10 bis 30 min) erscheint
-   der Build in TestFlight. Für den App Store reicht man ihn dann in App Store Connect zur Prüfung ein.
-
-Schlägt ein Lauf fehl, Ursache beheben, dann den Tag des fehlgeschlagenen Laufs löschen und auf dem
-korrigierten Commit neu setzen:
-
-```bash
-TAG=macos-v0.2.0   # bzw. ios-v0.2.0
-git push --delete origin "$TAG" && git tag -d "$TAG"
-git tag "$TAG" && git push origin "$TAG"
-```
-
-Bei macOS vorher unter *Releases* nachsehen: Ist das Release veröffentlicht und hängen ZIP und `.sha256` dran,
-ist es fertig und es braucht keinen neuen Lauf. Ist es noch ein Entwurf oder fehlt eine der beiden Dateien, das
-Release vor dem Neusetzen löschen, sonst scheitert `gh release create`. Bei iOS lehnt App Store Connect eine schon hochgeladene Build-Nummer ab; ein neuer Lauf
-bekommt aber ohnehin eine neue.
+Schlägt ein Lauf fehl, gibt es keinen Tag. Entweder den Lauf in *Actions* neu starten (*Re-run failed jobs*)
+oder die Ursache beheben und mergen: Der nächste Lauf nimmt die Commits des gescheiterten mit. Bei macOS vorher
+unter *Releases* nachsehen, ob ein Entwurf `macos-vX.Y.Z` übrig ist (Upload abgebrochen), und ihn löschen, sonst
+scheitert `gh release create`.
 
 ## Secrets
 
