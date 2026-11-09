@@ -30,6 +30,8 @@ cargo run                       # Entwicklung
 scripts/bundle.sh --install     # „PR Radar.app“ bauen und nach /Applications kopieren
 ```
 
+Releases (signiert und beglaubigt als GitHub-Release, iOS über TestFlight) entstehen per Tag, siehe [docs/RELEASING.md](docs/RELEASING.md).
+
 ### Demo-Modus
 
 ```bash

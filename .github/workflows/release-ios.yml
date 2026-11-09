@@ -1,0 +1,169 @@
+name: Release iOS
+
+# Ein Tag „ios-vX.Y.Z“ archiviert die App, signiert sie für den App Store und lädt sie zu
+# App Store Connect hoch (danach in TestFlight). Ablauf und Secrets: docs/RELEASING.md
+on:
+  push:
+    tags: ["ios-v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-ios-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  testflight:
+    name: Archivieren und zu TestFlight hochladen
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: ios
+    env:
+      TAG: ${{ github.ref_name }}
+      BUNDLE_ID: email.rubeen.prradar
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Secrets vorhanden?
+        env:
+          IOS_DISTRIBUTION_P12: ${{ secrets.IOS_DISTRIBUTION_P12 }}
+          IOS_DISTRIBUTION_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_PASSWORD }}
+          IOS_PROVISIONING_PROFILE: ${{ secrets.IOS_PROVISIONING_PROFILE }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          missing=()
+          for name in IOS_DISTRIBUTION_P12 IOS_DISTRIBUTION_PASSWORD IOS_PROVISIONING_PROFILE ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8; do
+            [ -n "${!name}" ] || missing+=("$name")
+          done
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Fehlende Secrets: ${missing[*]} (siehe docs/RELEASING.md)"
+            exit 1
+          fi
+
+      - name: Xcode
+        run: xcodebuild -version
+
+      - name: Tag passt zu MARKETING_VERSION?
+        run: |
+          version=$(xcodebuild -project PRRadar.xcodeproj -scheme PRRadar -configuration Release -showBuildSettings 2>/dev/null \
+            | awk -F' = ' '/^ *MARKETING_VERSION = / {print $2; exit}')
+          if [ "$TAG" != "ios-v$version" ]; then
+            echo "::error::Tag $TAG passt nicht zu MARKETING_VERSION ($version), erwartet ios-v$version"
+            exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Zertifikat in temporären Schlüsselbund
+        env:
+          IOS_DISTRIBUTION_P12: ${{ secrets.IOS_DISTRIBUTION_P12 }}
+          IOS_DISTRIBUTION_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_PASSWORD }}
+        run: |
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          keychain_password=$(openssl rand -hex 24)
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          printf '%s' "$IOS_DISTRIBUTION_P12" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security import "$RUNNER_TEMP/certificate.p12" -k "$keychain" -P "$IOS_DISTRIBUTION_PASSWORD" -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/certificate.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain" "$HOME/Library/Keychains/login.keychain-db"
+          if ! security find-identity -v -p codesigning "$keychain" | grep -q '"Apple Distribution'; then
+            echo "::error::Im P12 steckt kein Zertifikat vom Typ Apple Distribution"
+            exit 1
+          fi
+          echo "KEYCHAIN=$keychain" >> "$GITHUB_ENV"
+
+      - name: Provisioning-Profil installieren
+        env:
+          IOS_PROVISIONING_PROFILE: ${{ secrets.IOS_PROVISIONING_PROFILE }}
+        run: |
+          profile="$RUNNER_TEMP/profile.mobileprovision"
+          plist="$RUNNER_TEMP/profile.plist"
+          printf '%s' "$IOS_PROVISIONING_PROFILE" | base64 --decode > "$profile"
+          security cms -D -i "$profile" > "$plist"
+          read_key() { /usr/libexec/PlistBuddy -c "Print :$1" "$plist"; }
+          uuid=$(read_key UUID)
+          name=$(read_key Name)
+          team=$(read_key TeamIdentifier:0)
+          app_id=$(read_key Entitlements:application-identifier)
+          if [ "$app_id" != "$team.$BUNDLE_ID" ]; then
+            echo "::error::Profil '$name' gilt für $app_id, nicht für $team.$BUNDLE_ID"
+            exit 1
+          fi
+          if read_key ProvisionedDevices >/dev/null 2>&1; then
+            echo "::error::Profil '$name' ist ein Ad-hoc- oder Entwicklungsprofil, gebraucht wird eines vom Typ App Store Connect"
+            exit 1
+          fi
+          # Xcode 16 liest den neuen Ort, ältere Werkzeuge den alten.
+          for dir in "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles" "$HOME/Library/MobileDevice/Provisioning Profiles"; do
+            mkdir -p "$dir"
+            cp "$profile" "$dir/$uuid.mobileprovision"
+          done
+          echo "TEAM_ID=$team" >> "$GITHUB_ENV"
+          echo "PROFILE_NAME=$name" >> "$GITHUB_ENV"
+
+      - name: Archivieren
+        run: |
+          # Build-Nummer = Laufnummer dieses Workflows: steigt mit jedem Release, ohne Commit.
+          xcodebuild archive \
+            -project PRRadar.xcodeproj \
+            -scheme PRRadar \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/PRRadar.xcarchive" \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM="$TEAM_ID" \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
+            OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN" \
+            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER"
+
+      - name: Exportieren und hochladen
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          key="$RUNNER_TEMP/AuthKey.p8"
+          printf '%s\n' "$ASC_KEY_P8" > "$key"
+          options="$RUNNER_TEMP/ExportOptions.plist"
+          python3 - "$options" <<'PY'
+          import os, plistlib, sys
+          options = {
+              "method": "app-store-connect",
+              "destination": "upload",
+              "teamID": os.environ["TEAM_ID"],
+              "signingStyle": "manual",
+              "signingCertificate": "Apple Distribution",
+              "provisioningProfiles": {os.environ["BUNDLE_ID"]: os.environ["PROFILE_NAME"]},
+              "uploadSymbols": True,
+              "manageAppVersionAndBuildNumber": False,
+          }
+          with open(sys.argv[1], "wb") as f:
+              plistlib.dump(options, f)
+          PY
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/PRRadar.xcarchive" \
+            -exportOptionsPlist "$options" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$key" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+          {
+            echo "### PR Radar für iOS $VERSION ($GITHUB_RUN_NUMBER) hochgeladen"
+            echo "Nach der Verarbeitung durch Apple erscheint der Build in App Store Connect → TestFlight."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Aufräumen
+        if: always()
+        run: |
+          [ -n "${KEYCHAIN:-}" ] && security delete-keychain "$KEYCHAIN" || true
+          rm -f "$RUNNER_TEMP/AuthKey.p8" "$RUNNER_TEMP/certificate.p12" "$RUNNER_TEMP/profile.mobileprovision"
