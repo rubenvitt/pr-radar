@@ -357,6 +357,9 @@ pub struct Fetched {
 pub struct GitHub {
     http: Arc<dyn HttpClient>,
     token: Mutex<Option<Token>>,
+    /// Von GitHub abgelehnte Anmeldung, die sich nicht aus dem Schlüsselbund löschen ließ: wird
+    /// bis zur nächsten Anmeldung nicht wieder eingelesen.
+    stale: Mutex<Option<String>>,
     rules: Mutex<RulesCache>,
     /// Frist je Request samt Body (`REQUEST_TIMEOUT`, in Tests kürzer).
     timeout: Duration,
@@ -402,6 +405,7 @@ impl GitHub {
         Self {
             http,
             token: Mutex::new(None),
+            stale: Mutex::new(None),
             rules: Mutex::new(RulesCache::default()),
             timeout: REQUEST_TIMEOUT,
         }
@@ -422,7 +426,8 @@ impl GitHub {
         {
             return Ok(t);
         }
-        let token = find_token().ok_or_else(|| {
+        let stale = self.stale.lock().ok().and_then(|s| s.clone());
+        let token = find_token(stale.as_deref()).ok_or_else(|| {
             anyhow!(tr!(
                 "Not signed in to GitHub. Sign in with GitHub under Repositories (⌘,), \
                  or set GITHUB_TOKEN or use `gh auth login`.",
@@ -442,34 +447,47 @@ impl GitHub {
     /// die während der Anfrage fertig wurde, bleibt so erhalten. Eine abgelehnte Anmeldung
     /// verschwindet auch aus dem Schlüsselbund, damit der nächste Start sie nicht wieder probiert.
     /// Vergleich, Vergessen und Löschen laufen unter derselben Sperre wie `sign_in`.
-    fn forget_rejected(&self, rejected: &str) {
-        let Ok(mut current) = self.token.lock() else {
-            return;
-        };
+    /// Lässt sie sich dort nicht löschen, wird sie bis zur nächsten Anmeldung übergangen und der
+    /// Fehler zurückgegeben.
+    fn forget_rejected(&self, rejected: &str) -> Option<anyhow::Error> {
+        let mut current = self.token.lock().ok()?;
         if current.as_ref().is_none_or(|t| t.value != rejected) {
-            return;
+            return None;
         }
-        if current.take().map(|t| t.source) == Some(TokenSource::OAuth)
-            && let Err(e) = crate::keychain::delete()
-        {
-            log::warn!("{e:#}");
+        if current.take().map(|t| t.source) != Some(TokenSource::OAuth) {
+            return None;
         }
+        let e = crate::keychain::delete().err()?;
+        log::warn!("{e:#}");
+        if let Ok(mut stale) = self.stale.lock() {
+            *stale = Some(rejected.to_string());
+        }
+        Some(e)
     }
 
     /// Übernimmt den Token aus der GitHub-Anmeldung; er gilt vor `GITHUB_TOKEN` und `gh` und
-    /// bleibt im Schlüsselbund, bis man sich abmeldet oder GitHub ihn ablehnt.
-    pub fn sign_in(&self, token: String) {
-        if let Ok(mut t) = self.token.lock() {
-            crate::keychain::save(&token);
-            *t = Some(Token {
-                value: token,
-                source: TokenSource::OAuth,
-            });
+    /// bleibt im Schlüsselbund, bis man sich abmeldet oder GitHub ihn ablehnt. Scheitert das
+    /// Speichern, gilt die Anmeldung trotzdem (bis zum Beenden) und der Fehler kommt zurück.
+    pub fn sign_in(&self, token: String) -> Result<()> {
+        let saved = match self.token.lock() {
+            Ok(mut t) => {
+                let saved = crate::keychain::save(&token);
+                *t = Some(Token {
+                    value: token,
+                    source: TokenSource::OAuth,
+                });
+                saved
+            }
+            Err(_) => Err(anyhow!(tr!("Token cache locked", "Token-Cache gesperrt"))),
+        };
+        if let Ok(mut stale) = self.stale.lock() {
+            *stale = None;
         }
         // Branch-Regeln hängen an den Rechten des Tokens.
         if let Ok(mut rules) = self.rules.lock() {
             *rules = RulesCache::default();
         }
+        saved
     }
 
     /// „Abmelden“: Token aus Speicher und Schlüsselbund entfernen. Danach gelten wieder
@@ -591,12 +609,16 @@ impl GitHub {
             return Err(limited.into());
         }
         if status.as_u16() == 401 {
-            self.forget_rejected(&token.value);
+            let not_deleted = self.forget_rejected(&token.value);
             if token.source == TokenSource::OAuth {
-                bail!(tr!(
+                let msg = tr!(
                     "GitHub no longer accepts the sign-in (401). Please sign in again.",
                     "GitHub akzeptiert die Anmeldung nicht mehr (401). Bitte erneut anmelden."
-                ));
+                );
+                match not_deleted {
+                    Some(e) => bail!("{msg} ({e:#})"),
+                    None => bail!("{msg}"),
+                }
             }
             bail!(tr!(
                 "GitHub rejected the token (401). Check the token.",
@@ -849,9 +871,10 @@ fn longest_rate_limit<T>(results: &[Result<T>], now: DateTime<Utc>) -> Option<Ra
         .cloned()
 }
 
-/// Gespeicherte Anmeldung, sonst `GITHUB_TOKEN`/`GH_TOKEN`, sonst die GitHub-CLI.
-fn find_token() -> Option<Token> {
-    if let Some(value) = crate::keychain::load() {
+/// Gespeicherte Anmeldung (außer der abgelehnten `stale`), sonst `GITHUB_TOKEN`/`GH_TOKEN`,
+/// sonst die GitHub-CLI.
+fn find_token(stale: Option<&str>) -> Option<Token> {
+    if let Some(value) = usable_saved(crate::keychain::load(), stale) {
         return Some(Token {
             value,
             source: TokenSource::OAuth,
@@ -883,6 +906,11 @@ fn find_token() -> Option<Token> {
             source: TokenSource::GhCli,
         })
     })
+}
+
+/// Gespeicherte Anmeldung, sofern GitHub sie nicht schon abgelehnt hat.
+fn usable_saved(saved: Option<String>, stale: Option<&str>) -> Option<String> {
+    saved.filter(|v| Some(v.as_str()) != stale)
 }
 
 /// Prozent-Kodierung für ein Pfadsegment (Branch-Namen dürfen `/` enthalten).
@@ -1284,7 +1312,7 @@ mod tests {
     #[test]
     fn angemeldeter_token_hat_vorrang() {
         let github = GitHub::new(Arc::new(gpui_kit::http_client::BlockedHttpClient));
-        github.sign_in("gho_abc".into());
+        github.sign_in("gho_abc".into()).unwrap();
         assert_eq!(github.token_source(), Some(TokenSource::OAuth));
         assert_eq!(github.token().unwrap().value, "gho_abc");
     }
@@ -1292,7 +1320,7 @@ mod tests {
     #[test]
     fn abmelden_vergisst_den_token() {
         let github = GitHub::new(Arc::new(gpui_kit::http_client::BlockedHttpClient));
-        github.sign_in("gho_abc".into());
+        github.sign_in("gho_abc".into()).unwrap();
         github.sign_out().unwrap();
         assert_eq!(github.token_source(), None);
     }
@@ -1300,12 +1328,26 @@ mod tests {
     #[test]
     fn spaete_401_loescht_keine_neue_anmeldung() {
         let github = GitHub::new(Arc::new(gpui_kit::http_client::BlockedHttpClient));
-        github.sign_in("gho_neu".into());
+        github.sign_in("gho_neu".into()).unwrap();
         // Antwort einer Anfrage, die noch mit dem alten Token lief
-        github.forget_rejected("gho_alt");
+        assert!(github.forget_rejected("gho_alt").is_none());
         assert_eq!(github.token().unwrap().value, "gho_neu");
-        github.forget_rejected("gho_neu");
+        assert!(github.forget_rejected("gho_neu").is_none());
         assert_eq!(github.token_source(), None);
+    }
+
+    #[test]
+    fn abgelehnte_anmeldung_wird_nicht_wieder_eingelesen() {
+        assert_eq!(
+            usable_saved(Some("gho_a".into()), None).as_deref(),
+            Some("gho_a")
+        );
+        assert_eq!(usable_saved(Some("gho_a".into()), Some("gho_a")), None);
+        assert_eq!(
+            usable_saved(Some("gho_b".into()), Some("gho_a")).as_deref(),
+            Some("gho_b")
+        );
+        assert_eq!(usable_saved(None, Some("gho_a")), None);
     }
 
     #[test]
