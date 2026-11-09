@@ -245,6 +245,18 @@ impl Radar {
         &self.login
     }
 
+    /// „Abmelden“: gespeicherte Anmeldung löschen und neu laden. Danach gelten wieder
+    /// `GITHUB_TOKEN` bzw. die GitHub-CLI, falls vorhanden.
+    pub fn sign_out(&mut self, cx: &mut Context<Self>) {
+        if self.demo_only(tr!("Signing out", "Abmelden"), cx) {
+            return;
+        }
+        self.github.sign_out();
+        self.status.token_source = None;
+        log::info!("Von GitHub abgemeldet");
+        self.refresh(cx);
+    }
+
     /// „Mit GitHub anmelden“: Code anfordern, Browser öffnen, Code in die Zwischenablage, dann
     /// warten, bis der Nutzer bestätigt. Danach gilt der neue Token sofort.
     pub fn start_login(&mut self, cx: &mut Context<Self>) {

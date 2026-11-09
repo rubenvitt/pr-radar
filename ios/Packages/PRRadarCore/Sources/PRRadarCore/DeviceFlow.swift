@@ -11,7 +11,7 @@ import Foundation
 public enum GitHubOAuth {
     /// Client-ID der OAuth App „PR Radar“ (öffentlich, kein Geheimnis). In der OAuth App muss
     /// „Enable Device Flow“ an sein. Leer: Anmeldung ausgeschaltet, nur Token per Einstellungen.
-    static let builtInClientID = ""
+    static let builtInClientID = "Ov23liucOnVQUqDFcWSN"
 
     /// `repo`: private Repos lesen sowie mergen und Auto-Merge schalten. Feiner geht es bei
     /// OAuth Apps nicht; wer weniger Rechte geben will, nimmt einen Fine-grained PAT.
