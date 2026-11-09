@@ -80,7 +80,7 @@ Auto-Merge muss im Repo erlaubt sein (Settings → General → *Allow auto-merge
 | `native/src/radar.rs` | Poll-Zyklus, Snapshot, Merge/Auto-Merge inkl. Wiederholung |
 | `native/src/ui/` | Fenster, Seitenleiste, Liste, Flow, Einstellungen |
 | `ios/` | iOS-/iPadOS-App (SwiftUI) mit plattformunabhängigem Kern `PRRadarCore` |
-| `site/` | Produktseite mit Support, Datenschutz, EULA und Impressum (Cloudflare Pages, siehe [`site/README.md`](site/README.md)) |
+| `site/` | Produktseite mit Support, Datenschutz, EULA und Impressum (Cloudflare, siehe [`site/README.md`](site/README.md)) |
 
 ## Ideen / nächste Schritte
 

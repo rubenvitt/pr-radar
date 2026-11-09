@@ -23,17 +23,33 @@ sh site/build.sh            # Links, Anker, fremde Ressourcen, offene Platzhalte
 sh site/build.sh --strict   # wie Produktion: Platzhalter sind ein Fehler
 ```
 
-## Veröffentlichen (Cloudflare Pages)
+## Veröffentlichen (Cloudflare)
 
-Das Pages-Projekt `r-pr-radar` ist schon mit dem Repo verbunden (siehe PRR-42). Einstellungen:
+Das Cloudflare-Projekt `r-pr-radar` ist ein **Worker mit statischen Assets** (Workers Builds),
+kein Pages-Projekt. Was ausgeliefert wird, steht in `wrangler.jsonc` im Repo-Wurzelverzeichnis
+(`assets.directory = ./site/public`, unbekannte Pfade bekommen `404.html`). `_headers` und
+`_redirects` wendet Cloudflare als Regeln an.
+
+Einstellungen unter Workers & Pages → `r-pr-radar` → Settings → Build:
 
 - Build command: `sh site/build.sh`
-- Build output directory: `site/public`
+- Deploy command: `npx wrangler deploy` (Standard)
+- Non-production branch deploy command: `npx wrangler versions upload` (Standard)
+- Root directory: leer (Repo-Wurzel)
 - Production branch: `main`
-- Eigene Domain: `pr-radar.rubeen.dev` (die Apps verlinken diese Adresse, siehe unten)
+- Eigene Domain unter Settings → Domains & Routes: `pr-radar.rubeen.dev`
+  (die Apps verlinken diese Adresse, siehe unten)
 
 Auf `main` bricht der Build ab, solange noch `TODO-RUBEN`-Platzhalter in den Seiten stehen.
-Vorschau-Builds für PRs laufen trotzdem durch.
+`site/build.sh` erkennt Produktion an `WORKERS_CI_BRANCH` (bzw. `CF_PAGES_BRANCH`). Läuft ein
+Build bei Cloudflare ohne erkennbaren Branch, gilt er ebenfalls als Produktion. Vorschau-Builds
+anderer Branches laufen durch.
+
+Probelauf lokal, ohne etwas zu veröffentlichen:
+
+```bash
+npx wrangler deploy --dry-run
+```
 
 ## Vor dem Livegang
 

@@ -1,4 +1,4 @@
-# Cloudflare Pages: Sicherheits-Header für alle Seiten.
+# Cloudflare (statische Assets): Sicherheits-Header für alle Seiten.
 # Keine Skripte, keine fremden Quellen – die CSP verbietet beides.
 /*
   Content-Security-Policy: default-src 'none'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
