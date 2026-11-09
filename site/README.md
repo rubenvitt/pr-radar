@@ -41,7 +41,7 @@ Einstellungen unter Workers & Pages → `pr-radar` → Settings → Build:
 
 - Build command: `sh site/build.sh`
 - Deploy command: `npx wrangler deploy` (Standard)
-- Non-production branch deploy command: `npx wrangler versions upload` (Standard)
+- Non-production branch deploy command: `npx wrangler preview` (braucht den `previews`-Block in `wrangler.jsonc`)
 - Root directory: leer (Repo-Wurzel)
 - Production branch: `main`
 - Eigene Domain unter Settings → Domains & Routes: `pr-radar.rubeen.dev`
