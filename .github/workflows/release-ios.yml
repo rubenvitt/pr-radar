@@ -93,8 +93,10 @@ jobs:
           name=$(read_key Name)
           team=$(read_key TeamIdentifier:0)
           app_id=$(read_key Entitlements:application-identifier)
-          if [ "$app_id" != "$team.$BUNDLE_ID" ]; then
-            echo "::error::Profil '$name' gilt für $app_id, nicht für $team.$BUNDLE_ID"
+          # Präfix ist meist die Team-ID, bei alten App-IDs aber ein eigener; geprüft wird die Bundle-ID.
+          prefix=${app_id%%.*}
+          if [ -z "$prefix" ] || [ "$app_id" != "$prefix.$BUNDLE_ID" ]; then
+            echo "::error::Profil '$name' gilt für $app_id, nicht für die Bundle-ID $BUNDLE_ID"
             exit 1
           fi
           if read_key ProvisionedDevices >/dev/null 2>&1; then
