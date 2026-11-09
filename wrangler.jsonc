@@ -12,5 +12,8 @@
     "directory": "./site/dist",
     // Unbekannte Pfade bekommen 404.html mit Status 404.
     "not_found_handling": "404-page"
-  }
+  },
+  // Vorschau-Builds für PR-Branches laufen mit `npx wrangler preview`, das
+  // verlangt diesen (leeren) Block.
+  "previews": {}
 }
