@@ -25,12 +25,12 @@ sh site/build.sh --strict   # wie Produktion: Platzhalter sind ein Fehler
 
 ## Veröffentlichen (Cloudflare)
 
-Das Cloudflare-Projekt `r-pr-radar` ist ein **Worker mit statischen Assets** (Workers Builds),
+Das Cloudflare-Projekt `pr-radar` ist ein **Worker mit statischen Assets** (Workers Builds),
 kein Pages-Projekt. Was ausgeliefert wird, steht in `wrangler.jsonc` im Repo-Wurzelverzeichnis
 (`assets.directory = ./site/public`, unbekannte Pfade bekommen `404.html`). `_headers` und
 `_redirects` wendet Cloudflare als Regeln an.
 
-Einstellungen unter Workers & Pages → `r-pr-radar` → Settings → Build:
+Einstellungen unter Workers & Pages → `pr-radar` → Settings → Build:
 
 - Build command: `sh site/build.sh`
 - Deploy command: `npx wrangler deploy` (Standard)
