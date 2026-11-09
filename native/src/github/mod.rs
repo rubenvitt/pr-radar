@@ -438,16 +438,29 @@ impl GitHub {
         Ok(token)
     }
 
-    /// Vergisst den Token im Speicher und gibt zurück, welcher es war.
-    fn forget_token(&self) -> Option<Token> {
-        self.token.lock().ok()?.take()
+    /// Vergisst den Token nach einer 401 – aber nur, wenn noch der abgelehnte gilt. Eine Anmeldung,
+    /// die während der Anfrage fertig wurde, bleibt so erhalten. Eine abgelehnte Anmeldung
+    /// verschwindet auch aus dem Schlüsselbund, damit der nächste Start sie nicht wieder probiert.
+    /// Vergleich, Vergessen und Löschen laufen unter derselben Sperre wie `sign_in`.
+    fn forget_rejected(&self, rejected: &str) {
+        let Ok(mut current) = self.token.lock() else {
+            return;
+        };
+        if current.as_ref().is_none_or(|t| t.value != rejected) {
+            return;
+        }
+        if current.take().map(|t| t.source) == Some(TokenSource::OAuth)
+            && let Err(e) = crate::keychain::delete()
+        {
+            log::warn!("{e:#}");
+        }
     }
 
     /// Übernimmt den Token aus der GitHub-Anmeldung; er gilt vor `GITHUB_TOKEN` und `gh` und
     /// bleibt im Schlüsselbund, bis man sich abmeldet oder GitHub ihn ablehnt.
     pub fn sign_in(&self, token: String) {
-        crate::keychain::save(&token);
         if let Ok(mut t) = self.token.lock() {
+            crate::keychain::save(&token);
             *t = Some(Token {
                 value: token,
                 source: TokenSource::OAuth,
@@ -461,12 +474,20 @@ impl GitHub {
 
     /// „Abmelden“: Token aus Speicher und Schlüsselbund entfernen. Danach gelten wieder
     /// `GITHUB_TOKEN` bzw. die GitHub-CLI, falls vorhanden.
-    pub fn sign_out(&self) {
-        crate::keychain::delete();
-        self.forget_token();
+    /// Scheitert das Löschen im Schlüsselbund, bleibt alles, wie es war, und der Fehler geht an
+    /// die Oberfläche: Sonst wäre man nach dem nächsten Start still wieder angemeldet.
+    pub fn sign_out(&self) -> Result<()> {
+        let mut token = self
+            .token
+            .lock()
+            .map_err(|_| anyhow!(tr!("Token cache locked", "Token-Cache gesperrt")))?;
+        crate::keychain::delete()?;
+        *token = None;
+        drop(token);
         if let Ok(mut rules) = self.rules.lock() {
             *rules = RulesCache::default();
         }
+        Ok(())
     }
 
     /// Device Flow, Schritt 1: Code für die Anmeldung anfordern.
@@ -570,10 +591,8 @@ impl GitHub {
             return Err(limited.into());
         }
         if status.as_u16() == 401 {
-            let rejected = self.forget_token();
-            if rejected.is_some_and(|t| t.source == TokenSource::OAuth) {
-                // Widerrufen oder abgelaufen: nicht beim nächsten Start wieder versuchen.
-                crate::keychain::delete();
+            self.forget_rejected(&token.value);
+            if token.source == TokenSource::OAuth {
                 bail!(tr!(
                     "GitHub no longer accepts the sign-in (401). Please sign in again.",
                     "GitHub akzeptiert die Anmeldung nicht mehr (401). Bitte erneut anmelden."
@@ -1274,7 +1293,18 @@ mod tests {
     fn abmelden_vergisst_den_token() {
         let github = GitHub::new(Arc::new(gpui_kit::http_client::BlockedHttpClient));
         github.sign_in("gho_abc".into());
-        github.sign_out();
+        github.sign_out().unwrap();
+        assert_eq!(github.token_source(), None);
+    }
+
+    #[test]
+    fn spaete_401_loescht_keine_neue_anmeldung() {
+        let github = GitHub::new(Arc::new(gpui_kit::http_client::BlockedHttpClient));
+        github.sign_in("gho_neu".into());
+        // Antwort einer Anfrage, die noch mit dem alten Token lief
+        github.forget_rejected("gho_alt");
+        assert_eq!(github.token().unwrap().value, "gho_neu");
+        github.forget_rejected("gho_neu");
         assert_eq!(github.token_source(), None);
     }
 

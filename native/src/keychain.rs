@@ -1,6 +1,7 @@
 //! Token aus „Mit GitHub anmelden“ im Schlüsselbund des Macs, damit die Anmeldung einen
-//! Neustart übersteht. Fehler landen nur im Protokoll (ohne Token): Ohne Schlüsselbund gilt die
-//! Anmeldung wie früher bis zum Beenden. In Tests und auf anderen Systemen ohne Wirkung.
+//! Neustart übersteht. Lesen und Speichern melden Fehler nur im Protokoll (ohne Token): Ohne
+//! Schlüsselbund gilt die Anmeldung wie früher bis zum Beenden. Löschen meldet Fehler an den
+//! Aufrufer, damit „Abmelden“ nicht still scheitert. In Tests und auf anderen Systemen ohne Wirkung.
 
 #[cfg(all(target_os = "macos", not(test)))]
 mod imp {
@@ -34,11 +35,15 @@ mod imp {
         }
     }
 
-    pub fn delete() {
+    /// Fehlt der Eintrag schon, ist das kein Fehler.
+    pub fn delete() -> anyhow::Result<()> {
         match delete_generic_password(SERVICE, ACCOUNT) {
-            Ok(()) => {}
-            Err(e) if e.code() == NOT_FOUND => {}
-            Err(e) => log::warn!("Anmeldung nicht aus dem Schlüsselbund entfernt: {e}"),
+            Ok(()) => Ok(()),
+            Err(e) if e.code() == NOT_FOUND => Ok(()),
+            Err(e) => Err(anyhow::anyhow!(trf!(
+                "Could not remove the sign-in from the keychain: {e}",
+                "Anmeldung konnte nicht aus dem Schlüsselbund entfernt werden: {e}"
+            ))),
         }
     }
 }
@@ -51,7 +56,9 @@ mod imp {
 
     pub fn save(_token: &str) {}
 
-    pub fn delete() {}
+    pub fn delete() -> anyhow::Result<()> {
+        Ok(())
+    }
 }
 
 pub use imp::{delete, load, save};
