@@ -1,0 +1,54 @@
+name: Release
+
+# Jeder Push auf main prüft pro Plattform die Commits seit ihrem letzten Tag (Conventional Commits).
+# feat → Minor, fix/perf → Patch, Breaking Change → Major (vor 1.0: Minor). Gibt es etwas zu
+# veröffentlichen, baut der Plattform-Workflow und setzt den Tag erst, wenn alles geklappt hat.
+# Ablauf und Secrets: docs/RELEASING.md
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+# Läufe nacheinander, damit jeder den Tag des vorigen sieht.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Versionen bestimmen
+    runs-on: ubuntu-latest
+    outputs:
+      macos: ${{ steps.next.outputs.macos }}
+      ios: ${{ steps.next.outputs.ios }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - run: .github/scripts/next-version.test.sh
+      - id: next
+        run: |
+          macos=$(.github/scripts/next-version.sh macos native)
+          ios=$(.github/scripts/next-version.sh ios ios)
+          echo "macOS: ${macos:-kein Release}, iOS: ${ios:-kein Release}"
+          echo "macos=$macos" >> "$GITHUB_OUTPUT"
+          echo "ios=$ios" >> "$GITHUB_OUTPUT"
+
+  macos:
+    needs: plan
+    if: needs.plan.outputs.macos != ''
+    uses: ./.github/workflows/release-macos.yml
+    with:
+      version: ${{ needs.plan.outputs.macos }}
+    secrets: inherit
+
+  ios:
+    needs: plan
+    if: needs.plan.outputs.ios != ''
+    uses: ./.github/workflows/release-ios.yml
+    with:
+      version: ${{ needs.plan.outputs.ios }}
+    secrets: inherit

@@ -1,17 +1,16 @@
 name: Release macOS
 
-# Ein Tag „macos-vX.Y.Z“ baut die App, signiert sie mit der Developer ID, lässt sie von Apple
-# beglaubigen und hängt sie an ein GitHub-Release. Ablauf und Secrets: docs/RELEASING.md
+# Aufgerufen von release.yml: baut die App, signiert sie mit der Developer ID, lässt sie von Apple
+# beglaubigen und legt Tag „macos-vX.Y.Z“ samt GitHub-Release an. Ablauf und Secrets: docs/RELEASING.md
 on:
-  push:
-    tags: ["macos-v*"]
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
 
 permissions:
   contents: write
-
-concurrency:
-  group: release-macos-${{ github.ref }}
-  cancel-in-progress: false
 
 jobs:
   release:
@@ -21,7 +20,8 @@ jobs:
       run:
         working-directory: native
     env:
-      TAG: ${{ github.ref_name }}
+      VERSION: ${{ inputs.version }}
+      TAG: macos-v${{ inputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -46,14 +46,9 @@ jobs:
             exit 1
           fi
 
-      - name: Tag passt zur Version in Cargo.toml?
-        run: |
-          version=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
-          if [ "$TAG" != "macos-v$version" ]; then
-            echo "::error::Tag $TAG passt nicht zu Cargo.toml (version = \"$version\"), erwartet macos-v$version"
-            exit 1
-          fi
-          echo "VERSION=$version" >> "$GITHUB_ENV"
+      # Die Version im Repo bleibt stehen; maßgeblich ist der Tag. Erste Zeile „version =“ ist die des Pakets.
+      - name: Version in Cargo.toml setzen
+        run: perl -pi -e 's/^version = "[^"]*"/version = "$ENV{VERSION}"/ && ($done = 1) unless $done' Cargo.toml && grep -m1 '^version' Cargo.toml
 
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@v2
@@ -117,18 +112,14 @@ jobs:
           (cd dist && shasum -a 256 "$(basename "$asset")" > "$(basename "$asset").sha256")
           echo "ASSET=$asset" >> "$GITHUB_ENV"
 
-      - name: GitHub-Release anlegen
+      - name: Tag und GitHub-Release anlegen
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          args=(--repo "$GITHUB_REPOSITORY" --verify-tag --title "PR Radar für macOS $VERSION" --generate-notes)
-          # Notes ab dem nächstälteren Tag (auch bei Backports wie 0.1.1 nach 0.2.0). versionsort.suffix=-
-          # sortiert 0.2.0-beta.1 vor 0.2.0; ein stabiles Release überspringt Pre-Releases.
-          tags=$(git -c versionsort.suffix=- tag --list 'macos-v*' --sort=v:refname)
-          case "$VERSION" in *-*) ;; *) tags=$(printf '%s\n' "$tags" | grep -Ev '^macos-v[0-9.]+-' || true) ;; esac
-          previous=$(printf '%s\n' "$tags" | awk -v t="$TAG" '$0 == t {print prev; exit} {prev = $0}')
+          # Der Tag entsteht erst hier, auf dem gebauten Commit; Notes ab dem vorigen macOS-Release.
+          args=(--repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "PR Radar für macOS $VERSION" --generate-notes)
+          previous=$(git tag --list 'macos-v*' --sort=-v:refname | grep -E '^macos-v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)
           [ -n "$previous" ] && args+=(--notes-start-tag "$previous")
-          case "$VERSION" in *-*) args+=(--prerelease) ;; esac
           gh release create "$TAG" "${args[@]}" "$ASSET" "$ASSET.sha256"
 
       - name: Aufräumen

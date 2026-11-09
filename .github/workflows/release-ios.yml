@@ -1,17 +1,16 @@
 name: Release iOS
 
-# Ein Tag „ios-vX.Y.Z“ archiviert die App, signiert sie für den App Store und lädt sie zu
-# App Store Connect hoch (danach in TestFlight). Ablauf und Secrets: docs/RELEASING.md
+# Aufgerufen von release.yml: archiviert die App, signiert sie für den App Store, lädt sie zu
+# App Store Connect hoch (danach in TestFlight) und setzt Tag „ios-vX.Y.Z“. Ablauf und Secrets: docs/RELEASING.md
 on:
-  push:
-    tags: ["ios-v*"]
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
 
 permissions:
-  contents: read
-
-concurrency:
-  group: release-ios-${{ github.ref }}
-  cancel-in-progress: false
+  contents: write
 
 jobs:
   testflight:
@@ -21,7 +20,8 @@ jobs:
       run:
         working-directory: ios
     env:
-      TAG: ${{ github.ref_name }}
+      VERSION: ${{ inputs.version }}
+      TAG: ios-v${{ inputs.version }}
       BUNDLE_ID: dev.rubeen.prradar
     steps:
       - uses: actions/checkout@v4
@@ -49,15 +49,6 @@ jobs:
       - name: Xcode
         run: xcodebuild -version
 
-      - name: Tag passt zu MARKETING_VERSION?
-        run: |
-          version=$(xcodebuild -project PRRadar.xcodeproj -scheme PRRadar -configuration Release -showBuildSettings 2>/dev/null \
-            | awk -F' = ' '/^ *MARKETING_VERSION = / {print $2; exit}')
-          if [ "$TAG" != "ios-v$version" ]; then
-            echo "::error::Tag $TAG passt nicht zu MARKETING_VERSION ($version), erwartet ios-v$version"
-            exit 1
-          fi
-          echo "VERSION=$version" >> "$GITHUB_ENV"
 
       - name: Zertifikat in temporären Schlüsselbund
         env:
@@ -124,7 +115,8 @@ jobs:
             DEVELOPMENT_TEAM="$TEAM_ID" \
             CODE_SIGN_IDENTITY="Apple Distribution" \
             PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
-            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER"
+            MARKETING_VERSION="$VERSION" \
+            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER.$GITHUB_RUN_ATTEMPT"
 
       - name: Exportieren und hochladen
         env:
@@ -159,9 +151,14 @@ jobs:
             -authenticationKeyID "$ASC_KEY_ID" \
             -authenticationKeyIssuerID "$ASC_ISSUER_ID"
           {
-            echo "### PR Radar für iOS $VERSION ($GITHUB_RUN_NUMBER) hochgeladen"
+            echo "### PR Radar für iOS $VERSION ($GITHUB_RUN_NUMBER.$GITHUB_RUN_ATTEMPT) hochgeladen"
             echo "Nach der Verarbeitung durch Apple erscheint der Build in App Store Connect → TestFlight."
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Tag setzen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$TAG" -f sha="$GITHUB_SHA" --silent
 
       - name: Aufräumen
         if: always()
