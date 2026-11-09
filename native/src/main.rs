@@ -7,6 +7,7 @@ mod logging;
 mod macos;
 mod menubar;
 mod model;
+mod notices;
 mod radar;
 mod site;
 mod time;
