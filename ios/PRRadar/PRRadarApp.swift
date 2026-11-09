@@ -4,7 +4,7 @@ import BackgroundTasks
 import PRRadarCore
 import SwiftUI
 
-let backgroundRefreshID = "email.rubeen.prradar.refresh"
+let backgroundRefreshID = "dev.rubeen.prradar.refresh"
 
 @main
 struct PRRadarApp: App {

@@ -10,7 +10,7 @@ import Testing
 @Suite struct TokenStoreTests {
     /// Eigener Schlüsselbund-Eintrag und feste Umgebung je Test.
     private func makeStore(
-        service: String = "email.rubeen.prradar.tests.\(UUID().uuidString)", environment: [String: String] = [:]
+        service: String = "dev.rubeen.prradar.tests.\(UUID().uuidString)", environment: [String: String] = [:]
     ) -> TokenStore {
         TokenStore(service: service, environment: { environment })
     }
@@ -22,7 +22,7 @@ import Testing
     }
 
     @Test func speichertGetrimmtImSchluesselbund() throws {
-        let service = "email.rubeen.prradar.tests.\(UUID().uuidString)"
+        let service = "dev.rubeen.prradar.tests.\(UUID().uuidString)"
         let store = makeStore(service: service)
         defer { store.delete() }
 
@@ -42,7 +42,7 @@ import Testing
     }
 
     @Test func neuerTokenErsetztDenAlten() throws {
-        let service = "email.rubeen.prradar.tests.\(UUID().uuidString)"
+        let service = "dev.rubeen.prradar.tests.\(UUID().uuidString)"
         let store = makeStore(service: service)
         defer { store.delete() }
 
@@ -53,7 +53,7 @@ import Testing
     }
 
     @Test func entfernenLoeschtAuchImSchluesselbund() throws {
-        let service = "email.rubeen.prradar.tests.\(UUID().uuidString)"
+        let service = "dev.rubeen.prradar.tests.\(UUID().uuidString)"
         let store = makeStore(service: service)
         try store.save("weg")
         store.delete()
@@ -88,7 +88,7 @@ import Testing
     }
 
     @Test func merktSichDieHerkunftAusDerAnmeldung() throws {
-        let service = "email.rubeen.prradar.tests.\(UUID().uuidString)"
+        let service = "dev.rubeen.prradar.tests.\(UUID().uuidString)"
         let store = makeStore(service: service)
         defer { store.delete() }
 

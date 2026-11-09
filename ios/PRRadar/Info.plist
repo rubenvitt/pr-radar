@@ -4,7 +4,7 @@
 <dict>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
-		<string>email.rubeen.prradar.refresh</string>
+		<string>dev.rubeen.prradar.refresh</string>
 	</array>
 	<key>UIBackgroundModes</key>
 	<array>

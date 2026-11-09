@@ -32,7 +32,7 @@ final class TokenStore: Sendable {
 
     /// Tests geben einen eigenen `service` und eine feste Umgebung vor, damit sie den Token der App nicht berühren.
     init(
-        service: String = "email.rubeen.prradar",
+        service: String = "dev.rubeen.prradar",
         account: String = "github-token",
         environment: @escaping @Sendable () -> [String: String] = { ProcessInfo.processInfo.environment }
     ) {
