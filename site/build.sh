@@ -1,5 +1,5 @@
 #!/bin/sh
-# Build-Schritt für Cloudflare (Projekt r-pr-radar, Workers Builds mit
+# Build-Schritt für Cloudflare (Projekt pr-radar, Workers Builds mit
 # statischen Assets, Konfiguration in wrangler.jsonc).
 #   Build command:  sh site/build.sh
 #   Deploy command: npx wrangler deploy

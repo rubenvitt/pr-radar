@@ -1,11 +1,11 @@
-// Cloudflare Workers Builds (Projekt r-pr-radar): liefert die statische
+// Cloudflare Workers Builds (Projekt pr-radar): liefert die statische
 // Produktseite aus site/public aus, ohne Worker-Code.
 //   Build command:  sh site/build.sh   (prüft Links und sperrt Platzhalter auf main)
 //   Deploy command: npx wrangler deploy
 // Siehe site/README.md.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "r-pr-radar",
+  "name": "pr-radar",
   "compatibility_date": "2026-11-01",
   "assets": {
     "directory": "./site/public",
