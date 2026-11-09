@@ -289,9 +289,16 @@ impl Radar {
             let result = run_login(&this, github, client_id, cx).await;
             this.update(cx, |this, cx| {
                 match result {
-                    Ok(()) => {
+                    Ok(not_saved) => {
                         log::info!("Bei GitHub angemeldet");
-                        this.login = Login::Idle;
+                        // Angemeldet, aber nur bis zum Beenden: Das soll man sehen.
+                        this.login = match not_saved {
+                            Some(e) => Login::Failed(trf!(
+                                "Signed in, but only until you quit: {e}",
+                                "Angemeldet, aber nur bis zum Beenden: {e}"
+                            )),
+                            None => Login::Idle,
+                        };
                         this.refresh(cx);
                     }
                     Err(e) => {
@@ -836,12 +843,13 @@ fn login_failure(e: &anyhow::Error) -> String {
 }
 
 /// Device Flow bis zum Token. Vorübergehende Fehler (Netz, 408/5xx) beim Warten werden kurz toleriert.
+/// `Some` im Erfolg: angemeldet, aber nicht im Schlüsselbund gespeichert (Grund als Text).
 async fn run_login(
     this: &WeakEntity<Radar>,
     github: Arc<GitHub>,
     client_id: String,
     cx: &mut AsyncApp,
-) -> Result<()> {
+) -> Result<Option<String>> {
     let code = {
         let (gh, id) = (github.clone(), client_id.clone());
         cx.background_spawn(async move { gh.request_device_code(&id).await })
@@ -870,8 +878,7 @@ async fn run_login(
             .await;
         match step {
             Ok(PollStep::Token(token)) => {
-                github.sign_in(token);
-                return Ok(());
+                return Ok(github.sign_in(token).err().map(|e| format!("{e:#}")));
             }
             Ok(PollStep::Pending) => failures = 0,
             Ok(PollStep::SlowDown(next)) => interval = next,
