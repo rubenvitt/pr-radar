@@ -37,11 +37,19 @@ iOS:
    Workflows und steigt dadurch von selbst. Nach der Verarbeitung durch Apple (meist 10 bis 30 min) erscheint
    der Build in TestFlight. Für den App Store reicht man ihn dann in App Store Connect zur Prüfung ein.
 
-Schlägt ein Lauf fehl, Ursache beheben, dann Tag löschen und neu setzen:
+Schlägt ein Lauf fehl, Ursache beheben, dann den Tag des fehlgeschlagenen Laufs löschen und auf dem
+korrigierten Commit neu setzen:
 
 ```bash
-git push --delete origin macos-v0.2.0 && git tag -d macos-v0.2.0
+TAG=macos-v0.2.0   # bzw. ios-v0.2.0
+git push --delete origin "$TAG" && git tag -d "$TAG"
+git tag "$TAG" && git push origin "$TAG"
 ```
+
+Bei macOS vorher unter *Releases* nachsehen: Hat der Lauf das Release schon angelegt, ist es fertig und es
+braucht keinen neuen Lauf. Ein halb angelegtes Release vor dem Neusetzen löschen, sonst scheitert
+`gh release create`. Bei iOS lehnt App Store Connect eine schon hochgeladene Build-Nummer ab; ein neuer Lauf
+bekommt aber ohnehin eine neue.
 
 ## Secrets
 
