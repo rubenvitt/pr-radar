@@ -166,6 +166,17 @@ impl RepoSettings {
                 h_flex()
                     .gap_2()
                     .child(div().flex_1().text_body().child(state))
+                    .when(source == Some(TokenSource::OAuth), |this| {
+                        let radar = radar.clone();
+                        this.child(
+                            Button::new("sign-out")
+                                .small()
+                                .label(tr!("Sign Out", "Abmelden"))
+                                .on_click(move |_, _, cx| {
+                                    radar.update(cx, |r, cx| r.sign_out(cx));
+                                }),
+                        )
+                    })
                     .when(source != Some(TokenSource::OAuth), |this| {
                         this.child(
                             Button::new("sign-in")
@@ -205,9 +216,9 @@ impl RepoSettings {
             })
             .child(div().text_small().text_color(muted).child(tr!(
                 "Advanced: Without signing in, PR Radar uses GITHUB_TOKEN/GH_TOKEN or the \
-                     GitHub CLI (gh auth login). Sign-in lasts until you quit the app.",
+                     GitHub CLI (gh auth login). The sign-in is kept in your keychain until you sign out.",
                 "Erweitert: Ohne Anmeldung nutzt PR Radar GITHUB_TOKEN/GH_TOKEN oder die \
-                     GitHub-CLI (gh auth login). Die Anmeldung gilt bis zum Beenden der App."
+                     GitHub-CLI (gh auth login). Die Anmeldung bleibt im Schlüsselbund, bis du dich abmeldest."
             )))
             .into_any_element()
     }

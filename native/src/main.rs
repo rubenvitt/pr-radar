@@ -5,6 +5,7 @@ mod l10n;
 mod config;
 mod demo;
 mod github;
+mod keychain;
 mod logging;
 #[cfg(target_os = "macos")]
 mod macos;

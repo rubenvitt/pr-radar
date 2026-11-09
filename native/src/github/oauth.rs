@@ -14,7 +14,7 @@ const GRANT_TYPE: &str = "urn:ietf:params:oauth:grant-type:device_code";
 
 /// Client-ID der OAuth App „PR Radar“ (öffentlich, kein Geheimnis). In der OAuth App muss
 /// „Enable Device Flow“ an sein. Leer: Anmeldung ausgeschaltet, nur Token per Umgebung bzw. `gh`.
-const CLIENT_ID: &str = "";
+const CLIENT_ID: &str = "Ov23liucOnVQUqDFcWSN";
 
 /// `repo`: private Repos lesen sowie mergen und Auto-Merge schalten. Feiner geht es bei
 /// OAuth Apps nicht; wer weniger Rechte geben will, nimmt einen Fine-grained PAT.

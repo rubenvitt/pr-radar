@@ -59,7 +59,8 @@ Website, Support, Datenschutz, EULA und Impressum: <https://pr-radar.rubeen.dev>
 
 **Mit GitHub anmelden** (Repositories-Sheet, `⌘,`): Die App zeigt einen Code und öffnet github.com/login/device,
 nach der Bestätigung gilt der Token sofort (OAuth Device Flow, Scope `repo`). Org-Repos erscheinen erst, wenn die
-Organisation PR Radar freigibt (Settings → Third-party access). Die Anmeldung gilt bis zum Beenden der App.
+Organisation PR Radar freigibt (Settings → Third-party access). Die Anmeldung bleibt im Schlüsselbund, bis man
+sich im Repositories-Sheet abmeldet oder GitHub den Token widerruft (dann fragt die App erneut).
 
 Die Client-ID der OAuth App steht in `native/src/github/oauth.rs` (`CLIENT_ID`; in der OAuth App „Enable Device Flow“
 anschalten). Zum Ausprobieren ohne neuen Build: `PR_RADAR_GITHUB_CLIENT_ID=… cargo run`.
