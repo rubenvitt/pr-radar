@@ -46,9 +46,9 @@ git push --delete origin "$TAG" && git tag -d "$TAG"
 git tag "$TAG" && git push origin "$TAG"
 ```
 
-Bei macOS vorher unter *Releases* nachsehen: Hat der Lauf das Release schon angelegt, ist es fertig und es
-braucht keinen neuen Lauf. Ein halb angelegtes Release vor dem Neusetzen löschen, sonst scheitert
-`gh release create`. Bei iOS lehnt App Store Connect eine schon hochgeladene Build-Nummer ab; ein neuer Lauf
+Bei macOS vorher unter *Releases* nachsehen: Ist das Release veröffentlicht und hängen ZIP und `.sha256` dran,
+ist es fertig und es braucht keinen neuen Lauf. Ist es noch ein Entwurf oder fehlt eine der beiden Dateien, das
+Release vor dem Neusetzen löschen, sonst scheitert `gh release create`. Bei iOS lehnt App Store Connect eine schon hochgeladene Build-Nummer ab; ein neuer Lauf
 bekommt aber ohnehin eine neue.
 
 ## Secrets
