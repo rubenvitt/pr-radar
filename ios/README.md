@@ -43,7 +43,7 @@ Demo-Stand, laufende Pipelines werden nach 20 bzw. 60 s grün. Konfiguration, Ca
 
 Eine Leiste oben zeigt den Modus an und beendet ihn. Wer einen Token speichert, verlässt den Demo-Modus automatisch.
 Für Screenshots und UI-Tests startet die App mit dem Startargument `--demo` direkt in der Demo
-(Xcode: Scheme → Run → Arguments, Simulator: `xcrun simctl launch booted email.rubeen.prradar --demo`).
+(Xcode: Scheme → Run → Arguments, Simulator: `xcrun simctl launch booted dev.rubeen.prradar --demo`).
 
 Hinweis für die App-Review-Notizen: „Die App braucht ein GitHub-Konto. Ohne Anmeldung lässt sie sich über
 ‚Mit Beispieldaten ausprobieren‘ auf dem Startbildschirm vollständig mit Beispieldaten testen.“

@@ -22,7 +22,7 @@ jobs:
         working-directory: ios
     env:
       TAG: ${{ github.ref_name }}
-      BUNDLE_ID: email.rubeen.prradar
+      BUNDLE_ID: dev.rubeen.prradar
     steps:
       - uses: actions/checkout@v4
         with:

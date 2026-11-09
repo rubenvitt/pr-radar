@@ -81,9 +81,9 @@ Im [Developer-Portal](https://developer.apple.com/account/resources/certificates
 ### iOS: Verteilungszertifikat und Profil
 
 1. Zertifikat vom Typ **Apple Distribution** erstellen und wie oben als `.p12` exportieren.
-2. Falls noch nicht geschehen: App-ID `email.rubeen.prradar` registrieren und in App Store Connect eine App
+2. Falls noch nicht geschehen: App-ID `dev.rubeen.prradar` registrieren und in App Store Connect eine App
    mit dieser Bundle-ID anlegen.
-3. Provisioning-Profil vom Typ **App Store Connect** für `email.rubeen.prradar` mit diesem Zertifikat erstellen
+3. Provisioning-Profil vom Typ **App Store Connect** für `dev.rubeen.prradar` mit diesem Zertifikat erstellen
    und herunterladen.
 
 | Secret | Inhalt |
