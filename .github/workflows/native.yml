@@ -35,6 +35,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
       # Fertige Binaries mit Prüfsumme; die cargo-deny-Action lädt ihr Programm bei
       # jedem Lauf per Docker-Build ohne Wiederholung und scheiterte daran.
