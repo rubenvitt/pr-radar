@@ -1,0 +1,134 @@
+name: Release macOS
+
+# Ein Tag „macos-vX.Y.Z“ baut die App, signiert sie mit der Developer ID, lässt sie von Apple
+# beglaubigen und hängt sie an ein GitHub-Release. Ablauf und Secrets: docs/RELEASING.md
+on:
+  push:
+    tags: ["macos-v*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-macos-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Bauen, signieren, beglaubigen, veröffentlichen
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: native
+    env:
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          # Alle Tags, damit die Release Notes beim vorigen macOS-Release ansetzen.
+          fetch-depth: 0
+
+      - name: Secrets vorhanden?
+        env:
+          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          missing=()
+          for name in MACOS_CERTIFICATE_P12 MACOS_CERTIFICATE_PASSWORD ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8; do
+            [ -n "${!name}" ] || missing+=("$name")
+          done
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Fehlende Secrets: ${missing[*]} (siehe docs/RELEASING.md)"
+            exit 1
+          fi
+
+      - name: Tag passt zur Version in Cargo.toml?
+        run: |
+          version=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
+          if [ "$TAG" != "macos-v$version" ]; then
+            echo "::error::Tag $TAG passt nicht zu Cargo.toml (version = \"$version\"), erwartet macos-v$version"
+            exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-about
+
+      - name: Zertifikat in temporären Schlüsselbund
+        env:
+          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          keychain_password=$(openssl rand -hex 24)
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          printf '%s' "$MACOS_CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security import "$RUNNER_TEMP/certificate.p12" -k "$keychain" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/certificate.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" >/dev/null
+          # Temporären Schlüsselbund vorn in die Suchliste, damit codesign ihn findet.
+          security list-keychains -d user -s "$keychain" "$HOME/Library/Keychains/login.keychain-db"
+          identity=$(security find-identity -v -p codesigning "$keychain" | awk '/"Developer ID Application/ {print $2; exit}')
+          if [ -z "$identity" ]; then
+            echo "::error::Im P12 steckt kein Zertifikat vom Typ Developer ID Application"
+            exit 1
+          fi
+          echo "KEYCHAIN=$keychain" >> "$GITHUB_ENV"
+          echo "CODESIGN_IDENTITY=$identity" >> "$GITHUB_ENV"
+
+      - name: App bauen und signieren
+        run: scripts/bundle.sh
+
+      - name: Beglaubigen (Notarisierung) und Ticket anheften
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          key="$RUNNER_TEMP/AuthKey.p8"
+          printf '%s\n' "$ASC_KEY_P8" > "$key"
+          auth=(--key "$key" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID")
+          ditto -c -k --keepParent "dist/PR Radar.app" "$RUNNER_TEMP/notarize.zip"
+          result=$(xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" "${auth[@]}" --wait --timeout 30m --output-format json)
+          echo "$result"
+          id=$(printf '%s' "$result" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+          status=$(printf '%s' "$result" | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])')
+          if [ "$status" != "Accepted" ]; then
+            xcrun notarytool log "$id" "${auth[@]}" || true
+            echo "::error::Beglaubigung abgelehnt: $status"
+            exit 1
+          fi
+          xcrun stapler staple "dist/PR Radar.app"
+          xcrun stapler validate "dist/PR Radar.app"
+          spctl --assess --type execute --verbose=2 "dist/PR Radar.app"
+
+      - name: Paket schnüren
+        run: |
+          asset="dist/PR-Radar-$VERSION-macOS-arm64.zip"
+          ditto -c -k --keepParent "dist/PR Radar.app" "$asset"
+          (cd dist && shasum -a 256 "$(basename "$asset")" > "$(basename "$asset").sha256")
+          echo "ASSET=$asset" >> "$GITHUB_ENV"
+
+      - name: GitHub-Release anlegen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          args=(--repo "$GITHUB_REPOSITORY" --verify-tag --title "PR Radar für macOS $VERSION" --generate-notes)
+          previous=$(git tag --list 'macos-v*' --sort=-v:refname | grep -vx "$TAG" | head -n1 || true)
+          [ -n "$previous" ] && args+=(--notes-start-tag "$previous")
+          case "$VERSION" in *-*) args+=(--prerelease) ;; esac
+          gh release create "$TAG" "${args[@]}" "$ASSET" "$ASSET.sha256"
+
+      - name: Aufräumen
+        if: always()
+        run: |
+          [ -n "${KEYCHAIN:-}" ] && security delete-keychain "$KEYCHAIN" || true
+          rm -f "$RUNNER_TEMP/AuthKey.p8" "$RUNNER_TEMP/certificate.p12"

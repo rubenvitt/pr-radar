@@ -3,6 +3,7 @@
 # Systembenachrichtigungen funktionieren unter macOS nur aus einem App-Bundle.
 #   scripts/bundle.sh            → native/dist/PR Radar.app
 #   scripts/bundle.sh --install  → zusätzlich nach /Applications kopieren
+#   CODESIGN_IDENTITY=… scripts/bundle.sh → mit Developer ID statt ad hoc signieren
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -50,7 +51,15 @@ cat > "$app/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-codesign --force --deep --sign - "$app" >/dev/null 2>&1 || true
+if [ -n "${CODESIGN_IDENTITY:-}" ]; then
+  # Developer ID mit gehärteter Laufzeit und Zeitstempel: Voraussetzung für die Beglaubigung
+  # (Notarisierung) durch Apple. So signiert der Release-Workflow (.github/workflows/release-macos.yml).
+  codesign --force --options runtime --timestamp --sign "$CODESIGN_IDENTITY" "$app"
+  codesign --verify --strict --verbose=2 "$app"
+else
+  # Lokal ohne Zertifikat: Ad-hoc-Signatur, reicht für den eigenen Mac.
+  codesign --force --deep --sign - "$app" >/dev/null 2>&1 || true
+fi
 echo "→ $app"
 
 if [ "${1:-}" = "--install" ]; then
