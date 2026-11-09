@@ -1,6 +1,7 @@
 // Cloudflare Workers Builds (Projekt pr-radar): liefert die statische
-// Produktseite aus site/public aus, ohne Worker-Code.
-//   Build command:  sh site/build.sh   (prüft Links und sperrt Platzhalter auf main)
+// Produktseite aus site/dist aus (von site/build.sh aus site/public erzeugt),
+// ohne Worker-Code.
+//   Build command:  sh site/build.sh   (prüft Links, setzt die Anschrift aus Build-Variablen ein)
 //   Deploy command: npx wrangler deploy
 // Siehe site/README.md.
 {
@@ -8,8 +9,8 @@
   "name": "pr-radar",
   "compatibility_date": "2026-11-01",
   "assets": {
-    "directory": "./site/public",
-    // Unbekannte Pfade bekommen site/public/404.html mit Status 404.
+    "directory": "./site/dist",
+    // Unbekannte Pfade bekommen 404.html mit Status 404.
     "not_found_handling": "404-page"
   }
 }
