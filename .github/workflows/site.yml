@@ -3,7 +3,7 @@ name: Website
 on:
   push:
     branches: [main]
-    paths: ["site/**", ".github/workflows/site.yml"]
+    paths: ["site/**", "wrangler.jsonc", ".github/workflows/site.yml"]
   # Wie die anderen Workflows ohne Pfadfilter bei PRs, damit der Check
   # immer entsteht und als Pflicht-Check taugt.
   pull_request:
@@ -20,5 +20,11 @@ jobs:
         with:
           python-version: "3.12"
       # Ohne --strict: offene Platzhalter sind hier nur eine Warnung,
-      # den Livegang sperrt der Produktions-Build auf Cloudflare Pages.
+      # den Livegang sperrt der Produktions-Build auf Cloudflare.
       - run: sh site/build.sh
+      # Prüft wrangler.jsonc und das Asset-Verzeichnis, ohne zu veröffentlichen.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Wrangler-Probelauf
+        run: npx -y wrangler@4.159.0 deploy --dry-run --outdir "$RUNNER_TEMP/wrangler"
