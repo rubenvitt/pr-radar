@@ -87,6 +87,16 @@ const SIDEBAR_W: Pixels = px(240.);
 const NARROW_W: Pixels = px(720.);
 /// Darunter rücken Steuerelemente in eigene Zeilen (gemessen an der Inhaltsbreite).
 const COMPACT_W: Pixels = px(600.);
+/// Höhe der einen Toolbar über dem Inhalt (macOS: Mail, Finder, Xcode).
+const TOOLBAR_H: Pixels = px(52.);
+/// Ampeln: Abstand von links und oben. Die Knöpfe sind 14 px hoch, (52 − 14) / 2 = 19.
+const TRAFFIC_LIGHTS: Point<Pixels> = point(px(20.), px(19.));
+/// Platz, den die Ampeln links in der Toolbar brauchen (20 + 3 Knöpfe im 20-px-Raster + Luft).
+const TRAFFIC_LIGHTS_W: Pixels = px(92.);
+/// Breite der Suche in der Toolbar.
+const SEARCH_W: Pixels = px(240.);
+/// Darunter wandert die Suche aus der Toolbar in eine eigene Zeile (gemessen an der Fensterbreite).
+const TOOLBAR_COMPACT_W: Pixels = px(1040.);
 /// Breite des Repositories-Sheets: fest in px, damit sie nicht mit der Grundschrift schrumpft
 /// (früher 26 rem = 416 px bei 16 px, bei 13 px wären es nur 338 px).
 const SHEET_W: Pixels = px(400.);
@@ -340,6 +350,10 @@ pub fn open_main_window(radar: Entity<Radar>, cx: &mut App) -> anyhow::Result<()
         } else {
             WindowBackgroundAppearance::Opaque
         },
+        titlebar: Some(TitlebarOptions {
+            traffic_light_position: Some(TRAFFIC_LIGHTS),
+            ..TitleBar::title_bar_options()
+        }),
         ..TitleBar::window_options()
     };
     // Demo mit --dark/--light: Erscheinungsbild bleibt fest, statt dem System zu folgen.
@@ -460,8 +474,10 @@ pub struct Workspace {
     narrow: bool,
     /// Overlay-Seitenleiste ist offen (nur im schmalen Fenster, nicht gespeichert)
     sidebar_overlay: bool,
-    /// Wenig Platz für den Inhalt: Zeilen und Werkzeugleiste umbrechen
+    /// Wenig Platz für den Inhalt: Zeilen umbrechen
     compact: bool,
+    /// Wenig Platz für die Toolbar: Suche in eigene Zeile, Umschalter nur als Symbol
+    toolbar_compact: bool,
     _subscriptions: Vec<Subscription>,
     _ticker: Task<()>,
 }
@@ -659,6 +675,7 @@ impl Workspace {
             narrow: false,
             sidebar_overlay: false,
             compact: false,
+            toolbar_compact: false,
             _subscriptions: subscriptions,
             _ticker: ticker,
         }
@@ -853,12 +870,12 @@ impl Workspace {
         cx.notify();
     }
 
-    /* ---------- Titelleiste ---------- */
+    /* ---------- Toolbar ---------- */
 
-    fn render_title_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    /// Live-Status als kleiner Untertitel unter dem Seitentitel.
+    fn render_live_status(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let radar = self.radar.read(cx);
         let status = radar.status().clone();
-        let notify = radar.prefs().notify;
         let loading = radar.snapshot().is_none();
         // Ohne Repos fragt PR Radar nichts ab – dann auch kein „Live“.
         let no_repos = radar.repos().is_empty();
@@ -903,126 +920,25 @@ impl Workspace {
             None => tr!("Not updated yet", "Noch nicht aktualisiert").into(),
         };
 
-        let collapsed = self.sidebar_collapsed(radar.prefs());
-        TitleBar::new().child(
-            h_flex()
-                .w_full()
-                .min_w_0()
-                .pr_2()
-                .gap_3()
-                .child(
-                    Button::new("sidebar")
-                        .ghost()
-                        .small()
-                        .icon(if collapsed {
-                            IconName::PanelLeftOpen
-                        } else {
-                            IconName::PanelLeftClose
-                        })
-                        .tooltip_with_action(
-                            if collapsed {
-                                tr!("Show Sidebar", "Seitenleiste einblenden")
-                            } else {
-                                tr!("Hide Sidebar", "Seitenleiste ausblenden")
-                            },
-                            &ToggleSidebar,
-                            Some(CONTEXT),
-                        )
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.toggle_sidebar(&ToggleSidebar, window, cx)
-                        })),
-                )
-                .when(demo, |this| {
-                    this.child(
-                        Tag::info()
-                            .xsmall()
-                            .text_small()
-                            .rounded_full()
-                            .flex_none()
-                            .child("Demo"),
-                    )
-                })
-                .child(
-                    h_flex()
-                        .id("live-status")
-                        .min_w_0()
-                        .gap_1p5()
-                        .px_2()
-                        .py_0p5()
-                        .rounded_full()
-                        .border_1()
-                        .border_color(cx.theme().border)
-                        .text_small()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(motion::heartbeat(
-                            div().rounded_full().bg(dot),
-                            dot,
-                            status
-                                .last_success
-                                .filter(|_| status.state != PollState::Error && !no_repos)
-                                .map(|t| t.timestamp_millis()),
-                            cx,
-                        ))
-                        .child(div().truncate().child(label))
-                        .tooltip(move |window, cx| {
-                            gpui_kit::component::tooltip::Tooltip::new(tooltip.clone())
-                                .build(window, cx)
-                        }),
-                )
-                .child(div().flex_1())
-                .child(
-                    Button::new("refresh")
-                        .ghost()
-                        .small()
-                        .icon(IconName::RefreshCw)
-                        // Hintergrund-Polls drehen keinen Spinner – jeder Animationsframe baut das Fenster neu auf.
-                        .loading(self.manual_refresh && status.state == PollState::Polling)
-                        .tooltip_with_action(
-                            tr!("Refresh", "Aktualisieren"),
-                            &Refresh,
-                            Some(CONTEXT),
-                        )
-                        .on_click(
-                            cx.listener(|this, _, window, cx| this.refresh(&Refresh, window, cx)),
-                        ),
-                )
-                .child(
-                    Button::new("notify")
-                        .ghost()
-                        .small()
-                        .icon(if notify {
-                            Icon::new(IconName::Bell)
-                        } else {
-                            Icon::new(Lucide::BellOff)
-                        })
-                        .selected(notify)
-                        .tooltip(if notify {
-                            tr!("Turn off notifications", "Benachrichtigungen aus")
-                        } else {
-                            tr!(
-                                "Notify when a pipeline fails or passes and on merge",
-                                "Benachrichtigen bei roter/grüner Pipeline und Merge"
-                            )
-                        })
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.update_prefs(cx, |p| p.notify = !p.notify)
-                        })),
-                )
-                .child(
-                    Button::new("settings")
-                        .ghost()
-                        .small()
-                        .icon(IconName::Settings2)
-                        .tooltip_with_action(
-                            tr!("Repositories…", "Repositories…"),
-                            &OpenSettings,
-                            Some(CONTEXT),
-                        )
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.open_settings(&OpenSettings, window, cx)
-                        })),
-                ),
-        )
+        h_flex()
+            .id("live-status")
+            .min_w_0()
+            .gap_1p5()
+            .text_small()
+            .text_color(cx.theme().muted_foreground)
+            .child(motion::heartbeat(
+                div().rounded_full().bg(dot),
+                dot,
+                status
+                    .last_success
+                    .filter(|_| status.state != PollState::Error && !no_repos)
+                    .map(|t| t.timestamp_millis()),
+                cx,
+            ))
+            .child(div().truncate().child(label))
+            .tooltip(move |window, cx| {
+                gpui_kit::component::tooltip::Tooltip::new(tooltip.clone()).build(window, cx)
+            })
     }
 
     /* ---------- Seitenleiste ---------- */
@@ -1258,10 +1174,9 @@ impl Workspace {
             radar.update(cx, |r, cx| r.merge_all(items, cx));
         };
 
-        let compact = self.compact;
+        let compact = self.toolbar_compact;
         let label = trf!("Merge all ({count})", "Alle mergen ({count})");
         let button = Button::new("merge-all")
-            .small()
             .outline()
             .success()
             .icon(Lucide::GitMerge)
@@ -1297,109 +1212,200 @@ impl Workspace {
         )
     }
 
+    /// Suchfeld; in der Toolbar mit fester Breite, im schmalen Fenster in eigener Zeile.
+    fn render_search(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        Input::new(&self.search)
+            .cleanable(true)
+            .prefix(Icon::new(IconName::Search).text_color(cx.theme().muted_foreground))
+    }
+
+    /// Die eine Leiste über dem Inhalt (macOS-Toolbar): Ampeln, Seitenleisten-Schalter,
+    /// Seitentitel mit Live-Status, Ansicht und Aktionen, rechts die Suche.
     fn render_toolbar(
         &self,
         prefs: &Prefs,
         derived: Option<&Derived>,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
+        let radar = self.radar.read(cx);
+        let manual_refresh = self.manual_refresh && radar.status().state == PollState::Polling;
+        let notify = prefs.notify;
+        let demo = radar.is_demo();
+        let collapsed = self.sidebar_collapsed(prefs);
+        let compact = self.toolbar_compact;
+        let open = prefs.tab == Tab::Open;
         let title = match prefs.tab {
             Tab::Open => tr!("Open Pull Requests", "Offene Pull Requests"),
             Tab::Merged => tr!("Recently Merged", "Zuletzt gemergt"),
             Tab::Releases => tr!("Releases", "Releases"),
         };
-        let compact = self.compact;
-        let search = div()
-            .map(|d| if compact { d.w_full() } else { d.w_64() })
-            .child(
-                Input::new(&self.search).small().cleanable(true).prefix(
-                    Icon::new(IconName::Search)
-                        .small()
-                        .text_color(cx.theme().muted_foreground),
-                ),
+
+        let sidebar = Button::new("sidebar")
+            .ghost()
+            .icon(if collapsed {
+                IconName::PanelLeftOpen
+            } else {
+                IconName::PanelLeftClose
+            })
+            .tooltip_with_action(
+                if collapsed {
+                    tr!("Show Sidebar", "Seitenleiste einblenden")
+                } else {
+                    tr!("Hide Sidebar", "Seitenleiste ausblenden")
+                },
+                &ToggleSidebar,
+                Some(CONTEXT),
+            )
+            .on_click(
+                cx.listener(|this, _, window, cx| this.toggle_sidebar(&ToggleSidebar, window, cx)),
             );
-        let merge_all = (prefs.tab == Tab::Open)
-            .then(|| self.render_merge_all(derived, cx))
-            .flatten();
-        let controls = h_flex().gap_2().flex_shrink_0().children(merge_all).when(
-            prefs.tab == Tab::Open,
-            |this| {
-                let flow = prefs.view == View::Flow;
-                this.child(
-                    ButtonGroup::new("view")
-                        .small()
-                        .outline()
-                        .child(
-                            Button::new("view-list")
-                                .icon(Lucide::List)
-                                .when(!compact, |b| b.label(tr!("List", "Liste")))
-                                .when(compact, |b| b.tooltip(tr!("List", "Liste")))
-                                .selected(!flow),
+
+        let heading = v_flex()
+            .flex_1()
+            .min_w_0()
+            .child(
+                h_flex()
+                    .gap_2()
+                    .min_w_0()
+                    .child(div().min_w_0().truncate().text_title().child(title))
+                    .when(demo, |this| {
+                        this.child(
+                            Tag::info()
+                                .xsmall()
+                                .text_small()
+                                .rounded_full()
+                                .flex_none()
+                                .child("Demo"),
                         )
-                        .child(
-                            Button::new("view-flow")
-                                .icon(Lucide::Workflow)
-                                .when(!compact, |b| b.label("Flow"))
-                                .when(compact, |b| b.tooltip("Flow"))
-                                .selected(flow),
-                        )
-                        .on_click(cx.listener(|this, clicked: &Vec<usize>, _, cx| {
-                            let view = if clicked.contains(&1) {
-                                View::Flow
-                            } else {
-                                View::List
-                            };
-                            this.update_prefs(cx, |p| p.view = view);
-                        })),
+                    }),
+            )
+            .child(self.render_live_status(cx));
+
+        let view = open.then(|| {
+            let flow = prefs.view == View::Flow;
+            ButtonGroup::new("view")
+                .outline()
+                .child(
+                    Button::new("view-list")
+                        .icon(Lucide::List)
+                        .when(!compact, |b| b.label(tr!("List", "Liste")))
+                        .when(compact, |b| b.tooltip(tr!("List", "Liste")))
+                        .selected(!flow),
                 )
                 .child(
-                    Button::new("grouped")
-                        .ghost()
-                        .small()
-                        .icon(Lucide::Layers)
-                        .selected(prefs.grouped)
-                        .tooltip_with_action(
-                            if prefs.grouped {
-                                tr!("Flat List", "Flache Liste")
-                            } else {
-                                tr!("Group by Repo", "Nach Repo gruppieren")
-                            },
-                            &ToggleGrouped,
-                            Some(CONTEXT),
-                        )
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.toggle_grouped(&ToggleGrouped, window, cx)
-                        })),
+                    Button::new("view-flow")
+                        .icon(Lucide::Workflow)
+                        .when(!compact, |b| b.label("Flow"))
+                        .when(compact, |b| b.tooltip("Flow"))
+                        .selected(flow),
                 )
-            },
-        );
-        let heading = h_flex().gap_2().min_w_0().child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .truncate()
-                .text_title()
-                .child(title),
-        );
+                .on_click(cx.listener(|this, clicked: &Vec<usize>, _, cx| {
+                    let view = if clicked.contains(&1) {
+                        View::Flow
+                    } else {
+                        View::List
+                    };
+                    this.update_prefs(cx, |p| p.view = view);
+                }))
+        });
+        let grouped = open.then(|| {
+            Button::new("grouped")
+                .ghost()
+                .icon(Lucide::Layers)
+                .selected(prefs.grouped)
+                .tooltip_with_action(
+                    if prefs.grouped {
+                        tr!("Flat List", "Flache Liste")
+                    } else {
+                        tr!("Group by Repo", "Nach Repo gruppieren")
+                    },
+                    &ToggleGrouped,
+                    Some(CONTEXT),
+                )
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.toggle_grouped(&ToggleGrouped, window, cx)
+                }))
+        });
+        let merge_all = open.then(|| self.render_merge_all(derived, cx)).flatten();
 
-        // Schmal: Titel und Umschalter oben, Suche in voller Breite darunter.
-        if compact {
-            return v_flex()
-                .gap_2()
-                .px_4()
-                .py_2()
-                .border_b_1()
-                .border_color(cx.theme().border)
-                .child(heading.child(controls))
-                .child(search);
-        }
-        v_flex()
-            .px_4()
-            .py_2()
-            .border_b_1()
-            .border_color(cx.theme().border)
-            .child(heading.child(search).child(controls))
+        let refresh = Button::new("refresh")
+            .ghost()
+            .icon(IconName::RefreshCw)
+            // Hintergrund-Polls drehen keinen Spinner – jeder Animationsframe baut das Fenster neu auf.
+            .loading(manual_refresh)
+            .tooltip_with_action(tr!("Refresh", "Aktualisieren"), &Refresh, Some(CONTEXT))
+            .on_click(cx.listener(|this, _, window, cx| this.refresh(&Refresh, window, cx)));
+        let bell = Button::new("notify")
+            .ghost()
+            .icon(if notify {
+                Icon::new(IconName::Bell)
+            } else {
+                Icon::new(Lucide::BellOff)
+            })
+            .selected(notify)
+            .tooltip(if notify {
+                tr!("Turn off notifications", "Benachrichtigungen aus")
+            } else {
+                tr!(
+                    "Notify when a pipeline fails or passes and on merge",
+                    "Benachrichtigen bei roter/grüner Pipeline und Merge"
+                )
+            })
+            .on_click(
+                cx.listener(|this, _, _, cx| this.update_prefs(cx, |p| p.notify = !p.notify)),
+            );
+        let settings = Button::new("settings")
+            .ghost()
+            .icon(IconName::Settings2)
+            .tooltip_with_action(
+                tr!("Repositories…", "Repositories…"),
+                &OpenSettings,
+                Some(CONTEXT),
+            )
+            .on_click(
+                cx.listener(|this, _, window, cx| this.open_settings(&OpenSettings, window, cx)),
+            );
+
+        TitleBar::new()
+            .h(TOOLBAR_H)
+            .when(cfg!(target_os = "macos"), |this| this.pl(TRAFFIC_LIGHTS_W))
+            .child(
+                // Absolut: Die innere Leiste von `TitleBar` schrumpft nicht unter ihren Inhalt;
+                // so zählt der Inhalt nicht mit, und der Seitentitel kürzt im schmalen Fenster.
+                h_flex()
+                    .absolute()
+                    .inset_0()
+                    .pr_3()
+                    .gap_3()
+                    .child(controls("toolbar-leading").child(sidebar))
+                    .child(heading)
+                    .child(
+                        controls("toolbar-trailing")
+                            .flex_shrink_0()
+                            .gap_1()
+                            .children(view)
+                            .children(grouped)
+                            .when_some(merge_all, |this, b| this.child(div().pl_1().child(b)))
+                            .child(div().w_2())
+                            .child(refresh)
+                            .child(bell)
+                            .child(settings)
+                            .when(!compact, |this| {
+                                this.child(div().w(SEARCH_W).pl_2().child(self.render_search(cx)))
+                            }),
+                    ),
+            )
     }
+}
+
+/// Bedienelemente in der Toolbar. Die Titelleiste verschiebt das Fenster beim Ziehen und zoomt
+/// beim Doppelklick; über Buttons und der Suche soll beides nicht passieren (sonst zieht eine
+/// Textauswahl das Fenster mit, ein schneller Doppelklick auf „Aktualisieren“ zoomt).
+fn controls(id: &'static str) -> Stateful<Div> {
+    h_flex()
+        .id(id)
+        .items_center()
+        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
 }
 
 impl Render for Workspace {
@@ -1416,6 +1422,7 @@ impl Render for Workspace {
         }
         let docked = !self.narrow && !prefs.sidebar_hidden;
         let content_w = if docked { width - SIDEBAR_W } else { width };
+        self.toolbar_compact = width < TOOLBAR_COMPACT_W;
         let compact = content_w < COMPACT_W;
         if compact != self.compact {
             self.compact = compact;
@@ -1451,7 +1458,7 @@ impl Render for Workspace {
             )
             .when(!VIBRANCY, |this| this.bg(cx.theme().background))
             .text_color(cx.theme().foreground)
-            .child(self.render_title_bar(cx))
+            .child(self.render_toolbar(&prefs, derived.as_ref(), cx))
             .child(
                 h_flex()
                     .flex_1()
@@ -1466,7 +1473,17 @@ impl Render for Workspace {
                             .flex_1()
                             .min_w_0()
                             .bg(cx.theme().background)
-                            .child(self.render_toolbar(&prefs, derived.as_ref(), cx))
+                            // Schmales Fenster: Die Suche passt nicht mehr in die Toolbar.
+                            .when(self.toolbar_compact, |this| {
+                                this.child(
+                                    div()
+                                        .px_4()
+                                        .py_2()
+                                        .border_b_1()
+                                        .border_color(cx.theme().border)
+                                        .child(self.render_search(cx)),
+                                )
+                            })
                             .when_some(error, |this, e| {
                                 this.child(
                                     div().px_4().pt_4().child(
