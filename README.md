@@ -13,6 +13,7 @@ Dazu gibt es eine **iOS-/iPadOS-App** mit denselben Funktionen in SwiftUI – si
 - **Zuletzt gemergt** als Timeline nach Tagen
 - **Releases** aller Repos inkl. Beschreibung
 - **Live**: pollt GitHub per GraphQL (alle Repos in wenigen Requests); läuft irgendwo eine Pipeline, alle 10 s statt 30 s
+- **Schont das API-Kontingent**: fragt je Repo nur so viele offene PRs ab, wie es gerade gibt (GitHub berechnet die Kosten nach der Seitengröße), verbraucht im Dauerbetrieb höchstens 30 % des Stundenkontingents, hält 20 % für Aktionen und andere Tools frei und fragt Branch-Regeln per ETag nach (304 kostet nichts)
 - Seitenleiste mit Ansichten, Schnellfiltern (läuft / rot / grün / Auto-Merge / Konflikt / „Dein Review“ / „Von dir“) und Repos, Repositories-Sheet (`⌘,`)
 - **Menüleisten-Symbol** mit der Zahl roter Pipelines (dazu Badge am Dock-Symbol); das Menü listet die neuesten roten PRs (Klick öffnet sie auf GitHub), zeigt alle roten PRs im Fenster und öffnet PR Radar auch nach `⌘W` wieder
 - **Beim Anmelden starten** im Menü „PR Radar“ bzw. im Menüleisten-Menü (nur aus dem App-Bundle; verlangt macOS eine Freigabe, öffnen sich die Systemeinstellungen → Anmeldeobjekte). Nach der Anmeldung startet PR Radar ohne Fenster, nur mit dem Menüleisten-Symbol; Menüleiste oder Dock-Symbol öffnen das Fenster

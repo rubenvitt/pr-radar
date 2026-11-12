@@ -11,11 +11,17 @@ use crate::model::*;
 pub struct Nodes<T> {
     #[serde(default = "Vec::new")]
     pub nodes: Vec<Option<T>>,
+    /// Gesamtzahl laut GitHub, nur wo abgefragt (offene PRs)
+    #[serde(default, rename = "totalCount")]
+    pub total_count: Option<usize>,
 }
 
 impl<T> Default for Nodes<T> {
     fn default() -> Self {
-        Self { nodes: Vec::new() }
+        Self {
+            nodes: Vec::new(),
+            total_count: None,
+        }
     }
 }
 

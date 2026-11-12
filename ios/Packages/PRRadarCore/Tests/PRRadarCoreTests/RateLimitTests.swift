@@ -157,9 +157,44 @@ private struct FixedTransport: HTTPTransport {
     @Test func leeresKontingentNachErfolgPausiertBisReset() {
         let empty = RateLimit(remaining: 0, limit: 5000, resetAt: now.addingTimeInterval(120))
         #expect(waitAfterSuccess(empty, base: activeInterval, now: now) == 125)
-        let some = RateLimit(remaining: 10, limit: 5000, resetAt: now.addingTimeInterval(120))
-        #expect(waitAfterSuccess(some, base: activeInterval, now: now) == activeInterval)
+        // Nur noch die Reserve übrig → ebenfalls bis zum Reset
+        let reserve = RateLimit(remaining: 10, limit: 5000, resetAt: now.addingTimeInterval(120))
+        #expect(waitAfterSuccess(reserve, base: activeInterval, now: now) == 125)
         #expect(waitAfterSuccess(nil, base: normalInterval, now: now) == normalInterval)
+    }
+
+    @Test func guenstigePollsBehaltenDasIntervall() {
+        // 1 Punkt je Poll: 0,3 × 5000 = 1500 Punkte/h erlauben alle 2,4 s einen Poll.
+        let rl = RateLimit(remaining: 4900, limit: 5000, resetAt: now.addingTimeInterval(3000), cost: 1)
+        #expect(waitAfterSuccess(rl, base: activeInterval, now: now) == activeInterval)
+        #expect(waitAfterSuccess(rl, base: normalInterval, now: now) == normalInterval)
+    }
+
+    @Test func teurePollsStreckenDasIntervall() {
+        // 25 Punkte je Poll: höchstens 1500 Punkte/h → alle 60 s.
+        let rl = RateLimit(remaining: 4900, limit: 5000, resetAt: now.addingTimeInterval(3000), cost: 25)
+        #expect(abs(waitAfterSuccess(rl, base: activeInterval, now: now) - 60) < 0.001)
+    }
+
+    @Test func knappesKontingentWirdBisZumResetVerteilt() {
+        // 1100 übrig, 1000 Reserve → 100 Punkte für 1800 s, 5 je Poll → alle 90 s.
+        let rl = RateLimit(remaining: 1100, limit: 5000, resetAt: now.addingTimeInterval(1800), cost: 5)
+        #expect(abs(waitAfterSuccess(rl, base: activeInterval, now: now) - 90) < 0.001)
+        // Ohne bekannten Reset bleibt nur die Dauerbegrenzung (5 × 3600 / 1500 = 12 s).
+        let noReset = RateLimit(remaining: 1100, limit: 5000, resetAt: nil, cost: 5)
+        #expect(abs(waitAfterSuccess(noReset, base: activeInterval, now: now) - 12) < 0.001)
+        // Unbekanntes Limit → normales Intervall
+        let unknown = RateLimit(remaining: 1100, limit: 0, resetAt: nil, cost: 5)
+        #expect(waitAfterSuccess(unknown, base: normalInterval, now: now) == normalInterval)
+    }
+
+    @Test func kontingentMehrererRequestsWirdZusammengefasst() {
+        let a = RateLimit(remaining: 4000, limit: 5000, cost: 3)
+        let b = RateLimit(remaining: 3990, limit: 5000, cost: 2)
+        #expect(mergeRateLimits(a, b) == RateLimit(remaining: 3990, limit: 5000, cost: 5))
+        #expect(mergeRateLimits(b, a) == RateLimit(remaining: 3990, limit: 5000, cost: 5))
+        #expect(mergeRateLimits(nil, a) == a)
+        #expect(mergeRateLimits(nil, nil) == nil)
     }
 
     @Test func intervallText() {

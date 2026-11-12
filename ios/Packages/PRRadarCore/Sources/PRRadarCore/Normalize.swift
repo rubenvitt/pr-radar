@@ -6,17 +6,23 @@ import Foundation
 
 struct Nodes<T: Decodable & Sendable>: Decodable, Sendable {
     var nodes: [T?]
+    /// Gesamtzahl laut GitHub, nur wo abgefragt (offene PRs)
+    var totalCount: Int?
 
-    init(_ nodes: [T?] = []) { self.nodes = nodes }
+    init(_ nodes: [T?] = [], totalCount: Int? = nil) {
+        self.nodes = nodes
+        self.totalCount = totalCount
+    }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         nodes = try c.decodeIfPresent([T?].self, forKey: .nodes) ?? []
+        totalCount = try? c.decodeIfPresent(Int.self, forKey: .totalCount)
     }
 
     var items: [T] { nodes.compactMap { $0 } }
 
-    private enum CodingKeys: String, CodingKey { case nodes }
+    private enum CodingKeys: String, CodingKey { case nodes, totalCount }
 }
 
 enum RawContext: Decodable, Sendable {
