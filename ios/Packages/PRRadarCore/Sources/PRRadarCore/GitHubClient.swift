@@ -295,7 +295,7 @@ actor OpenCounts {
 }
 
 /// Rohdaten eines Abrufdurchgangs, je Repo in Abfragereihenfolge.
-private struct Round {
+private struct FetchRound {
     enum Entry {
         case repo(RawRepo)
         case unavailable(String)
@@ -452,7 +452,7 @@ public final class GitHubClient: GitHubAPI {
     }
 
     /// Ein Durchgang über alle übergebenen Repos (in Blöcken zu je `chunkSize`, parallel).
-    private func fetchRound(_ sized: [(String, Int)]) async throws -> Round {
+    private func fetchRound(_ sized: [(String, Int)]) async throws -> FetchRound {
         let chunks = stride(from: 0, to: sized.count, by: chunkSize).map {
             Array(sized[$0..<min($0 + chunkSize, sized.count)])
         }
@@ -476,7 +476,7 @@ public final class GitHubClient: GitHubAPI {
         // Sonst Fehler in Chunk-Reihenfolge melden – wie die macOS-App
         let responses = try results.map { try $0!.get() }
 
-        var round = Round()
+        var round = FetchRound()
         for (chunk, res) in zip(chunks, responses) {
             guard let data = res.data else {
                 let msg = res.errors.map(\.message).joined(separator: "; ")
