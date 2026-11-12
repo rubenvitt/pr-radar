@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Help and FAQ
+    url: https://pr-radar.rubeen.dev/support/
+    about: Token permissions, auto-merge, notifications – maybe your question is already answered.
+  - name: Privacy policy
+    url: https://pr-radar.rubeen.dev/privacy/
+    about: What PR Radar does with your data (short version – nothing leaves your device except requests to GitHub).

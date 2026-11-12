@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Support – PR Radar</title>
-  <meta name="description" content="Help with PR Radar: contact, token permissions, auto-merge, notifications and refunds.">
+  <meta name="description" content="Help with PR Radar: GitHub issues, token permissions, auto-merge and notifications.">
   <link rel="alternate" hreflang="en" href="/support/">
   <link rel="alternate" hreflang="de" href="/de/support/">
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
@@ -27,22 +27,22 @@
 
   <main id="main" class="prose">
     <h1>Support</h1>
-    <p class="meta">Questions, bugs, ideas – write to us. We usually answer within a few working days, in English or German.</p>
+    <p class="meta">Questions, bugs, ideas – open an issue on GitHub. PR Radar is a free side project, so answers can take a few days. English or German are both fine.</p>
 
     <div class="callout">
       <h3>Contact</h3>
-      <p>Email: <a href="mailto:pr-radar@rubeen.dev?subject=PR%20Radar%20support">pr-radar@rubeen.dev</a></p>
-      <p class="note">Bugs and feature requests can also go to <a href="https://github.com/rubenvitt/pr-radar/issues">GitHub Issues</a>. Issues there are public.</p>
+      <p><a class="button primary" href="https://github.com/rubenvitt/pr-radar/issues/new/choose">Open an issue on GitHub</a></p>
+      <p class="note">Pick a template: bug, question or idea. You need a GitHub account, and issues are public, so leave out anything you don't want to share. Existing issues: <a href="https://github.com/rubenvitt/pr-radar/issues">all issues</a>. In the apps: <em>Help → Report a Problem…</em> on the Mac, <em>Settings → About → Report a Problem</em> on iPhone and iPad.</p>
     </div>
 
     <h2>What helps us help you</h2>
     <ul>
-      <li>App and version: on the Mac under <em>PR Radar → About PR Radar</em>, on iPhone and iPad under <em>Settings → Info</em></li>
+      <li>App and version: on the Mac under <em>PR Radar → About PR Radar</em>, on iPhone and iPad under <em>Settings → About</em></li>
       <li>Your macOS or iOS version</li>
       <li>What you did, what you expected and what happened instead</li>
       <li>On the Mac: the log file, via <em>Help → Show log in Finder</em>. It contains no tokens, but may contain repository names.</li>
     </ul>
-    <p><strong>Never send us your GitHub token.</strong> We will never ask for it.</p>
+    <p><strong>Never post your GitHub token.</strong> We will never ask for it. If you attach a log, check it first.</p>
 
     <h2>Frequently asked questions</h2>
 
@@ -85,13 +85,9 @@
       <summary>How do I remove all my data?</summary>
       <p><strong>iPhone and iPad:</strong> remove the token in the app and delete the app.</p>
       <p><strong>Mac:</strong> delete the app and the folders <code>~/Library/Application Support/pr-radar/</code> and <code>~/Library/Logs/PR Radar/</code>. If the app ever used a fallback log, also delete the folder that <code>open "$TMPDIR/pr-radar"</code> opens in Terminal. The Mac app reads your token from <code>GITHUB_TOKEN</code>, <code>GH_TOKEN</code> or the GitHub CLI and does not store it itself, so remove it there (for example with <code>gh auth logout</code>).</p>
-      <p>If you no longer need the token at all, revoke it on GitHub under <a href="https://github.com/settings/tokens">Settings → Developer settings → Tokens</a>. The apps send nothing to us. We only keep what you send us yourself (support emails) and, for direct purchases, the order details from the reseller. To have those deleted, write to us, see the <a href="/privacy/#rights">privacy policy</a>.</p>
+      <p>If you no longer need the token at all, revoke it on GitHub under <a href="https://github.com/settings/tokens">Settings → Developer settings → Tokens</a>. The apps send nothing to us, so there is nothing else to delete on our side. Issues you opened on GitHub you can edit or delete there yourself, see the <a href="/privacy/#rights">privacy policy</a>.</p>
     </details>
 
-    <details>
-      <summary>How do I get a refund?</summary>
-      <p>For purchases in the App Store, request a refund from Apple at <a href="https://reportaproblem.apple.com">reportaproblem.apple.com</a>. For Mac licenses bought directly, the reseller named on your invoice handles refunds. Write to us if you are unsure, we will help.</p>
-    </details>
   </main>
 
   <footer class="site-footer">
@@ -100,8 +96,6 @@
       <nav aria-label="Legal">
         <a href="/support/" aria-current="page">Support</a>
         <a href="/privacy/">Privacy</a>
-        <a href="/terms/">Terms (EULA)</a>
-        <a href="/imprint/">Imprint</a>
         <a href="https://github.com/rubenvitt/pr-radar">GitHub</a>
       </nav>
     </div>

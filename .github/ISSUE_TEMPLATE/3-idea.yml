@@ -1,0 +1,39 @@
+name: Idea or feature request
+description: Suggest something PR Radar should do (better).
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        English or German, both are fine. PR Radar is a free side project, so not every idea will make it – but every one is read.
+  - type: dropdown
+    id: app
+    attributes:
+      label: App
+      multiple: true
+      options:
+        - Mac
+        - iPhone
+        - iPad
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: PR Radar version you use
+      description: "Mac: PR Radar → About PR Radar. iPhone/iPad: Settings → About."
+  - type: input
+    id: os
+    attributes:
+      label: macOS / iOS / iPadOS version
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The situation or problem behind the idea helps more than a finished solution.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Your idea

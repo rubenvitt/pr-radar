@@ -54,7 +54,11 @@ Konfiguration: `~/Library/Application Support/pr-radar/config.json`. Repos im Re
 
 Protokoll: `~/Library/Logs/PR Radar/pr-radar.log` (Fehler, Warnungen und Abstürze, keine Tokens; Menü Hilfe → „Protokoll im Finder zeigen“).
 
-Website, Support, Datenschutz, EULA und Impressum: <https://pr-radar.rubeen.dev> (auch im Menü Hilfe).
+Website und Datenschutz: <https://pr-radar.rubeen.dev> (auch im Menü Hilfe).
+
+## Support
+
+PR Radar ist kostenlos. Fragen, Fehler und Wünsche bitte als [GitHub-Issue](https://github.com/rubenvitt/pr-radar/issues/new/choose) mit der passenden Vorlage (in der Mac-App: Hilfe → „Problem melden …“, auf iPhone und iPad: Einstellungen → Info → „Problem melden“). Issues sind öffentlich, also nie einen Token oder ungeprüfte Protokolle anhängen.
 
 ## Anmeldung und Token
 
@@ -82,7 +86,7 @@ Auto-Merge muss im Repo erlaubt sein (Settings → General → *Allow auto-merge
 | `native/src/radar.rs` | Poll-Zyklus, Snapshot, Merge/Auto-Merge inkl. Wiederholung |
 | `native/src/ui/` | Fenster, Seitenleiste, Liste, Flow, Einstellungen |
 | `ios/` | iOS-/iPadOS-App (SwiftUI) mit plattformunabhängigem Kern `PRRadarCore` |
-| `site/` | Produktseite mit Support, Datenschutz, EULA und Impressum (Cloudflare, siehe [`site/README.md`](site/README.md)) |
+| `site/` | Produktseite mit Support und Datenschutz (Cloudflare, siehe [`site/README.md`](site/README.md)) |
 
 ## Ideen / nächste Schritte
 

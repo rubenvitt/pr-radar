@@ -1,0 +1,35 @@
+name: Question
+description: Ask how something works or why PR Radar behaves a certain way.
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Maybe it's already answered in the [FAQ](https://pr-radar.rubeen.dev/support/). English or German, both are fine.
+        **Issues are public.** Never post your GitHub token.
+  - type: dropdown
+    id: app
+    attributes:
+      label: App
+      options:
+        - Mac
+        - iPhone
+        - iPad
+        - Not app-specific
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: PR Radar version
+      description: "Mac: PR Radar → About PR Radar. iPhone/iPad: Settings → About."
+  - type: input
+    id: os
+    attributes:
+      label: macOS / iOS / iPadOS version
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+    validations:
+      required: true

@@ -74,12 +74,17 @@ def resolve(root: Path, page: Path, href: str) -> Path | None:
 def main(root: Path) -> int:
     root = root.resolve()
     pages = {p.resolve(): Page() for p in root.rglob("*.html")}
+    texts = {p: p.read_text(encoding="utf-8") for p in pages}
     for path, parser in pages.items():
-        parser.feed(path.read_text(encoding="utf-8"))
+        parser.feed(texts[path])
 
     errors: list[str] = []
     for path, parser in pages.items():
         rel = path.relative_to(root)
+        if "{{" in texts[path]:
+            errors.append(f"{rel}: enthält einen Platzhalter {{{{…}}}}, die Seite wird unverändert ausgeliefert")
+        if "mailto:" in texts[path]:
+            errors.append(f"{rel}: enthält einen mailto-Link, Support läuft über GitHub Issues")
         if not parser.lang:
             errors.append(f"{rel}: <html lang> fehlt")
         if not parser.title:

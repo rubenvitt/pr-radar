@@ -286,7 +286,7 @@ private struct StatusSection: View {
     }
 }
 
-/// Version, Produktseite, Support und Rechtstexte (Pflicht für den App Store).
+/// Version, Produktseite, Support (GitHub Issues) und Datenschutz (Pflicht für den App Store).
 private struct InfoSection: View {
     var body: some View {
         Section("About") {
@@ -297,17 +297,11 @@ private struct InfoSection: View {
             Link(destination: Site.url(.support)) {
                 Label("Support", systemImage: "questionmark.circle")
             }
-            Link(destination: Site.supportMail) {
-                Label("Email Support", systemImage: "envelope")
+            Link(destination: Site.reportIssueURL) {
+                Label("Report a Problem", systemImage: "exclamationmark.bubble")
             }
             Link(destination: Site.url(.privacy)) {
                 Label("Privacy Policy", systemImage: "hand.raised")
-            }
-            Link(destination: Site.url(.terms)) {
-                Label("License Agreement (EULA)", systemImage: "doc.text")
-            }
-            Link(destination: Site.url(.imprint)) {
-                Label("Legal Notice", systemImage: "building.columns")
             }
             Link(destination: URL(string: "https://github.com/rubenvitt/pr-radar")!) {
                 Label("Source Code on GitHub", systemImage: "chevron.left.forwardslash.chevron.right")

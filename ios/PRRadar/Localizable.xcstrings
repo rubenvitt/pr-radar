@@ -616,17 +616,6 @@
         }
       }
     },
-    "Email Support" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "E-Mail an den Support"
-          }
-        }
-      }
-    },
     "Enable Auto-merge with %@" : {
       "localizations" : {
         "de" : {
@@ -855,28 +844,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Darstellung"
-          }
-        }
-      }
-    },
-    "Legal Notice" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Impressum"
-          }
-        }
-      }
-    },
-    "License Agreement (EULA)" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Lizenzvereinbarung (EULA)"
           }
         }
       }
@@ -1479,6 +1446,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Token entfernen"
+          }
+        }
+      }
+    },
+    "Report a Problem" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Problem melden"
           }
         }
       }

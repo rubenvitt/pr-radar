@@ -1,15 +1,23 @@
 # Kurz- und deutsche Pfade, die Apps, App Store Connect oder Menschen tippen könnten.
-/impressum      /imprint/        301
-/impressum/     /imprint/        301
-/de/impressum   /imprint/        301
-/de/impressum/  /imprint/        301
 /datenschutz    /de/datenschutz/ 301
 /datenschutz/   /de/datenschutz/ 301
 /de/privacy     /de/datenschutz/ 301
 /de/privacy/    /de/datenschutz/ 301
-/eula           /terms/          301
-/eula/          /terms/          301
-/de/terms       /de/eula/        301
-/de/terms/      /de/eula/        301
-/legal          /imprint/        301
-/legal/         /imprint/        301
+# Impressum und EULA gibt es nicht mehr (kein Verkauf, PRR-70). Ältere App-Versionen
+# verlinken sie noch, daher auf die Startseite statt ins Leere.
+/imprint        /                301
+/imprint/       /                301
+/impressum      /                301
+/impressum/     /                301
+/de/impressum   /de/             301
+/de/impressum/  /de/             301
+/legal          /                301
+/legal/         /                301
+/terms          /                301
+/terms/         /                301
+/eula           /                301
+/eula/          /                301
+/de/eula        /de/             301
+/de/eula/       /de/             301
+/de/terms       /de/             301
+/de/terms/      /de/             301
