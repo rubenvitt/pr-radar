@@ -1,6 +1,7 @@
 // UI-Smoke: App startet, alle Tabs sind erreichbar, ohne Token führt der leere Zustand zu den Einstellungen.
 // Läuft in der CI auf einem frischen Simulator (kein Token). Hat der Simulator schon einen Token,
-// prüft der letzte Test stattdessen den hinterlegten Zustand.
+// prüft der letzte Test stattdessen den hinterlegten Zustand. Der Demo-Test zeigt Beispieldaten und
+// prüft, dass auch die Texte aus PRRadarCore (eigenes Bundle) deutsch erscheinen.
 
 import XCTest
 
@@ -10,10 +11,10 @@ final class SmokeTests: XCTestCase {
     }
 
     @MainActor
-    private func launch() -> XCUIApplication {
+    private func launch(_ extra: [String] = []) -> XCUIApplication {
         let app = XCUIApplication()
         // Texte unabhängig von der Simulatorsprache auf Deutsch prüfen
-        app.launchArguments += ["-AppleLanguages", "(de)", "-AppleLocale", "de_DE"]
+        app.launchArguments += ["-AppleLanguages", "(de)", "-AppleLocale", "de_DE"] + extra
         app.launch()
         return app
     }
@@ -65,5 +66,30 @@ final class SmokeTests: XCTestCase {
             openTab("Einstellungen", in: app)
             XCTAssertTrue(app.secureTextFields["Neuen Token eintragen"].waitForExistence(timeout: 5))
         }
+    }
+
+    /// Kern-Texte kommen über `NSLocalizedString(…, bundle: .module)` aus dem Bundle von
+    /// PRRadarCore, nicht aus dem der App. Fehlt dort die deutsche Lokalisierung zur Laufzeit,
+    /// stünden die Schnellfilter englisch in einer sonst deutschen App.
+    @MainActor
+    func testDemoDeutschInklusiveKernTexte() {
+        let app = launch(["--demo"])
+
+        // App-Text (Catalog der App)
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 15), "Tab-Leiste fehlt")
+        XCTAssertTrue(tabBar.buttons["Einstellungen"].exists, "App-Text „Einstellungen“ fehlt")
+
+        // Kern-Text: Schnellfilter `Quick.failed` heißt deutsch „Rot“, englisch „Failed“
+        let rot = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Rot")).firstMatch
+        let failed = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Failed")).firstMatch
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "All")).firstMatch
+            .waitForExistence(timeout: 10), "Schnellfilter „Alle“/„All“ fehlen (Demo nicht gestartet?)")
+        XCTAssertFalse(failed.exists, "Schnellfilter englisch („Failed“) statt deutsch")
+        XCTAssertTrue(rot.exists, "Schnellfilter „Rot“ fehlt")
+
+        // Gewählter Schnellfilter wird zum Titel, ebenfalls aus dem Kern
+        rot.tap()
+        XCTAssertTrue(app.navigationBars["Rot"].waitForExistence(timeout: 5), "Titel „Rot“ fehlt")
     }
 }
