@@ -286,7 +286,12 @@ struct SetupStateView: View {
             ContentUnavailableView {
                 Label("Not Signed In to GitHub", systemImage: "person.badge.key")
             } description: {
-                Text("PR Radar talks to GitHub directly, without a server of its own.")
+                VStack(spacing: 6) {
+                    if app.canLogin {
+                        Text("Step 1 of 2").font(.footnote.weight(.semibold))
+                    }
+                    Text("PR Radar talks to GitHub directly, without a server of its own.")
+                }
             } actions: {
                 if app.canLogin {
                     Button("Sign In with GitHub") {
@@ -304,12 +309,17 @@ struct SetupStateView: View {
             ContentUnavailableView {
                 Label("No Repositories Yet", systemImage: "arrow.triangle.pull")
             } description: {
-                Text("Add repos as owner/name or a GitHub URL.")
+                VStack(spacing: 6) {
+                    Text("Step 2 of 2").font(.footnote.weight(.semibold))
+                    Text("Check the repos PR Radar should watch, or add one by name.")
+                }
             } actions: {
-                Button("Add Repositories") { radar.updatePrefs { $0.tab = .settings } }
+                Button("Choose Repositories") { app.showRepoPicker = true }
                     .buttonStyle(.borderedProminent)
+                Button("Add by Name") { radar.updatePrefs { $0.tab = .settings } }
                 DemoButton()
             }
+            .task { radar.ensureRepoChoices() }
         } else if let error = radar.status.error {
             ContentUnavailableView {
                 Label("Can’t Reach GitHub", systemImage: "wifi.exclamationmark")

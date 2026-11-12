@@ -35,6 +35,9 @@ final class AppState {
     private(set) var login: LoginState = .idle
     @ObservationIgnored private var loginTask: Task<Void, Never>?
     var toast: Toast?
+    /// Repo-Auswahl als Sheet über allem (erster Start nach der Anmeldung). Hängt nicht am
+    /// leeren Zustand, weil der verschwindet, sobald das erste Repo angehakt ist.
+    var showRepoPicker = false
 
     /// Startargument für Screenshots und UI-Tests: App startet direkt im Demo-Modus.
     static let demoLaunchArgument = "--demo"
@@ -84,6 +87,12 @@ final class AppState {
                 // Wer sich anmeldet, will seine eigenen Daten sehen.
                 endDemo()
                 radar.refresh()
+                // Gleich die Repos des (neuen) Kontos laden; beim ersten Start direkt zur Auswahl.
+                liveRadar.loadRepoChoices()
+                if liveRadar.repos.isEmpty {
+                    liveRadar.updatePrefs { $0.tab = .open }
+                    showRepoPicker = true
+                }
                 show(.success, String(localized: "Signed In"), String(localized: "PR Radar is connected to GitHub."))
             } catch {
                 guard !Task.isCancelled, !(error is CancellationError) else { return }
@@ -130,6 +139,8 @@ final class AppState {
         cancelLogin()
         try TokenStore.shared.save(token)
         tokenSource = TokenStore.shared.source
+        // Der Token kann zu einem anderen Konto gehören.
+        liveRadar.resetRepoChoices()
         // Wer einen Token einträgt, will seine eigenen Daten sehen.
         endDemo()
         radar.refresh()
@@ -139,6 +150,9 @@ final class AppState {
         cancelLogin()
         TokenStore.shared.delete()
         tokenSource = TokenStore.shared.source
+        // Die Auswahl gehörte zum alten Konto.
+        liveRadar.resetRepoChoices()
+        showRepoPicker = false
         radar.refresh()
     }
 

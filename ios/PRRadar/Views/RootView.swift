@@ -27,6 +27,9 @@ struct RootView: View {
             }
         }
         .tabViewStyle(.sidebarAdaptable)
+        .sheet(isPresented: Binding(get: { app.showRepoPicker }, set: { app.showRepoPicker = $0 })) {
+            RepoPickerSheet()
+        }
         .overlay(alignment: .top) { ToastOverlay() }
         .background { KeyboardShortcuts() }
     }
