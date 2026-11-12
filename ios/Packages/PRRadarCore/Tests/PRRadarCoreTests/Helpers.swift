@@ -63,10 +63,22 @@ actor FakeGitHub: GitHubAPI {
         self.autoMergeError = autoMergeError
     }
 
+    /// Antwort für `listRepos`: Repos oder Fehlertext
+    var choices: Result<[RepoChoice], GitHubError> = .success([])
+    private(set) var fetches: [[String]] = []
+    private(set) var listCalls = 0
+
     func setSnapshot(_ s: Snapshot) { snapshot = s }
+    func setChoices(_ c: Result<[RepoChoice], GitHubError>) { choices = c }
 
     func fetch(repos: [String]) async throws -> Fetched {
-        Fetched(snapshot: snapshot)
+        fetches.append(repos)
+        return Fetched(snapshot: snapshot)
+    }
+
+    func listRepos() async throws -> [RepoChoice] {
+        listCalls += 1
+        return try choices.get()
     }
 
     func setAutoMerge(prID: String, method: MergeMethod?, head: String?) async throws {

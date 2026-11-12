@@ -28,6 +28,10 @@ open ios/PRRadar.xcodeproj
 Unter *Signing & Capabilities* das eigene Team wählen, dann auf Gerät oder Simulator starten.
 Anmelden geht unter **Einstellungen → Mit GitHub anmelden** (OAuth Device Flow: Code auf github.com/login/device eingeben).
 Alternativ trägt man unter **Erweitert** einen Personal Access Token ein. Beides liegt nur im Schlüsselbund des Geräts.
+Danach führt der leere Zustand zu **Repositories auswählen**: alle Repos des Kontos (eigene, als Mitarbeiter, über
+Organisationen; ohne archivierte, zuletzt aktive zuerst, höchstens 500) mit Suche zum Anhaken. Org-Repos erscheinen nur,
+wenn die Organisation die OAuth App zugelassen hat; fehlende Repos lassen sich weiter per Name hinzufügen
+(**Einstellungen → Repositories**, dort auch die Auswahl aus dem Konto).
 Die Client-ID der OAuth App steht in `PRRadarCore/DeviceFlow.swift` (`builtInClientID`); zum Ausprobieren geht auch `PR_RADAR_GITHUB_CLIENT_ID` im Scheme.
 Für die Entwicklung kann man den Token alternativ im Scheme als Umgebungsvariable `GITHUB_TOKEN` setzen (ist vorbereitet, aber deaktiviert).
 

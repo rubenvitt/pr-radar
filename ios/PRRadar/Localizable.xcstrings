@@ -185,6 +185,16 @@
         }
       }
     },
+    "%lld selected" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld ausgewählt"
+          }
+        }
+      }
+    },
     "%lld via Auto-merge" : {
       "localizations" : {
         "de" : {
@@ -255,22 +265,12 @@
         }
       }
     },
-    "Add Repositories" : {
+    "Add by Name" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Repositories hinzufügen"
-          }
-        }
-      }
-    },
-    "Add repos as owner/name or a GitHub URL." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Füge Repos als owner/name oder GitHub-URL hinzu."
+            "value" : "Per Namen hinzufügen"
           }
         }
       }
@@ -455,12 +455,42 @@
         }
       }
     },
+    "Check the repos PR Radar should watch, or add one by name." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hake die Repos an, die PR Radar beobachten soll, oder füge eines per Namen hinzu."
+          }
+        }
+      }
+    },
     "Checks" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Checks"
+          }
+        }
+      }
+    },
+    "Choose Repositories" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Repositories auswählen"
+          }
+        }
+      }
+    },
+    "Choose from GitHub Account" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aus dem GitHub-Konto auswählen"
           }
         }
       }
@@ -562,6 +592,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Auto-Merge deaktivieren"
+          }
+        }
+      }
+    },
+    "Done" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fertig"
           }
         }
       }
@@ -881,6 +921,16 @@
         }
       }
     },
+    "Loading repositories from GitHub…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lade Repositories von GitHub …"
+          }
+        }
+      }
+    },
     "Loading…" : {
       "localizations" : {
         "de" : {
@@ -1081,12 +1131,22 @@
         }
       }
     },
-    "No repos yet – add one above." : {
+    "No repos yet – choose them from your account or add one by name." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Noch keine Repos – füge oben eins hinzu."
+            "value" : "Noch keine Repos – wähle sie aus deinem Konto oder füge eines per Namen hinzu."
+          }
+        }
+      }
+    },
+    "No repositories found for this account." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für dieses Konto wurden keine Repositories gefunden."
           }
         }
       }
@@ -1221,6 +1281,16 @@
         }
       }
     },
+    "Org repos only appear once the organization approves PR Radar. Missing a repo? Add it by name in Settings." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Org-Repos erscheinen erst, wenn die Organisation PR Radar zugelassen hat. Fehlt ein Repo? Füge es in den Einstellungen per Namen hinzu."
+          }
+        }
+      }
+    },
     "PR Radar Website" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1319,6 +1389,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Datenschutz"
+          }
+        }
+      }
+    },
+    "Private" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privat"
           }
         }
       }
@@ -1464,6 +1544,16 @@
         }
       }
     },
+    "Search repositories" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Repositories durchsuchen"
+          }
+        }
+      }
+    },
     "Settings" : {
       "localizations" : {
         "de" : {
@@ -1571,6 +1661,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Status"
+          }
+        }
+      }
+    },
+    "Step 1 of 2" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schritt 1 von 2"
+          }
+        }
+      }
+    },
+    "Step 2 of 2" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schritt 2 von 2"
           }
         }
       }

@@ -121,6 +121,25 @@ enum Queries {
           }
         """
 
+    /// Repos, die das Konto sieht: eigene, als Mitarbeiter und über Organisationen, zuletzt
+    /// aktive zuerst. Kostet einen Punkt je Seite. Wie `VIEWER_REPOS` der macOS-App.
+    static let viewerRepos = """
+          query($after: String) {
+            viewer {
+              repositories(
+                first: 100
+                after: $after
+                affiliations: [OWNER, COLLABORATOR, ORGANIZATION_MEMBER]
+                ownerAffiliations: [OWNER, COLLABORATOR, ORGANIZATION_MEMBER]
+                orderBy: { field: PUSHED_AT, direction: DESC }
+              ) {
+                pageInfo { hasNextPage endCursor }
+                nodes { nameWithOwner isPrivate isArchived description }
+              }
+            }
+          }
+        """
+
     /// Als GraphQL-String-Literal escaped (JSON-Syntax ist kompatibel).
     private static func jsonString(_ s: String) -> String {
         guard let data = try? JSONEncoder().encode(s), let out = String(data: data, encoding: .utf8)

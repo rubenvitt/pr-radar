@@ -186,6 +186,8 @@ func longestRateLimit(_ errors: [Error], now: Date) -> GitHubError? {
 /// Was die App von GitHub braucht – als Protokoll, damit `Radar` ohne Netz testbar ist.
 public protocol GitHubAPI: Sendable {
     func fetch(repos: [String]) async throws -> Fetched
+    /// Repos des Kontos zur Auswahl beim Einrichten (zuletzt aktive zuerst, ohne archivierte).
+    func listRepos() async throws -> [RepoChoice]
     /// Auto-Merge an (`method`) oder aus (`nil`). `head`: nur, wenn der Branch noch auf diesem Commit steht.
     func setAutoMerge(prID: String, method: MergeMethod?, head: String?) async throws
     /// Mergt – nur, wenn der Branch noch auf `head` steht (sonst lehnt GitHub ab).
@@ -326,6 +328,12 @@ public final class GitHubClient: GitHubAPI {
     }
 
     private func request(_ query: String, variables: [String: String?] = [:]) async throws -> GQLResponse {
+        try await request(query, variables: variables, data: DashboardData.self)
+    }
+
+    private func request<D: Decodable & Sendable>(
+        _ query: String, variables: [String: String?], data _: D.Type
+    ) async throws -> GQLEnvelope<D> {
         var req = URLRequest(url: endpoint)
         req.httpMethod = "POST"
         req.setValue("bearer \(try bearer())", forHTTPHeaderField: "Authorization")
@@ -349,9 +357,9 @@ public final class GitHubClient: GitHubAPI {
         guard (200..<300).contains(status) else {
             throw GitHubError.http(status, gitHubMessage(data))
         }
-        let response: GQLResponse
+        let response: GQLEnvelope<D>
         do {
-            response = try gitHubDecoder().decode(GQLResponse.self, from: data)
+            response = try gitHubDecoder().decode(GQLEnvelope<D>.self, from: data)
         } catch {
             throw GitHubError.unreadable(String(describing: error))
         }
@@ -381,6 +389,22 @@ public final class GitHubClient: GitHubAPI {
 
     public func merge(prID: String, method: MergeMethod, head: String) async throws {
         try await mutate(Queries.mergePR, variables: ["id": prID, "method": method.graphQL, "head": head])
+    }
+
+    /// Repos des Kontos zur Auswahl (eigene, als Mitarbeiter, über Organisationen), zuletzt
+    /// aktive zuerst, ohne archivierte. Höchstens `repoChoicesMax`, damit riesige
+    /// Organisationen nicht minutenlang laden. Wie `list_repos` der macOS-App.
+    public func listRepos() async throws -> [RepoChoice] {
+        var choices: [RepoChoice] = []
+        var after: String?
+        while true {
+            let res = try await request(Queries.viewerRepos, variables: ["after": after], data: ViewerReposData.self)
+            let page = try parseRepoPage(res)
+            choices += page.choices
+            guard let next = page.next, choices.count < repoChoicesMax else { break }
+            after = next
+        }
+        return Array(choices.prefix(repoChoicesMax))
     }
 
     /// Lädt alle Repos (in Blöcken zu je `chunkSize`, parallel) und baut daraus einen Snapshot.
@@ -614,15 +638,18 @@ struct DashboardData: Decodable, Sendable {
     }
 }
 
-struct GQLResponse: Decodable, Sendable {
-    var data: DashboardData?
+typealias GQLResponse = GQLEnvelope<DashboardData>
+
+/// Antwort einer GraphQL-Abfrage: `data` je nach Abfrage, dazu die Fehler.
+struct GQLEnvelope<D: Decodable & Sendable>: Decodable, Sendable {
+    var data: D?
     var errors: [GQLError]
 
     enum CodingKeys: String, CodingKey { case data, errors }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        data = try c.decodeIfPresent(DashboardData.self, forKey: .data)
+        data = try c.decodeIfPresent(D.self, forKey: .data)
         errors = try c.decodeIfPresent([GQLError].self, forKey: .errors) ?? []
     }
 }
@@ -661,4 +688,69 @@ func encodePath(_ s: String) -> String {
             String(format: "%%%02X", b)
         }
     }.joined()
+}
+
+// MARK: - Repo-Auswahl
+
+/// Obergrenze für die Repo-Auswahl (fünf Seiten).
+let repoChoicesMax = 500
+
+/// Ein Repo, das man beim Einrichten auswählen kann.
+public struct RepoChoice: Sendable, Hashable, Identifiable {
+    /// `owner/name`
+    public var full: String
+    public var isPrivate: Bool
+    public var description: String?
+
+    public var id: String { full }
+
+    public init(full: String, isPrivate: Bool = false, description: String? = nil) {
+        self.full = full
+        self.isPrivate = isPrivate
+        self.description = description
+    }
+}
+
+/// `data` der Abfrage `Queries.viewerRepos`.
+struct ViewerReposData: Decodable, Sendable {
+    struct Viewer: Decodable, Sendable { var repositories: Connection? }
+    struct Connection: Decodable, Sendable {
+        var pageInfo: PageInfo?
+        var nodes: [Node?]?
+    }
+    struct PageInfo: Decodable, Sendable {
+        var hasNextPage: Bool?
+        var endCursor: String?
+    }
+    struct Node: Decodable, Sendable {
+        var nameWithOwner: String?
+        var isPrivate: Bool?
+        var isArchived: Bool?
+        var description: String?
+    }
+
+    var viewer: Viewer?
+}
+
+struct RepoPage: Sendable, Equatable {
+    var choices: [RepoChoice]
+    /// Cursor der nächsten Seite, `nil` auf der letzten
+    var next: String?
+}
+
+/// Eine Seite der Repo-Auswahl lesen: archivierte weglassen, leere Beschreibungen als `nil`.
+func parseRepoPage(_ res: GQLEnvelope<ViewerReposData>) throws -> RepoPage {
+    guard let repos = res.data?.viewer?.repositories else {
+        let msg = res.errors.map(\.message).joined(separator: "; ")
+        throw GitHubError.graphQL(msg.isEmpty ? L10n.tr("Empty response from GitHub") : msg)
+    }
+    let choices = (repos.nodes ?? []).compactMap { node -> RepoChoice? in
+        guard let node, node.isArchived != true, let full = node.nameWithOwner else { return nil }
+        let description = node.description?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return RepoChoice(
+            full: full, isPrivate: node.isPrivate ?? false,
+            description: description?.isEmpty == false ? description : nil)
+    }
+    let info = repos.pageInfo
+    return RepoPage(choices: choices, next: info?.hasNextPage == true ? info?.endCursor : nil)
 }

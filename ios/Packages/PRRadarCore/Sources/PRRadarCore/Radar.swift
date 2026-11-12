@@ -117,6 +117,19 @@ public enum RadarError: LocalizedError, Equatable {
     }
 }
 
+/// Repos des Kontos für die Auswahl beim Einrichten (erster Start, Einstellungen).
+public enum RepoChoices: Sendable, Equatable {
+    /// Noch nicht geladen (oder nach dem Abmelden verworfen).
+    case idle
+    case loading
+    case loaded([RepoChoice])
+    case failed(String)
+}
+
+/// Wartezeit nach dem Anhaken in der Repo-Auswahl, bevor neu geladen wird: Wer mehrere Repos
+/// hintereinander anhakt, löst so einen Abruf aus statt einem je Häkchen.
+let selectionSettle: TimeInterval = 0.8
+
 /// Uhr und Warten – austauschbar, damit Wiederholungen in Tests nicht wirklich warten.
 public struct Timing: Sendable {
     public var now: @Sendable () -> Date
@@ -207,6 +220,8 @@ public final class Radar {
     public private(set) var retrying: Set<String> = []
     /// Geänderte PRs (ID → Epoche) – die Oberfläche hebt sie kurz hervor.
     public private(set) var flashes: [String: Int] = [:]
+    /// Repos des Kontos zur Auswahl
+    public private(set) var repoChoices: RepoChoices = .idle
 
     /// Gemergte PRs, die bis zum nächsten Poll noch als „läuft“ gelten
     private var awaitingRefresh: Set<String> = []
@@ -224,6 +239,9 @@ public final class Radar {
     @ObservationIgnored private let cache: SnapshotCache?
     @ObservationIgnored private let timing: Timing
     @ObservationIgnored private var pollTask: Task<Void, Never>?
+    @ObservationIgnored private var choicesTask: Task<Void, Never>?
+    /// Verzögertes Neuladen nach Änderungen in der Repo-Auswahl
+    @ObservationIgnored private(set) var settleTask: Task<Void, Never>?
 
     public init(
         github: GitHubAPI, store: ConfigStore? = .standard, cache: SnapshotCache? = .standard,
@@ -271,6 +289,9 @@ public final class Radar {
     public func stop() {
         pollTask?.cancel()
         pollTask = nil
+        // Ein ausstehendes Neuladen nach der Repo-Auswahl holt `refresh()` beim nächsten Start nach.
+        settleTask?.cancel()
+        settleTask = nil
         if status.state == .polling { status.state = .idle }
     }
 
@@ -370,6 +391,67 @@ public final class Radar {
         config.repos.append(full)
         try store?.save(config)
         refresh()
+    }
+
+    // MARK: Repo-Auswahl
+
+    /// Lädt die Repos des Kontos für die Auswahl, falls noch nicht geschehen (oder fehlgeschlagen).
+    public func ensureRepoChoices() {
+        switch repoChoices {
+        case .idle, .failed: loadRepoChoices()
+        case .loading, .loaded: break
+        }
+    }
+
+    /// Repos des Kontos (neu) laden.
+    public func loadRepoChoices() {
+        choicesTask?.cancel()
+        repoChoices = .loading
+        choicesTask = Task { [weak self, github] in
+            let result: RepoChoices
+            do {
+                result = .loaded(try await github.listRepos())
+            } catch {
+                result = .failed(error.localizedDescription)
+            }
+            guard !Task.isCancelled else { return }
+            self?.repoChoices = result
+        }
+    }
+
+    /// Auswahl verwerfen, z. B. nach dem Abmelden: Sie gehörte zum alten Konto.
+    public func resetRepoChoices() {
+        choicesTask?.cancel()
+        choicesTask = nil
+        repoChoices = .idle
+    }
+
+    /// Wird `full` beobachtet? Groß-/Kleinschreibung zählt nicht, wie bei GitHub.
+    public func isWatched(_ full: String) -> Bool {
+        config.repos.contains { $0.caseInsensitiveCompare(full) == .orderedSame }
+    }
+
+    /// Anhaken in der Repo-Auswahl: sofort speichern, aber erst kurz danach neu laden. Mehrere
+    /// Häkchen kurz hintereinander lösen so einen Abruf aus statt einem je Häkchen.
+    public func setWatched(_ full: String, _ watched: Bool) throws {
+        let present = config.repos.first { $0.caseInsensitiveCompare(full) == .orderedSame }
+        switch (watched, present) {
+        case (true, nil):
+            config.repos.append(full)
+        case let (false, key?):
+            config.repos.removeAll { $0 == key }
+            config.prefs.repoFilter.removeAll { $0 == key }
+        default:
+            return
+        }
+        try store?.save(config)
+        settleTask?.cancel()
+        settleTask = Task { [weak self, timing] in
+            guard !Task.isCancelled else { return }
+            do { try await timing.sleep(selectionSettle) } catch { return }
+            guard !Task.isCancelled else { return }
+            self?.refresh()
+        }
     }
 
     public func removeRepo(_ full: String) throws {

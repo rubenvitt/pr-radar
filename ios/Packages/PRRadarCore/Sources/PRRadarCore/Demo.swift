@@ -236,6 +236,11 @@ public actor DemoGitHub: GitHubAPI {
         return Fetched(snapshot: s, rateLimit: RateLimit(remaining: 4_986, limit: 5_000))
     }
 
+    /// Die Beispiel-Repos; eigene gibt es in der Demo nicht.
+    public func listRepos() async throws -> [RepoChoice] {
+        DemoData.repos.map { RepoChoice(full: $0) }
+    }
+
     public func setAutoMerge(prID: String, method: MergeMethod?, head: String?) async throws {
         let i = try index(prID, head: head)
         snapshot.open[i].autoMerge = method.map { AutoMerge(method: $0, enabledBy: DemoData.viewer) }

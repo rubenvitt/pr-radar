@@ -149,12 +149,20 @@ private struct TokenSection: View {
 }
 
 private struct ReposSection: View {
+    @Environment(AppState.self) private var app
     @Environment(Radar.self) private var radar
     @State private var input = ""
     @State private var error: String?
 
     var body: some View {
         Section {
+            if app.hasToken {
+                NavigationLink {
+                    RepoPickerView()
+                } label: {
+                    Label("Choose from GitHub Account", systemImage: "checklist")
+                }
+            }
             HStack {
                 TextField("owner/repo or GitHub URL", text: $input)
                     .textInputAutocapitalization(.never)
@@ -170,7 +178,7 @@ private struct ReposSection: View {
                 Text(error).font(.footnote).foregroundStyle(.red)
             }
             if radar.repos.isEmpty {
-                Text("No repos yet – add one above.")
+                Text("No repos yet – choose them from your account or add one by name.")
                     .foregroundStyle(.secondary)
             }
             ForEach(radar.repos, id: \.self) { full in
