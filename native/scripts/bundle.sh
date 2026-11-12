@@ -91,7 +91,9 @@ sparkle_sha256=01e0f0ebf6614061ea816d414de50f937d64ffa6822ad572243031ca3676fe19
 feed_url="https://github.com/rubenvitt/pr-radar/releases/latest/download/appcast.xml"
 if [ -n "${SPARKLE_PUBLIC_KEY:-}" ]; then
   cache="$target_dir/sparkle-$sparkle_version"
-  if [ ! -d "$cache/Sparkle.framework" ]; then
+  # Auch neu entpacken, wenn LICENSE fehlt: Ein Cache aus einem älteren Lauf kann das
+  # Framework ohne die Lizenzdatei enthalten.
+  if [ ! -d "$cache/Sparkle.framework" ] || [ ! -f "$cache/LICENSE" ]; then
     rm -rf "$cache" && mkdir -p "$cache"
     curl -fsSL -o "$cache/sparkle.tar.xz" \
       "https://github.com/sparkle-project/Sparkle/releases/download/$sparkle_version/Sparkle-$sparkle_version.tar.xz"
