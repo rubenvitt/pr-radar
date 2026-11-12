@@ -1,7 +1,8 @@
 name: Release macOS
 
-# Aufgerufen von release.yml: baut die App, signiert sie mit der Developer ID, lässt sie von Apple
-# beglaubigen und legt Tag „macos-vX.Y.Z“ samt GitHub-Release an. Ablauf und Secrets: docs/RELEASING.md
+# Aufgerufen von release.yml: baut die App als Universal-Binary, signiert sie mit der Developer ID,
+# lässt App und Disk-Image von Apple beglaubigen und legt Tag „macos-vX.Y.Z“ samt GitHub-Release mit
+# dem DMG an. Ablauf und Secrets: docs/RELEASING.md
 on:
   workflow_call:
     inputs:
@@ -51,6 +52,8 @@ jobs:
         run: perl -pi -e 's/^version = "[^"]*"/version = "$ENV{VERSION}"/ && ($done = 1) unless $done' Cargo.toml && grep -m1 '^version' Cargo.toml
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-about
@@ -79,36 +82,34 @@ jobs:
           echo "KEYCHAIN=$keychain" >> "$GITHUB_ENV"
           echo "CODESIGN_IDENTITY=$identity" >> "$GITHUB_ENV"
 
-      - name: App bauen und signieren
-        run: scripts/bundle.sh
+      - name: App bauen und signieren (Apple Silicon und Intel)
+        run: scripts/bundle.sh --universal
 
-      - name: Beglaubigen (Notarisierung) und Ticket anheften
+      - name: App-Store-Connect-Schlüssel ablegen
         env:
-          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
         run: |
           key="$RUNNER_TEMP/AuthKey.p8"
           printf '%s\n' "$ASC_KEY_P8" > "$key"
-          auth=(--key "$key" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID")
-          ditto -c -k --keepParent "dist/PR Radar.app" "$RUNNER_TEMP/notarize.zip"
-          result=$(xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" "${auth[@]}" --wait --timeout 30m --output-format json)
-          echo "$result"
-          id=$(printf '%s' "$result" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
-          status=$(printf '%s' "$result" | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])')
-          if [ "$status" != "Accepted" ]; then
-            xcrun notarytool log "$id" "${auth[@]}" || true
-            echo "::error::Beglaubigung abgelehnt: $status"
-            exit 1
-          fi
-          xcrun stapler staple "dist/PR Radar.app"
-          xcrun stapler validate "dist/PR Radar.app"
-          spctl --assess --type execute --verbose=2 "dist/PR Radar.app"
+          echo "ASC_KEY_PATH=$key" >> "$GITHUB_ENV"
 
-      - name: Paket schnüren
+      # Erst die App: Das angeheftete Ticket steckt dann in der App selbst und gilt auch, wenn
+      # jemand sie ohne Netz aus dem Image kopiert. Danach das Image, damit Gatekeeper schon das
+      # Öffnen des Downloads ohne Rückfrage erlaubt.
+      - name: App beglaubigen (Notarisierung) und Ticket anheften
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: scripts/notarize.sh "dist/PR Radar.app"
+
+      - name: Disk-Image bauen, signieren, beglaubigen
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
         run: |
-          asset="dist/PR-Radar-$VERSION-macOS-arm64.zip"
-          ditto -c -k --keepParent "dist/PR Radar.app" "$asset"
+          asset="dist/PR-Radar-$VERSION-macOS.dmg"
+          scripts/dmg.sh "$asset"
+          scripts/notarize.sh "$asset"
           (cd dist && shasum -a 256 "$(basename "$asset")" > "$(basename "$asset").sha256")
           echo "ASSET=$asset" >> "$GITHUB_ENV"
 
@@ -117,7 +118,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           # Der Tag entsteht erst hier, auf dem gebauten Commit; Notes ab dem vorigen macOS-Release.
-          args=(--repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "PR Radar für macOS $VERSION" --generate-notes)
+          args=(--repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "PR Radar für macOS $VERSION" --generate-notes --latest)
           previous=$(git tag --list 'macos-v*' --sort=-v:refname | grep -E '^macos-v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)
           [ -n "$previous" ] && args+=(--notes-start-tag "$previous")
           gh release create "$TAG" "${args[@]}" "$ASSET" "$ASSET.sha256"

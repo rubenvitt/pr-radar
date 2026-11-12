@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Entitlements für die gehärtete Laufzeit (Hardened Runtime), mit der scripts/bundle.sh signiert.
+  Bewusst leer: PR Radar läuft ohne Sandbox, erzeugt keinen Code zur Laufzeit (kein JIT), lädt
+  keine fremd signierten Bibliotheken und braucht weder Kamera, Mikrofon noch Apple Events.
+  Netzwerk, Schlüsselbund und Mitteilungen gehen ohne Sandbox auch ohne Entitlement.
+  Nur eintragen, was die App wirklich braucht: Jede Ausnahme schwächt den Schutz und wird bei der
+  Beglaubigung (Notarisierung) geprüft.
+-->
+<plist version="1.0">
+<dict/>
+</plist>

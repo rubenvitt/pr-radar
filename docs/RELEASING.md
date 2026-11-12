@@ -13,14 +13,18 @@ nächste Version ab (Conventional Commits, `.github/scripts/next-version.sh`):
 
 | Plattform | Ordner | Tag | Workflow | Ergebnis |
 |---|---|---|---|---|
-| macOS | `native/` | `macos-vX.Y.Z` | `.github/workflows/release-macos.yml` | GitHub-Release mit signierter, beglaubigter `PR-Radar-X.Y.Z-macOS-arm64.zip` und SHA-256 |
+| macOS | `native/` | `macos-vX.Y.Z` | `.github/workflows/release-macos.yml` | GitHub-Release mit signiertem, beglaubigtem `PR-Radar-X.Y.Z-macOS.dmg` (Universal: Apple Silicon und Intel) und SHA-256 |
 | iOS | `ios/` | `ios-vX.Y.Z` | `.github/workflows/release-ios.yml` | Build in App Store Connect bzw. TestFlight |
 
 Maßgeblich ist der Tag. Die Versionen in `native/Cargo.toml` und `MARKETING_VERSION` bleiben im Repo stehen;
 der Workflow setzt sie nur für den Build. Der Tag entsteht erst, wenn Build und Upload geklappt haben.
 
-macOS: Der Workflow baut, signiert mit der Developer ID, lässt die App von Apple beglaubigen, heftet das
-Ticket an und legt Tag und GitHub-Release mit automatischen Release Notes an (ab dem vorigen `macos-v*`-Tag).
+macOS: Der Workflow baut ein Universal-Binary (arm64 + x86_64, `lipo`), signiert mit der Developer ID und
+gehärteter Laufzeit (`native/PRRadar.entitlements`), lässt erst die App, dann das Disk-Image von Apple
+beglaubigen, heftet jeweils das Ticket an und legt Tag und GitHub-Release mit automatischen Release Notes an
+(ab dem vorigen `macos-v*`-Tag). Das Release wird als *Latest* markiert, damit
+`https://github.com/rubenvitt/pr-radar/releases/latest` immer auf die aktuelle Mac-App zeigt (iOS legt keine
+GitHub-Releases an).
 
 iOS: Der Workflow archiviert, signiert für den App Store, lädt hoch und setzt danach den Tag. Die Build-Nummer
 ist `Laufnummer.Versuch` von `release.yml` und steigt dadurch von selbst. Nach der Verarbeitung durch Apple
@@ -79,10 +83,29 @@ dann hier erneuert werden.
 
 ## Hinweise
 
-- **macOS nur Apple Silicon:** Der Runner (`macos-15`) baut für arm64. Für Intel-Macs bräuchte es einen
-  zweiten Build für `x86_64-apple-darwin` und `lipo`.
 - **Exportkonformität:** Ohne `ITSAppUsesNonExemptEncryption` in der Info.plist fragt App Store Connect bei
   jedem Build nach der Verschlüsselung, bevor er in TestFlight freigegeben wird. Nutzt die App nur HTTPS, ist
   `NO` die übliche Antwort. Das ist eine rechtliche Angabe, deshalb ist es bewusst nicht vorbelegt.
-- Lokal baut `scripts/bundle.sh` weiter ad hoc signiert. Mit `CODESIGN_IDENTITY="Developer ID Application: …"`
-  signiert es wie die CI (gehärtete Laufzeit, Zeitstempel).
+- Bis 0.2.1 gab es nur ein ZIP für Apple Silicon (`PR-Radar-X.Y.Z-macOS-arm64.zip`).
+
+## Lokal bauen und beglaubigen
+
+Die CI macht dasselbe mit denselben Skripten (`native/scripts/`). Der PR-Check *App-Bündel und DMG* baut
+Universal-Binary und Image ad hoc signiert, damit Fehler nicht erst beim Release auffallen.
+
+```sh
+cd native
+scripts/bundle.sh                 # nur die Architektur dieses Macs, ad hoc signiert
+scripts/bundle.sh --universal     # Apple Silicon + Intel (braucht beide Rust-Targets, das Skript ergänzt sie)
+scripts/dmg.sh                    # dist/PR-Radar.dmg mit Verknüpfung zu /Applications
+
+# Wie ein Release: Developer ID, dann beglaubigen
+export CODESIGN_IDENTITY="Developer ID Application: …"
+export NOTARY_PROFILE=pr-radar
+xcrun notarytool store-credentials pr-radar   # einmalig: Apple-ID mit App-Passwort oder API-Key
+scripts/bundle.sh --universal && scripts/notarize.sh "dist/PR Radar.app"
+scripts/dmg.sh && scripts/notarize.sh dist/PR-Radar.dmg
+```
+
+`notarize.sh` nimmt statt `NOTARY_PROFILE` auch `ASC_KEY_PATH`, `ASC_KEY_ID` und `ASC_ISSUER_ID` (so in der CI).
+Ad hoc signiert läuft die App nur auf dem eigenen Mac; auf anderen blockiert Gatekeeper sie.
