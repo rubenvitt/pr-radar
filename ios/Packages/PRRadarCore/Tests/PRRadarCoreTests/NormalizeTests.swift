@@ -199,13 +199,13 @@ private func run(_ status: String, _ conclusion: String?, _ name: String) -> Str
         let key = RulesCache.Key(repo: "a/b", branch: "main")
         let t0 = Date()
         let rules = [RawRule(type: "pull_request", parameters: .init(allowedMergeMethods: ["merge"]))]
-        #expect(await cache.update(key, now: t0, fetched: rules) == rules)
+        #expect(await cache.update(key, now: t0, fetched: .fresh(rules, etag: nil)) == rules)
         #expect(await cache.fresh(key, now: t0) == rules)
         // abgelaufen → neu abrufen; Abruf scheitert → alter Stand gilt weiter
         let later = t0 + rulesTTL + 1
         #expect(await cache.fresh(key, now: later) == nil)
-        #expect(await cache.update(key, now: later, fetched: nil) == rules)
+        #expect(await cache.update(key, now: later, fetched: .failed) == rules)
         // nie erfolgreich geladen → keine Regeln bekannt
-        #expect(await cache.update(.init(repo: "x/y", branch: "main"), now: later, fetched: nil) == nil)
+        #expect(await cache.update(.init(repo: "x/y", branch: "main"), now: later, fetched: .failed) == nil)
     }
 }
