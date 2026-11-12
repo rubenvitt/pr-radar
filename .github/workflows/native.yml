@@ -68,3 +68,32 @@ jobs:
         run: cargo test --locked
       - name: Release-Build
         run: cargo build --release --locked
+
+  # Wie der Release-Workflow, nur ohne Zertifikat (ad hoc signiert) und ohne Beglaubigung: So fällt
+  # ein kaputtes Bündeln, Universal-Binary oder Disk-Image schon im PR auf und nicht erst auf main.
+  bundle:
+    name: App-Bündel und DMG (Universal, ad hoc)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: native
+          key: universal
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-about
+      - name: Bündeln (arm64 + x86_64)
+        run: scripts/bundle.sh --universal
+      - name: Bündel prüfen
+        run: |
+          lipo "dist/PR Radar.app/Contents/MacOS/pr-radar" -verify_arch arm64 x86_64
+          codesign --display --verbose=2 "dist/PR Radar.app" 2>&1 | grep -E 'flags=.*runtime'
+          plutil -lint "dist/PR Radar.app/Contents/Info.plist"
+      - name: Disk-Image
+        run: scripts/dmg.sh
