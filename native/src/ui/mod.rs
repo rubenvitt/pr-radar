@@ -287,6 +287,8 @@ pub fn show_error(title: &'static str, message: String, cx: &mut App) {
 /// Hintergrund, nur die Seitenleiste lässt ihn (leicht getönt) durch; Titelleiste und
 /// Inhalt bleiben deckend. Andere Systeme behalten das deckende Fenster.
 const VIBRANCY: bool = cfg!(target_os = "macos");
+/// Deckkraft der Seitenleiste über dem unscharfen Fensterhintergrund.
+const SIDEBAR_TINT: f32 = 0.88;
 
 /// Schnellfilter mit Akzenttext: nur der aktive, nur in „Offen“ (dort wirkt er) und nicht
 /// die Vorgabe „Alle“, die gar nicht filtert.
@@ -1175,10 +1177,15 @@ impl Workspace {
         Sidebar::new("nav")
             .w(SIDEBAR_W)
             .when(VIBRANCY, |this| {
-                // Durchscheinend über dem unscharfen Fensterhintergrund, leicht getönt.
-                // Schwebend (schmales Fenster) deckend, sonst schiene der Inhalt durch.
+                // Kräftig getönt mit nur einem Hauch Glas: Bei 60 % schien der Schreibtisch
+                // zu stark durch (Rückmeldung zu PRR-54). Schwebend (schmales Fenster)
+                // ganz deckend, sonst schiene der Inhalt durch.
                 let bg = cx.theme().sidebar;
-                this.bg(if floating { bg } else { bg.opacity(0.6) })
+                this.bg(if floating {
+                    bg
+                } else {
+                    bg.opacity(SIDEBAR_TINT)
+                })
             })
             .collapsible(SidebarCollapsible::Offcanvas)
             .collapsed(collapsed)
