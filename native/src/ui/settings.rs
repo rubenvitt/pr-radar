@@ -1,10 +1,11 @@
-//! Repositories-Sheet: GitHub-Konto (Anmeldung per Device Flow), Repos hinzufügen und
-//! entfernen, Status.
+//! Repositories-Sheet: GitHub-Konto (Anmeldung per Device Flow, Konto wechseln), Repos aus
+//! dem Konto auswählen oder per Name hinzufügen, beobachtete Repos entfernen, Status.
 
 use gpui_kit::assets::IconName as Lucide;
 use gpui_kit::component::{
     ActiveTheme as _, Disableable as _, Icon, Sizable as _,
     button::{Button, ButtonVariants as _},
+    checkbox::Checkbox,
     h_flex,
     input::{Input, InputEvent, InputState},
     spinner::Spinner,
@@ -17,12 +18,14 @@ use super::parts::{pipeline_icon, repo_name};
 use super::typography::TypeScale as _;
 use crate::github::{TokenSource, oauth};
 use crate::model::PipelineState;
-use crate::radar::{Login, Radar};
+use crate::radar::{Login, Radar, RepoChoices};
 use crate::time::ago;
 
 pub struct RepoSettings {
     radar: Entity<Radar>,
     input: Entity<InputState>,
+    /// Suche in der Repo-Auswahl
+    search: Entity<InputState>,
     error: Option<String>,
     _subscriptions: Vec<Subscription>,
 }
@@ -35,10 +38,21 @@ impl RepoSettings {
                 "owner/repo oder GitHub-URL"
             ))
         });
+        let search = cx.new(|cx| {
+            InputState::new(window, cx).placeholder(tr!(
+                "Search your repositories",
+                "Deine Repositories durchsuchen"
+            ))
+        });
         let subscriptions = vec![
             cx.subscribe_in(&input, window, |this, _, event, window, cx| {
                 if let InputEvent::PressEnter { .. } = event {
                     this.add(window, cx);
+                }
+            }),
+            cx.subscribe(&search, |_, _, event, cx| {
+                if let InputEvent::Change = event {
+                    cx.notify();
                 }
             }),
             cx.observe(&radar, |_, _, cx| cx.notify()),
@@ -46,6 +60,7 @@ impl RepoSettings {
         Self {
             radar,
             input,
+            search,
             error: None,
             _subscriptions: subscriptions,
         }
@@ -55,6 +70,7 @@ impl RepoSettings {
     pub fn reset(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.error = None;
         self.input.update(cx, |s, cx| s.focus(window, cx));
+        self.radar.update(cx, |r, cx| r.ensure_repo_choices(cx));
     }
 
     #[cfg(test)]
@@ -167,8 +183,24 @@ impl RepoSettings {
                     .gap_2()
                     .child(div().flex_1().text_body().child(state))
                     .when(source == Some(TokenSource::OAuth), |this| {
+                        let switch = radar.clone();
                         let radar = radar.clone();
                         this.child(
+                            Button::new("switch-account")
+                                .small()
+                                .ghost()
+                                .label(tr!("Switch Account…", "Konto wechseln …"))
+                                .tooltip(tr!(
+                                    "Signs out and starts a new sign-in. GitHub uses the account \
+                                     you’re signed in with in the browser; switch it there first.",
+                                    "Meldet ab und startet eine neue Anmeldung. GitHub nimmt das \
+                                     Konto, mit dem du im Browser angemeldet bist; wechsle es dort vorher."
+                                ))
+                                .on_click(move |_, _, cx| {
+                                    switch.update(cx, |r, cx| r.switch_account(cx));
+                                }),
+                        )
+                        .child(
                             Button::new("sign-out")
                                 .small()
                                 .label(tr!("Sign Out", "Abmelden"))
@@ -223,6 +255,152 @@ impl RepoSettings {
             .into_any_element()
     }
 
+    /// Repos aus dem Konto zum Anhaken, mit Suche. Jedes Häkchen gilt sofort.
+    fn render_choices(&self, cx: &mut Context<Self>) -> AnyElement {
+        let radar = self.radar.read(cx);
+        let choices = radar.repo_choices().clone();
+        let signed_in = radar.status().token_source.is_some();
+        let logging_in = !matches!(radar.login(), Login::Idle | Login::Failed(_));
+        let watched: Vec<String> = radar.repos().iter().map(|r| r.to_lowercase()).collect();
+        let muted = cx.theme().muted_foreground;
+        let filter = self.search.read(cx).value().trim().to_lowercase();
+
+        let reload = Button::new("reload-choices")
+            .ghost()
+            .small()
+            .icon(Icon::new(gpui_kit::component::IconName::RefreshCw))
+            .tooltip(tr!("Reload List", "Liste neu laden"))
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.radar.update(cx, |r, cx| r.load_repo_choices(cx));
+            }));
+        let header = h_flex()
+            .gap_2()
+            .child(
+                div()
+                    .flex_1()
+                    .text_heading()
+                    .text_color(muted)
+                    .child(tr!("Your Repositories", "Deine Repositories")),
+            )
+            .when(
+                matches!(choices, RepoChoices::Loaded(_) | RepoChoices::Failed(_)) && signed_in,
+                |this| this.child(reload),
+            );
+
+        let body = match choices {
+            RepoChoices::Idle | RepoChoices::Failed(_) if !signed_in || logging_in => div()
+                .text_body()
+                .text_color(muted)
+                .child(tr!(
+                    "Sign in above to pick from your repositories and those of your organizations.",
+                    "Melde dich oben an, dann kannst du aus deinen Repositories und denen deiner \
+                     Organisationen wählen."
+                ))
+                .into_any_element(),
+            RepoChoices::Idle | RepoChoices::Loading => h_flex()
+                .gap_2()
+                .text_body()
+                .text_color(muted)
+                .child(Spinner::new().small())
+                .child(tr!(
+                    "Loading your repositories…",
+                    "Lade deine Repositories …"
+                ))
+                .into_any_element(),
+            RepoChoices::Failed(e) => div()
+                .text_body()
+                .text_color(cx.theme().danger)
+                .child(e)
+                .into_any_element(),
+            RepoChoices::Loaded(list) if list.is_empty() => div()
+                .text_body()
+                .text_color(muted)
+                .child(tr!(
+                    "No repositories found in this account. Add one by name below.",
+                    "In diesem Konto gibt es keine Repositories. Füge unten eins per Name hinzu."
+                ))
+                .into_any_element(),
+            RepoChoices::Loaded(list) => {
+                let shown: Vec<_> = list
+                    .iter()
+                    .filter(|c| filter.is_empty() || c.full.to_lowercase().contains(&filter))
+                    .cloned()
+                    .collect();
+                let rows = shown.into_iter().map(|choice| {
+                    let checked = watched.contains(&choice.full.to_lowercase());
+                    let full = choice.full.clone();
+                    v_flex()
+                        .py_1()
+                        .gap_0p5()
+                        .child(
+                            h_flex()
+                                .gap_2()
+                                .child(
+                                    Checkbox::new(SharedString::from(format!(
+                                        "choice-{}",
+                                        choice.full
+                                    )))
+                                    .checked(checked)
+                                    .label(choice.full.clone())
+                                    .on_click(cx.listener(move |this, checked: &bool, _, cx| {
+                                        let result = this
+                                            .radar
+                                            .update(cx, |r, cx| r.set_watched(&full, *checked, cx));
+                                        this.error = result.err().map(|e| e.to_string());
+                                        cx.notify();
+                                    })),
+                                )
+                                .when(choice.private, |this| {
+                                    this.child(
+                                        div()
+                                            .text_small()
+                                            .text_color(muted)
+                                            .child(tr!("private", "privat")),
+                                    )
+                                }),
+                        )
+                        .when_some(choice.description.clone(), |this, d| {
+                            this.child(
+                                div()
+                                    .pl_6()
+                                    .text_small()
+                                    .text_color(muted)
+                                    .truncate()
+                                    .child(d),
+                            )
+                        })
+                });
+                let count = list.len();
+                v_flex()
+                    .gap_2()
+                    .child(Input::new(&self.search).small().cleanable(true))
+                    .child(
+                        div()
+                            .id("repo-choices")
+                            .max_h(px(260.))
+                            .overflow_y_scroll()
+                            .child(v_flex().children(rows)),
+                    )
+                    .child(div().text_small().text_color(muted).child(trf!(
+                        "{count} repositories, most recently active first. Organization repos \
+                         only appear if the organization allows PR Radar.",
+                        "{count} Repositories, zuletzt aktive zuerst. Repos einer Organisation \
+                         erscheinen nur, wenn sie PR Radar zugelassen hat."
+                    )))
+                    .into_any_element()
+            }
+        };
+
+        v_flex()
+            .gap_2()
+            .pb_3()
+            .border_b_1()
+            .border_color(cx.theme().border)
+            .child(header)
+            .child(body)
+            .into_any_element()
+    }
+
     fn cancel_button(&self, _cx: &mut Context<Self>) -> Button {
         let radar = self.radar.clone();
         Button::new("cancel-login")
@@ -236,6 +414,7 @@ impl RepoSettings {
 impl Render for RepoSettings {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let account = self.render_account(cx);
+        let choices = self.render_choices(cx);
         let radar = self.radar.read(cx);
         let repos = radar.repos().to_vec();
         let snapshot = radar.snapshot();
@@ -247,9 +426,14 @@ impl Render for RepoSettings {
             .size_full()
             .gap_4()
             .child(account)
+            .child(choices)
             .child(
                 v_flex()
                     .gap_1()
+                    .child(div().text_small().text_color(muted).child(tr!(
+                        "Another repository by name, e.g. a public one:",
+                        "Weiteres Repository per Name, z. B. ein öffentliches:"
+                    )))
                     .child(
                         h_flex()
                             .gap_2()

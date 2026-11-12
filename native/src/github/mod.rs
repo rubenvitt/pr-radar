@@ -738,6 +738,27 @@ impl GitHub {
     }
 
     /// Lädt alle Repos (in Blöcken zu je `CHUNK`) und baut daraus einen Snapshot.
+    /// Repos des Kontos zur Auswahl (eigene, als Mitarbeiter, über Organisationen), zuletzt
+    /// aktive zuerst, ohne archivierte. Höchstens `REPO_CHOICES_MAX`, damit riesige
+    /// Organisationen nicht minutenlang laden.
+    pub async fn list_repos(&self) -> Result<Vec<RepoChoice>> {
+        let mut choices = Vec::new();
+        let mut after: Option<String> = None;
+        loop {
+            let res = self
+                .request(queries::VIEWER_REPOS, json!({ "after": after }))
+                .await?;
+            let page = parse_repo_page(res)?;
+            choices.extend(page.choices);
+            match page.next {
+                Some(cursor) if choices.len() < REPO_CHOICES_MAX => after = Some(cursor),
+                _ => break,
+            }
+        }
+        choices.truncate(REPO_CHOICES_MAX);
+        Ok(choices)
+    }
+
     pub async fn fetch(&self, repos: &[String]) -> Result<Fetched> {
         let sized = self.page_sizes(repos);
         let mut round = self.fetch_round(&sized).await?;
@@ -1084,6 +1105,69 @@ fn encode_path(s: &str) -> String {
             _ => format!("%{b:02X}"),
         })
         .collect()
+}
+
+/// Obergrenze für die Repo-Auswahl (fünf Seiten).
+const REPO_CHOICES_MAX: usize = 500;
+
+/// Ein Repo, das man beim Einrichten auswählen kann.
+#[derive(Clone, Debug, PartialEq)]
+pub struct RepoChoice {
+    /// `owner/name`
+    pub full: String,
+    pub private: bool,
+    pub description: Option<String>,
+}
+
+struct RepoPage {
+    choices: Vec<RepoChoice>,
+    next: Option<String>,
+}
+
+fn parse_repo_page(res: GqlResponse) -> Result<RepoPage> {
+    let Some(data) = res.data else {
+        let msg = res
+            .errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("; ");
+        if msg.is_empty() {
+            bail!(tr!(
+                "Empty response from GitHub",
+                "Leere Antwort von GitHub"
+            ));
+        }
+        bail!("{msg}");
+    };
+    let repos = &data.get("viewer").unwrap_or(&Value::Null)["repositories"];
+    let choices = repos["nodes"]
+        .as_array()
+        .map(|nodes| {
+            nodes
+                .iter()
+                .filter(|n| !n["isArchived"].as_bool().unwrap_or(false))
+                .filter_map(|n| {
+                    Some(RepoChoice {
+                        full: n["nameWithOwner"].as_str()?.to_string(),
+                        private: n["isPrivate"].as_bool().unwrap_or(false),
+                        description: n["description"]
+                            .as_str()
+                            .map(str::trim)
+                            .filter(|d| !d.is_empty())
+                            .map(String::from),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let info = &repos["pageInfo"];
+    let next = info["hasNextPage"]
+        .as_bool()
+        .unwrap_or(false)
+        .then(|| info["endCursor"].as_str().map(String::from))
+        .flatten();
+    Ok(RepoPage { choices, next })
 }
 
 #[cfg(test)]
@@ -1723,5 +1807,59 @@ mod tests {
         assert_eq!(sent[0].1.as_deref(), Some("\"abc\""));
         assert!(sent[0].0.ends_with("/rules/branches/feature%2Fx"));
         assert_eq!(requests.lock().unwrap()[0].1, None);
+    }
+
+    #[test]
+    fn repo_auswahl_blaettert_und_laesst_archivierte_weg() {
+        let (gh, requests) = scripted(|_, body| {
+            let after = serde_json::from_str::<Value>(body).unwrap()["variables"]["after"].clone();
+            let (nodes, next) = if after.is_null() {
+                (
+                    json!([
+                        { "nameWithOwner": "me/app", "isPrivate": true, "isArchived": false, "description": " Die App " },
+                        { "nameWithOwner": "me/alt", "isPrivate": false, "isArchived": true, "description": null }
+                    ]),
+                    json!({ "hasNextPage": true, "endCursor": "c1" }),
+                )
+            } else {
+                assert_eq!(after, "c1");
+                (
+                    json!([{ "nameWithOwner": "org/lib", "isPrivate": false, "isArchived": false, "description": "" }]),
+                    json!({ "hasNextPage": false, "endCursor": null }),
+                )
+            };
+            let data = json!({ "data": { "viewer": { "repositories": { "pageInfo": next, "nodes": nodes } } } });
+            (200, vec![], data.to_string())
+        });
+        let got = futures::executor::block_on(gh.list_repos()).unwrap();
+        assert_eq!(
+            got,
+            vec![
+                RepoChoice {
+                    full: "me/app".into(),
+                    private: true,
+                    description: Some("Die App".into())
+                },
+                RepoChoice {
+                    full: "org/lib".into(),
+                    private: false,
+                    description: None
+                },
+            ]
+        );
+        assert_eq!(requests.lock().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn repo_auswahl_meldet_graphql_fehler() {
+        let (gh, _) = scripted(|_, _| {
+            (
+                200,
+                vec![],
+                json!({ "errors": [{ "message": "Resource not accessible" }] }).to_string(),
+            )
+        });
+        let err = futures::executor::block_on(gh.list_repos()).unwrap_err();
+        assert!(format!("{err:#}").contains("Resource not accessible"));
     }
 }

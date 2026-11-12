@@ -118,6 +118,24 @@ pub const MERGE_PR: &str = r#"
     }
   }"#;
 
+/// Repos, die das Konto sieht: eigene, als Mitarbeiter und über Organisationen, zuletzt
+/// aktive zuerst. Kostet einen Punkt je Seite.
+pub const VIEWER_REPOS: &str = r#"
+query($after: String) {
+  viewer {
+    repositories(
+      first: 100
+      after: $after
+      affiliations: [OWNER, COLLABORATOR, ORGANIZATION_MEMBER]
+      ownerAffiliations: [OWNER, COLLABORATOR, ORGANIZATION_MEMBER]
+      orderBy: { field: PUSHED_AT, direction: DESC }
+    ) {
+      pageInfo { hasNextPage endCursor }
+      nodes { nameWithOwner isPrivate isArchived description }
+    }
+  }
+}"#;
+
 #[cfg(test)]
 mod tests {
     use super::*;
