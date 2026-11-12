@@ -16,6 +16,7 @@ mod radar;
 mod site;
 mod time;
 mod ui;
+mod updater;
 
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -96,6 +97,11 @@ fn main() {
         let radar = cx.new(|cx| Radar::new(github, &demo, cx));
         cx.set_global(demo);
 
+        // Vor ui::init, damit das App-Menü „Nach Updates suchen …“ schon freigeschaltet zeigt.
+        #[cfg(target_os = "macos")]
+        if let Some(mtm) = objc2::MainThreadMarker::new() {
+            updater::start(mtm);
+        }
         ui::init(radar.clone(), cx);
         #[cfg(target_os = "macos")]
         menubar::init(radar.clone(), cx);

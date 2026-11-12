@@ -22,9 +22,9 @@ der Workflow setzt sie nur für den Build. Der Tag entsteht erst, wenn Build und
 macOS: Der Workflow baut ein Universal-Binary (arm64 + x86_64, `lipo`), signiert mit der Developer ID und
 gehärteter Laufzeit (`native/PRRadar.entitlements`), lässt erst die App, dann das Disk-Image von Apple
 beglaubigen, heftet jeweils das Ticket an und legt Tag und GitHub-Release mit automatischen Release Notes an
-(ab dem vorigen `macos-v*`-Tag). Das Release wird als *Latest* markiert, damit
-`https://github.com/rubenvitt/pr-radar/releases/latest` immer auf die aktuelle Mac-App zeigt (iOS legt keine
-GitHub-Releases an).
+(ab dem vorigen `macos-v*`-Tag). Dazu kommt `appcast.xml` für die Auto-Updates (siehe *Sparkle* unten). Das
+Release wird als *Latest* markiert, damit `https://github.com/rubenvitt/pr-radar/releases/latest` und der
+Update-Feed immer auf die aktuelle Mac-App zeigen (iOS legt keine GitHub-Releases an).
 
 iOS: Der Workflow archiviert, signiert für den App Store, lädt hoch und setzt danach den Tag. Die Build-Nummer
 ist `Laufnummer.Versuch` von `release.yml` und steigt dadurch von selbst. Nach der Verarbeitung durch Apple
@@ -62,6 +62,34 @@ Im [Developer-Portal](https://developer.apple.com/account/resources/certificates
 |---|---|
 | `MACOS_CERTIFICATE_P12` | `base64 -i DeveloperID.p12 \| pbcopy` |
 | `MACOS_CERTIFICATE_PASSWORD` | Passwort des `.p12` |
+
+### macOS: Sparkle (Auto-Updates)
+
+Die Mac-App sucht per [Sparkle](https://sparkle-project.org) nach Updates. Der Feed ist
+`https://github.com/rubenvitt/pr-radar/releases/latest/download/appcast.xml`; der Workflow legt ihn als Asset
+an jedes Release. Updates sind mit EdDSA signiert, Sparkle installiert nur, was zum öffentlichen Schlüssel in der
+App passt. **Den privaten Schlüssel nie verlieren:** Ohne ihn bekommen bestehende Installationen keine Updates
+mehr und müssen von Hand neu laden.
+
+Einmalig auf dem Mac:
+
+```sh
+curl -LO https://github.com/sparkle-project/Sparkle/releases/download/2.9.0/Sparkle-2.9.0.tar.xz
+mkdir sparkle && tar -xf Sparkle-2.9.0.tar.xz -C sparkle
+sparkle/bin/generate_keys                     # legt das Schlüsselpaar im Schlüsselbund an, zeigt den öffentlichen
+sparkle/bin/generate_keys -x sparkle-private.key   # privaten Schlüssel exportieren (danach sicher löschen)
+```
+
+| Wo | Name | Inhalt |
+|---|---|---|
+| *Variables* (nicht Secrets) | `SPARKLE_PUBLIC_KEY` | öffentlicher Schlüssel aus `generate_keys` (Base64) |
+| *Secrets* | `SPARKLE_ED_PRIVATE_KEY` | Inhalt von `sparkle-private.key` |
+
+Fehlen beide, baut der Workflow wie bisher ohne Sparkle (Warnung im Lauf). Fehlt nur eins, bricht er ab.
+`CFBundleVersion` ist die Zahl der Commits auf `main`; Sparkle vergleicht diese Nummer, nicht `X.Y.Z`.
+Lokal bettet `SPARKLE_PUBLIC_KEY=… scripts/bundle.sh` Sparkle ebenfalls ein. Das lädt nur mit Developer-ID-
+Signatur (`CODESIGN_IDENTITY`); ad hoc signiert verweigert die gehärtete Laufzeit das Framework, die App läuft
+dann ohne Updates weiter.
 
 ### iOS: Verteilungszertifikat und Profil
 
