@@ -70,17 +70,92 @@ pub fn avatar(person: Option<&Person>) -> Avatar {
     }
 }
 
-/// GitHub-Label in seiner eigenen Farbe – die Farbe ist hier Datum, keine Dekoration.
-pub fn label_tag(label: &Label) -> Tag {
-    let color = u32::from_str_radix(&label.color, 16)
+// Badges in der PR-Liste: genau drei Stile (PRR-55).
+// 1. `status_badge`: Symbol in Zustandsfarbe, Text sekundär, keine Fläche (Review-Zustand, Draft).
+// 2. `accent_badge`: getönte Fläche, nur für das, was Handeln verlangt („Konflikt“, „Dein Review“).
+// 3. `label_tag`: GitHub-Label, rund, Farbe je Theme auf 4,5:1 gebracht.
+
+/// Zustand als Symbol + Text in Sekundärfarbe; nur das Symbol trägt Farbe.
+pub fn status_badge(icon: Icon, text: impl Into<SharedString>, color: Hsla, cx: &App) -> Div {
+    h_flex()
+        .flex_shrink_0()
+        .gap_1()
+        .text_small()
+        .text_color(cx.theme().muted_foreground)
+        .child(icon.xsmall().text_color(color))
+        .child(text.into())
+}
+
+/// Hervorgehobener Zustand: getönte Fläche, Schrift und Symbol in `color`. Statusfarben
+/// erreichen auf der 10-%-Tönung 4,5:1 (geprüft in `theme.rs`).
+pub fn accent_badge(icon: Icon, text: impl Into<SharedString>, color: Hsla) -> Tag {
+    Tag::custom(color.opacity(0.1), color, color.opacity(0.35))
+        .xsmall()
+        .text_small()
+        .child(h_flex().gap_1().child(icon.xsmall()).child(text.into()))
+}
+
+/// GitHub-Label in seiner eigenen Farbe – die Farbe ist hier Datum, keine Dekoration. Der
+/// Farbton bleibt, die Helligkeit der Schrift wird je Theme so weit verschoben, dass sie auf
+/// der Label-Fläche 4,5:1 erreicht.
+pub fn label_tag(label: &Label, cx: &App) -> Tag {
+    let color: Hsla = u32::from_str_radix(&label.color, 16)
         .map(rgb)
-        .unwrap_or(rgb(0x888888));
-    let color: Hsla = color.into();
-    Tag::custom(color.opacity(0.14), color, color.opacity(0.4))
+        .unwrap_or(rgb(0x888888))
+        .into();
+    let (bg, fg) = label_colors(color, cx.theme().group_box, cx.theme().is_dark());
+    Tag::custom(bg, fg, fg.opacity(0.3))
         .xsmall()
         .text_small()
         .rounded_full()
         .child(label.name.clone())
+}
+
+/// Mindestkontrast für Label-Schrift (WCAG AA, normaler Text).
+const LABEL_CONTRAST: f32 = 4.5;
+/// Anteil der Label-Farbe an der Label-Fläche.
+const LABEL_TINT: f32 = 0.14;
+
+/// Fläche (deckend: Label-Farbe zu 14 % über `surface`) und Schrift eines Labels. Die Schrift
+/// behält Farbton und Sättigung; im Dunkelmodus wird sie aufgehellt, im Hellmodus abgedunkelt,
+/// bis sie [`LABEL_CONTRAST`] erreicht.
+pub fn label_colors(color: Hsla, surface: Hsla, dark: bool) -> (Hsla, Hsla) {
+    let (c, s) = (color.to_rgb(), surface.to_rgb());
+    let mix = |a: f32, b: f32| a * LABEL_TINT + b * (1.0 - LABEL_TINT);
+    let bg: Hsla = Rgba {
+        r: mix(c.r, s.r),
+        g: mix(c.g, s.g),
+        b: mix(c.b, s.b),
+        a: 1.0,
+    }
+    .into();
+    let step = if dark { 0.02 } else { -0.02 };
+    let mut fg = Hsla { a: 1.0, ..color };
+    // Höchstens 50 Schritte: danach ist l bei 0 bzw. 1, also Schwarz oder Weiß.
+    for _ in 0..50 {
+        if contrast(fg, bg) >= LABEL_CONTRAST {
+            break;
+        }
+        fg.l = (fg.l + step).clamp(0.0, 1.0);
+    }
+    (bg, fg)
+}
+
+/// Kontrast nach WCAG 2.x zwischen zwei deckenden Farben.
+pub fn contrast(a: Hsla, b: Hsla) -> f32 {
+    fn channel(c: f32) -> f32 {
+        if c <= 0.04045 {
+            c / 12.92
+        } else {
+            ((c + 0.055) / 1.055).powf(2.4)
+        }
+    }
+    fn luminance(c: Hsla) -> f32 {
+        let c = c.to_rgb();
+        0.2126 * channel(c.r) + 0.7152 * channel(c.g) + 0.0722 * channel(c.b)
+    }
+    let (la, lb) = (luminance(a), luminance(b));
+    (la.max(lb) + 0.05) / (la.min(lb) + 0.05)
 }
 
 /// Leerer Zustand: Symbol, Titel, ein Satz, warum hier nichts steht, und eine Aktion,
@@ -242,5 +317,51 @@ impl SidebarItem for SidebarSection {
                     .collapsed(self.collapsed)
                     .render(format!("{id}-0"), window, cx),
             )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // Kein `use super::*`: Der Glob brächte `gpui::test` mit, das `#[test]` überdeckt.
+    use super::{LABEL_CONTRAST, contrast, label_colors};
+    use gpui_kit::{Hsla, rgb};
+
+    /// GitHub-Standardlabels und typische Eigenfarben, darunter die Problemfälle aus dem
+    /// Audit: dunkles Blau/Lila (dunkel), Gelb (hell).
+    const LABELS: [u32; 18] = [
+        0xd73a4a, 0x0075ca, 0xcfd3d7, 0xa2eeef, 0x7057ff, 0x008672, 0xe4e669, 0xd876e3, 0xffffff,
+        0x000000, 0xfbca04, 0x0e8a16, 0x1d76db, 0x5319e7, 0xb60205, 0x0052cc, 0xfef2c0, 0x5e2ca5,
+    ];
+
+    /// Kartenflächen aus `theme.json` (hell, dunkel).
+    const SURFACES: [(u32, bool); 2] = [(0xffffff, false), (0x2a2a2e, true)];
+
+    #[test]
+    fn labels_sind_in_beiden_themes_lesbar() {
+        for (surface, dark) in SURFACES {
+            for label in LABELS {
+                let (bg, fg) = label_colors(rgb(label).into(), rgb(surface).into(), dark);
+                let ratio = contrast(fg, bg);
+                assert!(
+                    ratio >= LABEL_CONTRAST,
+                    "#{label:06x} auf #{surface:06x}: nur {ratio:.2}:1"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn lesbare_labels_behalten_ihre_farbe() {
+        // Kräftiges Rot ist hell schon lesbar und bleibt unverändert.
+        let red: Hsla = rgb(0xb60205).into();
+        let (_, fg) = label_colors(red, rgb(0xffffff).into(), false);
+        assert!((fg.l - red.l).abs() < f32::EPSILON);
+        assert!((fg.h - red.h).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn label_flaeche_ist_deckend() {
+        let (bg, _) = label_colors(rgb(0x7057ff).into(), rgb(0x2a2a2e).into(), true);
+        assert!((bg.a - 1.0).abs() < f32::EPSILON);
     }
 }

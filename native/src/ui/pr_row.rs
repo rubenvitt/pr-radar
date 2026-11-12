@@ -7,7 +7,7 @@ use gpui_kit::component::{
     button::{Button, ButtonVariants as _},
     h_flex,
     menu::{DropdownMenu as _, PopupMenuItem},
-    tag::Tag,
+    tooltip::Tooltip,
     v_flex,
 };
 use gpui_kit::prelude::FluentBuilder as _;
@@ -15,7 +15,8 @@ use gpui_kit::*;
 
 use super::Workspace;
 use super::parts::{
-    avatar, card_segment, label_tag, meta_row, pipeline_icon, repo_name, state_color,
+    accent_badge, avatar, card_segment, label_tag, meta_row, pipeline_icon, repo_name, state_color,
+    status_badge,
 };
 use super::typography::TypeScale as _;
 use crate::model::{CheckState, MergeMethod, OpenPr, ReviewDecision, Snapshot};
@@ -73,6 +74,9 @@ impl MergeAction {
     }
 }
 
+/// Breite der Statusspalte (Pipeline-Symbol, Check-Zähler darunter, auch „12/12“).
+const STATUS_COLUMN: Rems = rems(2.25);
+
 impl Workspace {
     /// Karte mit PR-Zeilen (Liste) oder Flow-Knoten.
     pub(super) fn render_pr_row(
@@ -120,28 +124,30 @@ impl Workspace {
                     .text_color(cx.theme().muted_foreground)
                     .child(format!("#{}", pr.number)),
             )
+            // Drei Badge-Stile: Zustand (Draft), Hervorhebung (Konflikt, Dein Review), Labels.
             .when(pr.is_draft, |this| {
-                this.child(Tag::secondary().xsmall().text_small().child("Draft"))
+                this.child(status_badge(
+                    Icon::new(Lucide::GitPullRequestDraft),
+                    "Draft",
+                    cx.theme().muted_foreground,
+                    cx,
+                ))
             })
             .when(conflict, |this| {
-                this.child(
-                    Tag::danger().xsmall().text_small().child(
-                        h_flex()
-                            .gap_1()
-                            .child(Icon::new(IconName::TriangleAlert).xsmall())
-                            .child(tr!("Conflict", "Konflikt")),
-                    ),
-                )
+                this.child(accent_badge(
+                    Icon::new(IconName::TriangleAlert),
+                    tr!("Conflict", "Konflikt"),
+                    cx.theme().danger,
+                ))
             })
             .when(pr.requests_review_from(viewer), |this| {
-                this.child(
-                    Tag::primary()
-                        .xsmall()
-                        .text_small()
-                        .child(tr!("Your review", "Dein Review")),
-                )
+                this.child(accent_badge(
+                    Icon::new(Lucide::Eye),
+                    tr!("Your review", "Dein Review"),
+                    cx.theme().primary,
+                ))
             })
-            .children(pr.labels.iter().map(label_tag));
+            .children(pr.labels.iter().map(|l| label_tag(l, cx)));
 
         let meta = meta_row(cx)
             .child(
@@ -183,25 +189,51 @@ impl Workspace {
                     ),
             );
 
+        // Review-Zustand: Symbol in Zustandsfarbe, Text sekundär.
         let review = match pr.review_decision {
-            Some(ReviewDecision::Approved) => Some(
-                Tag::success().xsmall().text_small().child(
-                    h_flex()
-                        .gap_1()
-                        .child(Icon::new(Lucide::ShieldCheck).xsmall())
-                        .child("Approved"),
-                ),
-            ),
-            Some(ReviewDecision::ChangesRequested) => Some(
-                Tag::danger().xsmall().outline().text_small().child(
-                    h_flex()
-                        .gap_1()
-                        .child(Icon::new(Lucide::MessageSquareWarning).xsmall())
-                        .child(tr!("Changes", "Änderungen")),
-                ),
-            ),
+            Some(ReviewDecision::Approved) => Some(status_badge(
+                Icon::new(Lucide::ShieldCheck),
+                "Approved",
+                cx.theme().success,
+                cx,
+            )),
+            Some(ReviewDecision::ChangesRequested) => Some(status_badge(
+                Icon::new(Lucide::MessageSquareWarning),
+                tr!("Changes", "Änderungen"),
+                cx.theme().danger,
+                cx,
+            )),
             _ => None,
         };
+
+        // Statussymbol mit Check-Zähler darunter; feste Breite, damit die Titel fluchten.
+        let checks_tip = (p.total > 0).then(|| {
+            SharedString::from(trf!(
+                "Checks: {} of {} passed",
+                "Checks: {} von {} erfolgreich",
+                p.passed,
+                p.total
+            ))
+        });
+        let status = v_flex()
+            .id(SharedString::from(format!("status-{}", pr.id)))
+            .flex_shrink_0()
+            .w(STATUS_COLUMN)
+            .items_center()
+            .gap_0p5()
+            .pt_0p5()
+            .child(pipeline_icon(p.state, cx))
+            .when(p.total > 0, |this| {
+                this.child(
+                    div()
+                        .text_small()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(format!("{}/{}", p.passed, p.total)),
+                )
+            })
+            .when_some(checks_tip, |this, tip| {
+                this.tooltip(move |window, cx| Tooltip::new(tip.clone()).build(window, cx))
+            });
 
         let compact = self.compact;
         let actions = h_flex()
@@ -211,15 +243,7 @@ impl Workspace {
             // Klicks auf Steuerelemente sollen die Zeile nicht auf-/zuklappen.
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .children(review)
-            .when(p.total > 0, |this| {
-                this.child(
-                    div()
-                        .text_small()
-                        .text_color(state_color(p.state, cx))
-                        .child(format!("{}/{}", p.passed, p.total)),
-                )
-            })
-            .child(self.render_merge_control(pr, snapshot, cx));
+            .child(self.merge_control(pr, snapshot, true, cx));
         // Schmal: Steuerung unter die Metadaten, damit der Titel Platz behält.
         let (inline_actions, side_actions) = if compact {
             (Some(actions.flex_wrap().gap_y_1().pt_1()), None)
@@ -229,7 +253,6 @@ impl Workspace {
 
         card_segment(first, last, cx)
             .relative()
-            .when(conflict, |this| this.bg(cx.theme().danger.opacity(0.06)))
             .when_some(
                 self.flash(&pr.id, state_color(p.state, cx), cx),
                 |this, flash| this.child(flash),
@@ -243,7 +266,7 @@ impl Workspace {
                     .py_3()
                     .hover(|this| this.bg(cx.theme().list_hover))
                     .on_click(cx.listener(move |this, _, _, cx| this.toggle_expanded(&id, cx)))
-                    .child(div().pt_0p5().child(pipeline_icon(p.state, cx)))
+                    .child(status)
                     .child(
                         v_flex()
                             .flex_1()
@@ -273,13 +296,28 @@ impl Workspace {
                     animate,
                 ))
             })
+            // Konflikt: schmaler Streifen am linken Rand statt getönter Zeile.
+            .when(conflict, |this| {
+                this.child(
+                    div()
+                        .absolute()
+                        .left_0()
+                        .top_0()
+                        .bottom_0()
+                        .w(px(3.))
+                        .bg(cx.theme().danger),
+                )
+            })
     }
 
     fn render_checks(&self, pr: &OpenPr, cx: &mut Context<Self>) -> impl IntoElement {
         let muted = cx.theme().muted_foreground;
         v_flex()
             .when(self.compact, |d| d.pl_4())
-            .when(!self.compact, |d| d.pl_12())
+            // Unter dem Titel: Zeilenrand + Statusspalte + Abstand.
+            .when(!self.compact, |d| {
+                d.pl(rems(1.) + STATUS_COLUMN + rems(0.75))
+            })
             .pr_4()
             .pb_3()
             .gap_0p5()
@@ -341,6 +379,19 @@ impl Workspace {
         snapshot: &Snapshot,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        self.merge_control(pr, snapshot, false, cx)
+    }
+
+    /// `quiet`: Voll (Rahmen, Farbe, Beschriftung) nur, wo eine Aktion ansteht oder läuft –
+    /// „Mergen“ und aktives Auto-Merge. Auto-Merge aktivieren und nicht Mögliches erscheinen
+    /// als schlichtes Symbol mit Tooltip, damit die Liste keine Spalte gleicher Buttons trägt.
+    fn merge_control(
+        &self,
+        pr: &OpenPr,
+        snapshot: &Snapshot,
+        quiet: bool,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let busy = self.radar.read(cx).is_pending(&pr.id);
         let retrying = self.radar.read(cx).is_retrying(&pr.id);
         let id = pr.id.clone();
@@ -375,16 +426,19 @@ impl Workspace {
                 .into_any_element(),
             MergeAction::MergeNow(methods) | MergeAction::Enable(methods) => {
                 let now = matches!(MergeAction::of(pr, snapshot), MergeAction::MergeNow(_));
+                let full = now || !quiet;
                 let button = Button::new(button_id)
                     .small()
-                    .outline()
+                    .when(full, |b| b.outline())
+                    .when(!full, |b| b.ghost())
                     .when(now, |b| {
                         b.success()
                             .icon(Lucide::GitMerge)
                             .label(tr!("Merge", "Mergen"))
                     })
                     .when(!now, |b| {
-                        b.icon(Lucide::Zap).label(tr!("Auto-merge", "Auto-Merge"))
+                        b.icon(Lucide::Zap)
+                            .when(full, |b| b.label(tr!("Auto-merge", "Auto-Merge")))
                     });
 
                 // Läuft: gleiche Optik, Spinner statt Symbol, keine weiteren Klicks.
@@ -433,7 +487,7 @@ impl Workspace {
                         .into_any_element();
                 }
                 button
-                    .dropdown_caret(true)
+                    .dropdown_caret(full)
                     .tooltip(if now {
                         tr!("Merge now…", "Jetzt mergen …")
                     } else {
@@ -458,9 +512,11 @@ impl Workspace {
             }
             MergeAction::Unavailable(reason) => Button::new(button_id)
                 .small()
-                .outline()
+                .when(quiet, |b| b.ghost())
+                .when(!quiet, |b| {
+                    b.outline().label(tr!("Auto-merge", "Auto-Merge"))
+                })
                 .icon(Lucide::Zap)
-                .label(tr!("Auto-merge", "Auto-Merge"))
                 .disabled(true)
                 .tooltip(reason)
                 .into_any_element(),
