@@ -10,12 +10,36 @@ public struct RateLimit: Sendable, Hashable, Codable {
     public var remaining: Int
     public var limit: Int
     public var resetAt: Date?
+    /// Punkte, die der letzte Poll gekostet hat (Summe über alle Requests)
+    public var cost: Int
 
-    public init(remaining: Int, limit: Int, resetAt: Date? = nil) {
+    public init(remaining: Int, limit: Int, resetAt: Date? = nil, cost: Int = 1) {
         self.remaining = remaining
         self.limit = limit
         self.resetAt = resetAt
+        self.cost = cost
     }
+
+    enum CodingKeys: String, CodingKey { case remaining, limit, resetAt, cost }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        remaining = try c.decode(Int.self, forKey: .remaining)
+        limit = try c.decode(Int.self, forKey: .limit)
+        resetAt = try c.decodeIfPresent(Date.self, forKey: .resetAt)
+        // Ältere gespeicherte Stände kennen die Kosten noch nicht.
+        cost = try c.decodeIfPresent(Int.self, forKey: .cost) ?? 1
+    }
+}
+
+/// Fasst die Kontingent-Angaben mehrerer Requests eines Polls zusammen: Kosten addieren sich,
+/// beim Rest zählt die knappste (jüngste) Angabe.
+func mergeRateLimits(_ a: RateLimit?, _ b: RateLimit?) -> RateLimit? {
+    guard let a else { return b }
+    guard let b else { return a }
+    var lower = b.remaining <= a.remaining ? b : a
+    lower.cost = a.cost + b.cost
+    return lower
 }
 
 /// Ergebnis eines Abrufs aller Repos.
@@ -211,6 +235,14 @@ private let chunkSize = 8
 /// Wie lange Branch-Regeln gültig bleiben – sie ändern sich selten, kosten aber REST-Kontingent.
 let rulesTTL: TimeInterval = 600
 
+/// Ergebnis eines Abrufs der Branch-Regeln.
+enum RulesFetch: Sendable {
+    case fresh([RawRule], etag: String?)
+    /// 304: Der zwischengespeicherte Stand gilt weiter.
+    case notModified
+    case failed
+}
+
 /// Branch-Regeln je (Repo, Branch). Bei Abruffehlern gilt der letzte bekannte Stand weiter,
 /// damit nicht still wieder alle Merge-Methoden angeboten werden.
 actor RulesCache {
@@ -219,27 +251,66 @@ actor RulesCache {
         var branch: String
     }
 
-    private var entries: [Key: (at: Date, rules: [RawRule])] = [:]
+    /// `etag` der letzten Antwort: Eine Nachfrage mit `If-None-Match` beantwortet GitHub mit 304,
+    /// und die zählt nicht gegen das Kontingent.
+    private var entries: [Key: (at: Date, rules: [RawRule], etag: String?)] = [:]
 
     func fresh(_ key: Key, now: Date) -> [RawRule]? {
         guard let e = entries[key], now.timeIntervalSince(e.at) < rulesTTL else { return nil }
         return e.rules
     }
 
-    /// Übernimmt ein Abrufergebnis; ohne Ergebnis bleibt der alte Eintrag gültig.
-    func update(_ key: Key, now: Date, fetched: [RawRule]?) -> [RawRule]? {
-        if let fetched {
-            entries[key] = (now, fetched)
-            return fetched
+    func etag(_ key: Key) -> String? { entries[key]?.etag }
+
+    /// Übernimmt ein Abrufergebnis; bei 304 gilt der alte Eintrag wieder `rulesTTL` lang, bei
+    /// einem Fehler bleibt er gültig, wird aber beim nächsten Mal erneut angefragt.
+    func update(_ key: Key, now: Date, fetched: RulesFetch) -> [RawRule]? {
+        switch fetched {
+        case let .fresh(rules, etag):
+            entries[key] = (now, rules, etag)
+            return rules
+        case .notModified:
+            guard var e = entries[key] else { return nil }
+            e.at = now
+            entries[key] = e
+            return e.rules
+        case .failed:
+            return entries[key]?.rules
         }
-        return entries[key]?.rules
     }
+}
+
+/// Zuletzt gesehene Zahl offener PRs je Repo – bestimmt die Seitengröße der nächsten Abfrage.
+actor OpenCounts {
+    private var counts: [String: Int] = [:]
+
+    func pageSizes(_ repos: [String]) -> [(String, Int)] {
+        repos.map { ($0, Queries.openPageSize(knownOpen: counts[$0])) }
+    }
+
+    /// Unbekannt (Fehler, kein Zugriff): beim nächsten Mal wieder die volle Seite.
+    func remember(_ repo: String, _ total: Int?) {
+        counts[repo] = total
+    }
+}
+
+/// Rohdaten eines Abrufdurchgangs, je Repo in Abfragereihenfolge.
+private struct Round {
+    enum Entry {
+        case repo(RawRepo)
+        case unavailable(String)
+    }
+
+    var viewer: String?
+    var repos: [(String, Entry)] = []
+    var rateLimit: RateLimit?
 }
 
 public final class GitHubClient: GitHubAPI {
     private let transport: HTTPTransport
     private let token: @Sendable () -> String?
     private let rules = RulesCache()
+    private let openCounts = OpenCounts()
 
     /// `token` wird bei jedem Request gelesen – ein in den Einstellungen geänderter Token greift sofort.
     public init(transport: HTTPTransport = URLSessionTransport(), token: @escaping @Sendable () -> String?) {
@@ -314,53 +385,38 @@ public final class GitHubClient: GitHubAPI {
 
     /// Lädt alle Repos (in Blöcken zu je `chunkSize`, parallel) und baut daraus einen Snapshot.
     public func fetch(repos: [String]) async throws -> Fetched {
-        let chunks = stride(from: 0, to: repos.count, by: chunkSize).map {
-            Array(repos[$0..<min($0 + chunkSize, repos.count)])
+        let sized = await openCounts.pageSizes(repos)
+        var round = try await fetchRound(sized)
+        // Mehr offene PRs als die verkleinerte Seite fasst: genau diese Repos sofort mit
+        // passender Seite nachladen, damit kein PR auch nur für einen Poll fehlt.
+        var truncated: [(String, Int)] = []
+        for ((full, entry), (_, page)) in zip(round.repos, sized) {
+            guard case let .repo(raw) = entry, let total = raw.open?.totalCount,
+                total > page, page < Queries.maxOpenPage
+            else { continue }
+            truncated.append((full, Queries.openPageSize(knownOpen: total)))
         }
-        let results = await withTaskGroup(of: (Int, Result<GQLResponse, Error>).self) { group in
-            for (i, chunk) in chunks.enumerated() {
-                group.addTask {
-                    do { return (i, .success(try await self.request(Queries.dashboard(chunk)))) } catch { return (i, .failure(error)) }
-                }
+        if !truncated.isEmpty {
+            let again = try await fetchRound(truncated)
+            round.rateLimit = mergeRateLimits(round.rateLimit, again.rateLimit)
+            for (full, entry) in again.repos {
+                if let i = round.repos.firstIndex(where: { $0.0 == full }) { round.repos[i].1 = entry }
             }
-            var out = [Result<GQLResponse, Error>?](repeating: nil, count: chunks.count)
-            for await (i, res) in group { out[i] = res }
-            return out
         }
-        // Ein Rate-Limit in irgendeinem Chunk zählt vor anderen Fehlern, damit der
-        // Backoff bis zum Reset wartet statt zu früh erneut anzufragen.
-        let failures = results.compactMap { result -> Error? in
-            if case let .failure(error)? = result { return error }
-            return nil
-        }
-        if let limited = longestRateLimit(failures, now: Date()) { throw limited }
-        // Sonst Fehler in Chunk-Reihenfolge melden – wie die macOS-App
-        let responses = try results.map { try $0!.get() }
 
         var snapshot = Snapshot()
-        var rateLimit: RateLimit?
-        for (chunk, res) in zip(chunks, responses) {
-            guard let data = res.data else {
-                let msg = res.errors.map(\.message).joined(separator: "; ")
-                throw GitHubError.graphQL(msg.isEmpty ? L10n.tr("Empty response from GitHub") : msg)
-            }
-            if snapshot.viewer == nil { snapshot.viewer = data.viewer }
-            if let rl = data.rateLimit { rateLimit = rl }
-            for (i, full) in chunk.enumerated() {
-                let alias = "r\(i)"
-                switch data.repos[alias] {
-                case let .repo(raw)?:
-                    pushRepo(&snapshot, raw)
-                case let .failed(message)?:
-                    snapshot.repos.append(.unavailable(full, error: L10n.tr("Unreadable response: %@", message)))
-                case .null?, nil:
-                    let err = res.errors.first { $0.path.first == alias }
-                    let message = err.map { explainOAuthRestriction($0.message) ?? $0.message }
-                    snapshot.repos.append(
-                        .unavailable(full, error: message ?? L10n.tr("Repository not found or no access")))
-                }
+        snapshot.viewer = round.viewer
+        for (full, entry) in round.repos {
+            switch entry {
+            case let .repo(raw):
+                await openCounts.remember(full, raw.open?.totalCount)
+                pushRepo(&snapshot, raw)
+            case let .unavailable(message):
+                await openCounts.remember(full, nil)
+                snapshot.repos.append(.unavailable(full, error: message))
             }
         }
+        let rateLimit = round.rateLimit
 
         await applyRulesets(&snapshot)
         snapshot.open.sort { $0.updatedAt > $1.updatedAt }
@@ -395,25 +451,76 @@ public final class GitHubClient: GitHubAPI {
         }
     }
 
+    /// Ein Durchgang über alle übergebenen Repos (in Blöcken zu je `chunkSize`, parallel).
+    private func fetchRound(_ sized: [(String, Int)]) async throws -> Round {
+        let chunks = stride(from: 0, to: sized.count, by: chunkSize).map {
+            Array(sized[$0..<min($0 + chunkSize, sized.count)])
+        }
+        let results = await withTaskGroup(of: (Int, Result<GQLResponse, Error>).self) { group in
+            for (i, chunk) in chunks.enumerated() {
+                group.addTask {
+                    do { return (i, .success(try await self.request(Queries.dashboard(chunk)))) } catch { return (i, .failure(error)) }
+                }
+            }
+            var out = [Result<GQLResponse, Error>?](repeating: nil, count: chunks.count)
+            for await (i, res) in group { out[i] = res }
+            return out
+        }
+        // Ein Rate-Limit in irgendeinem Chunk zählt vor anderen Fehlern, damit der
+        // Backoff bis zum Reset wartet statt zu früh erneut anzufragen.
+        let failures = results.compactMap { result -> Error? in
+            if case let .failure(error)? = result { return error }
+            return nil
+        }
+        if let limited = longestRateLimit(failures, now: Date()) { throw limited }
+        // Sonst Fehler in Chunk-Reihenfolge melden – wie die macOS-App
+        let responses = try results.map { try $0!.get() }
+
+        var round = Round()
+        for (chunk, res) in zip(chunks, responses) {
+            guard let data = res.data else {
+                let msg = res.errors.map(\.message).joined(separator: "; ")
+                throw GitHubError.graphQL(msg.isEmpty ? L10n.tr("Empty response from GitHub") : msg)
+            }
+            if round.viewer == nil { round.viewer = data.viewer }
+            round.rateLimit = mergeRateLimits(round.rateLimit, data.rateLimit)
+            for (i, (full, _)) in chunk.enumerated() {
+                let alias = "r\(i)"
+                switch data.repos[alias] {
+                case let .repo(raw)?:
+                    round.repos.append((full, .repo(raw)))
+                case let .failed(message)?:
+                    round.repos.append((full, .unavailable(L10n.tr("Unreadable response: %@", message))))
+                case .null?, nil:
+                    let err = res.errors.first { $0.path.first == alias }
+                    let message = err.map { explainOAuthRestriction($0.message) ?? $0.message }
+                    round.repos.append((full, .unavailable(message ?? L10n.tr("Repository not found or no access"))))
+                }
+            }
+        }
+        return round
+    }
+
     /// Effektive Regeln eines Branches (inkl. Org-Rulesets); `nil`, wenn nicht abrufbar.
     private func branchRules(_ key: RulesCache.Key) async -> [RawRule]? {
         if let cached = await rules.fresh(key, now: Date()) { return cached }
-        let fetched = await fetchBranchRules(key)
+        let fetched = await fetchBranchRules(key, etag: await rules.etag(key))
         return await rules.update(key, now: Date(), fetched: fetched)
     }
 
-    private func fetchBranchRules(_ key: RulesCache.Key) async -> [RawRule]? {
+    func fetchBranchRules(_ key: RulesCache.Key, etag: String?) async -> RulesFetch {
         guard let token = try? bearer(),
             let url = URL(string: "https://api.github.com/repos/\(key.repo)/rules/branches/\(encodePath(key.branch))")
-        else { return nil }
+        else { return .failed }
         var req = URLRequest(url: url)
         req.setValue("bearer \(token)", forHTTPHeaderField: "Authorization")
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         req.setValue("pr-radar-ios", forHTTPHeaderField: "User-Agent")
-        guard let (data, status) = try? await transport.send(req), (200..<300).contains(status) else {
-            return nil
-        }
-        return decodeRules(data)
+        if let etag { req.setValue(etag, forHTTPHeaderField: "If-None-Match") }
+        guard let (data, status, headers) = try? await transport.sendWithHeaders(req) else { return .failed }
+        if status == 304 { return .notModified }
+        guard (200..<300).contains(status), let rules = decodeRules(data) else { return .failed }
+        return .fresh(rules, etag: headers["etag"])
     }
 }
 
@@ -480,13 +587,16 @@ struct DashboardData: Decodable, Sendable {
         var remaining: Int?
         var limit: Int?
         var resetAt: String?
+        var cost: Int?
     }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: DynamicKey.self)
         viewer = (try? c.decodeIfPresent(Viewer.self, forKey: DynamicKey("viewer")))??.login
         if let rl = try? c.decodeIfPresent(RawRateLimit.self, forKey: DynamicKey("rateLimit")) {
-            rateLimit = RateLimit(remaining: rl.remaining ?? 0, limit: rl.limit ?? 0, resetAt: rl.resetAt.flatMap(parseISO8601))
+            rateLimit = RateLimit(
+                remaining: rl.remaining ?? 0, limit: rl.limit ?? 0, resetAt: rl.resetAt.flatMap(parseISO8601),
+                cost: rl.cost ?? 1)
         }
         var repos: [String: RepoSlot] = [:]
         for key in c.allKeys where key.stringValue.hasPrefix("r") && Int(key.stringValue.dropFirst()) != nil {

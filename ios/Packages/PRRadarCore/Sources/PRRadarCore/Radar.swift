@@ -16,6 +16,12 @@ let maxRateLimitWait: TimeInterval = 3600
 let unknownRateLimitWait: TimeInterval = 120
 /// Puffer nach dem Reset, damit der erste Versuch nicht knapp davor landet
 let resetSlack: TimeInterval = 5
+/// Anteil des Stundenkontingents, den das Polling im Dauerbetrieb höchstens verbraucht.
+/// Das Kontingent gilt je Nutzer für alle Tokens (macOS-App, `gh`, andere Tools) gemeinsam.
+let budgetShare = 0.3
+/// Dieser Teil des Kontingents bleibt für Aktionen und andere Tools frei: Wird es knapp,
+/// verteilt der Radar den Rest bis zum Reset und pausiert notfalls bis dahin.
+let reserveShare = 0.2
 
 /// Wartezeit nach einem fehlgeschlagenen Poll: bei Drosselung bis GitHub wieder Anfragen
 /// annimmt (ohne Zeitangabe 2 min, bei Wiederholung verdoppelt bis 1 h), sonst exponentiell
@@ -29,10 +35,23 @@ func waitAfterError(_ error: Error, failures: Int, base: TimeInterval, now: Date
     return min(max(base, normalInterval) * factor, maxBackoff)
 }
 
-/// Wartezeit nach einem erfolgreichen Poll: Ist das Kontingent aufgebraucht, bis zum Reset.
+/// Wartezeit nach einem erfolgreichen Poll, am Kontingent ausgerichtet – wie in der macOS-App:
+/// - im Dauerbetrieb höchstens `budgetShare` des Stundenkontingents (nach den Kosten des
+///   letzten Polls),
+/// - wird es knapp, den Rest oberhalb der Reserve gleichmäßig bis zum Reset verteilen,
+/// - reicht der Rest nicht mehr für einen Poll, bis zum Reset pausieren.
 func waitAfterSuccess(_ rateLimit: RateLimit?, base: TimeInterval, now: Date) -> TimeInterval {
-    guard let rateLimit, rateLimit.remaining == 0, let reset = rateLimit.resetAt, reset > now else { return base }
-    return min(max(reset.timeIntervalSince(now) + resetSlack, base), maxRateLimitWait)
+    guard let rateLimit, rateLimit.limit > 0 else { return base }
+    let cost = Double(max(rateLimit.cost, 1))
+    let limit = Double(rateLimit.limit)
+    let steady = cost * 3600 / (limit * budgetShare)
+    let usable = max(Double(rateLimit.remaining) - limit * reserveShare, 0)
+    var pace: TimeInterval = 0
+    if let reset = rateLimit.resetAt, reset > now {
+        let untilReset = reset.timeIntervalSince(now)
+        pace = usable < cost ? untilReset + resetSlack : untilReset * cost / usable
+    }
+    return min(max(base, steady, pace), maxRateLimitWait)
 }
 
 /// „30 s“ bzw. bei längeren Pausen (Backoff, Drosselung) „5 min“ / „5 Min.“

@@ -313,6 +313,115 @@ import Testing
     }
 }
 
+/// Seitengröße der offenen PRs je Repo: klein, wenn ein Repo wenige offene PRs hat, und sofort
+/// nachgeladen, wenn mehr offen sind, als die Seite fasst.
+@Suite struct ClientPageSizeTests {
+
+    init() { L10n.setLanguage("en") }
+
+    @Test func seitengroesseFolgtDerZahlOffenerPRs() {
+        #expect(Queries.openPageSize(knownOpen: nil) == 40)
+        #expect(Queries.openPageSize(knownOpen: 0) == 5)
+        #expect(Queries.openPageSize(knownOpen: 2) == 5)
+        #expect(Queries.openPageSize(knownOpen: 3) == 10)
+        #expect(Queries.openPageSize(knownOpen: 7) == 10)
+        #expect(Queries.openPageSize(knownOpen: 8) == 15)
+        #expect(Queries.openPageSize(knownOpen: 37) == 40)
+        #expect(Queries.openPageSize(knownOpen: 500) == 40)
+    }
+
+    @Test func seitengroesseJeRepoImQuery() {
+        let q = Queries.dashboard([("a/b", 40), ("c/d", 5)])
+        #expect(q.contains("states: OPEN, first: 40,"))
+        #expect(q.contains("states: OPEN, first: 5,"))
+        #expect(q.contains("totalCount"))
+    }
+
+    /// Antwort für ein Repo mit `total` offenen PRs, von denen höchstens `page` geliefert werden.
+    private static func reply(total: Int, page: Int) -> Data {
+        let nodes = (0..<min(total, page)).map { i in
+            """
+            { "id": "PR_\(i)", "number": \(i + 1), "title": "t", "url": "u", "isDraft": false,
+              "createdAt": "2026-01-01T00:00:00Z", "updatedAt": "2026-01-01T00:00:00Z",
+              "headRefName": "h", "headRefOid": "o", "baseRefName": "main", "additions": 1, "deletions": 1 }
+            """
+        }
+        return Data(
+            """
+            { "data": {
+              "viewer": { "login": "me" },
+              "rateLimit": { "remaining": 4000, "limit": 5000, "resetAt": null, "cost": 2 },
+              "r0": { "nameWithOwner": "a/b", "url": "https://github.com/a/b",
+                "open": { "totalCount": \(total), "nodes": [\(nodes.joined(separator: ","))] },
+                "merged": { "nodes": [] }, "releases": { "nodes": [] } } } }
+            """.utf8)
+    }
+
+    private static func page(_ req: URLRequest) -> Int {
+        let query = req.graphQLBody["query"] as? String ?? ""
+        let rest = query.components(separatedBy: "states: OPEN, first: ").dropFirst().first ?? ""
+        return Int(rest.prefix { $0.isNumber }) ?? -1
+    }
+
+    @Test func seiteSchrumpftUndWaechstBeiBedarf() async throws {
+        let total = Locked(12)
+        let t = ScriptedTransport { req in
+            guard req.isGraphQL else { return (Data(), 404, [:]) }
+            return (Self.reply(total: total.value, page: Self.page(req)), 200, [:])
+        }
+        let client = GitHubClient(transport: t, token: { "t" })
+        let pages = { t.requests.filter(\.isGraphQL).map(Self.page) }
+
+        #expect(try await client.fetch(repos: ["a/b"]).snapshot.open.count == 12)
+        #expect(pages() == [40])
+        #expect(try await client.fetch(repos: ["a/b"]).snapshot.open.count == 12)
+        #expect(pages() == [40, 15])
+
+        // Mehr PRs als die Seite fasst → sofort mit größerer Seite nachladen, nichts fehlt.
+        total.value = 30
+        let fetched = try await client.fetch(repos: ["a/b"])
+        #expect(fetched.snapshot.open.count == 30)
+        #expect(pages() == [40, 15, 15, 35])
+        // Kosten beider Requests zählen für diesen Poll.
+        #expect(fetched.rateLimit?.cost == 4)
+    }
+
+    @Test func branchRegelnFragenMitEtagNach() async throws {
+        let rules = #"[{ "type": "pull_request", "parameters": { "allowed_merge_methods": ["squash"] } }]"#
+        let t = ScriptedTransport { req in
+            req.value(forHTTPHeaderField: "If-None-Match") == "\"abc\""
+                ? (Data(), 304, [:]) : (Data(rules.utf8), 200, ["etag": "\"abc\""])
+        }
+        let client = GitHubClient(transport: t, token: { "t" })
+        let key = RulesCache.Key(repo: "a/b", branch: "main")
+        guard case let .fresh(first, etag) = await client.fetchBranchRules(key, etag: nil) else {
+            Issue.record("erster Abruf liefert Regeln")
+            return
+        }
+        #expect(first.count == 1)
+        #expect(etag == "\"abc\"")
+        guard case .notModified = await client.fetchBranchRules(key, etag: etag) else {
+            Issue.record("Nachfrage mit ETag liefert 304")
+            return
+        }
+        #expect(t.requests.map { $0.value(forHTTPHeaderField: "If-None-Match") } == [nil, "\"abc\""])
+    }
+
+    @Test func nach304GiltDerAlteStandWeiter() async {
+        let cache = RulesCache()
+        let key = RulesCache.Key(repo: "a/b", branch: "main")
+        let t0 = Date(timeIntervalSince1970: 0)
+        let later = t0.addingTimeInterval(rulesTTL + 1)
+        #expect(await cache.update(key, now: t0, fetched: .fresh([], etag: "e")) == [])
+        #expect(await cache.fresh(key, now: later) == nil)
+        #expect(await cache.etag(key) == "e")
+        #expect(await cache.update(key, now: later, fetched: .notModified) == [])
+        #expect(await cache.fresh(key, now: later) == [])
+        let unknown = RulesCache.Key(repo: "x/y", branch: "main")
+        #expect(await cache.update(unknown, now: later, fetched: .notModified) == nil)
+    }
+}
+
 /// Kleiner, threadsicherer Wert für Closures in Tests.
 final class Locked<Value>: @unchecked Sendable {
     private let lock = NSLock()

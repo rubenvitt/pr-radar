@@ -61,6 +61,12 @@ const MAX_BACKOFF: Duration = Duration::from_secs(300);
 const MAX_RATE_LIMIT_WAIT: Duration = Duration::from_secs(3600);
 /// Puffer nach `reset_at`, damit der erste Versuch nicht knapp davor landet
 const RESET_SLACK: Duration = Duration::from_secs(5);
+/// Anteil des Stundenkontingents, den das Polling im Dauerbetrieb höchstens verbraucht.
+/// Das Kontingent gilt je Nutzer für alle Tokens (iOS-App, `gh`, andere Tools) gemeinsam.
+const BUDGET_SHARE: f64 = 0.3;
+/// Dieser Teil des Kontingents bleibt für Aktionen und andere Tools frei: Wird es knapp,
+/// verteilt der Radar den Rest bis zum Reset und pausiert notfalls bis dahin.
+const RESERVE_SHARE: f64 = 0.2;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PollState {
@@ -960,20 +966,29 @@ fn wait_after_error(
     (base * factor).min(MAX_BACKOFF)
 }
 
-/// Wartezeit nach einem erfolgreichen Poll: Ist das Kontingent aufgebraucht, bis zum Reset.
+/// Wartezeit nach einem erfolgreichen Poll, am Kontingent ausgerichtet:
+/// - im Dauerbetrieb höchstens `BUDGET_SHARE` des Stundenkontingents (nach den Kosten des
+///   letzten Polls),
+/// - wird es knapp, den Rest oberhalb der Reserve gleichmäßig bis zum Reset verteilen,
+/// - reicht der Rest nicht mehr für einen Poll, bis zum Reset pausieren.
 fn wait_after_success(
     rate_limit: Option<&RateLimit>,
     base: Duration,
     now: DateTime<Utc>,
 ) -> Duration {
-    match rate_limit {
-        Some(RateLimit {
-            remaining: 0,
-            reset_at: Some(reset),
-            ..
-        }) if *reset > now => (until(*reset, now) + RESET_SLACK).clamp(base, MAX_RATE_LIMIT_WAIT),
-        _ => base,
-    }
+    let Some(rl) = rate_limit.filter(|rl| rl.limit > 0) else {
+        return base;
+    };
+    let cost = rl.cost.max(1) as f64;
+    let limit = rl.limit as f64;
+    let steady = Duration::from_secs_f64(cost * 3600.0 / (limit * BUDGET_SHARE));
+    let usable = (rl.remaining as f64 - limit * RESERVE_SHARE).max(0.0);
+    let pace = match rl.reset_at.filter(|r| *r > now) {
+        Some(reset) if usable < cost => until(reset, now) + RESET_SLACK,
+        Some(reset) => until(reset, now).mul_f64(cost / usable),
+        None => Duration::ZERO,
+    };
+    base.max(steady).max(pace).min(MAX_RATE_LIMIT_WAIT)
 }
 
 fn until(at: DateTime<Utc>, now: DateTime<Utc>) -> Duration {
@@ -1042,23 +1057,66 @@ mod tests {
         assert_eq!(wait_after_error(&e, 1, NORMAL, at(0)), MAX_RATE_LIMIT_WAIT);
     }
 
+    fn rate(remaining: u64, cost: u64, reset_in: Option<i64>) -> RateLimit {
+        RateLimit {
+            remaining,
+            limit: 5000,
+            reset_at: reset_in.map(|s| at(1_000 + s)),
+            cost,
+        }
+    }
+
     #[test]
     fn leeres_kontingent_nach_erfolg_pausiert_bis_reset() {
-        let rl = RateLimit {
-            remaining: 0,
-            limit: 5000,
-            reset_at: Some(at(1_000 + 120)),
-        };
+        let rl = rate(0, 1, Some(120));
         assert_eq!(
             wait_after_success(Some(&rl), ACTIVE, at(1_000)),
             Duration::from_secs(125)
         );
-        let rl = RateLimit {
-            remaining: 10,
-            ..rl
-        };
-        assert_eq!(wait_after_success(Some(&rl), ACTIVE, at(1_000)), ACTIVE);
+        // Nur noch die Reserve übrig → ebenfalls bis zum Reset
+        let rl = rate(10, 1, Some(120));
+        assert_eq!(
+            wait_after_success(Some(&rl), ACTIVE, at(1_000)),
+            Duration::from_secs(125)
+        );
         assert_eq!(wait_after_success(None, NORMAL, at(1_000)), NORMAL);
+    }
+
+    #[test]
+    fn guenstige_polls_behalten_das_intervall() {
+        // 1 Punkt je Poll: 0,3 × 5000 = 1500 Punkte/h erlauben alle 2,4 s einen Poll.
+        let rl = rate(4900, 1, Some(3000));
+        assert_eq!(wait_after_success(Some(&rl), ACTIVE, at(1_000)), ACTIVE);
+        assert_eq!(wait_after_success(Some(&rl), NORMAL, at(1_000)), NORMAL);
+    }
+
+    #[test]
+    fn teure_polls_strecken_das_intervall() {
+        // 25 Punkte je Poll: höchstens 1500 Punkte/h → alle 60 s.
+        let rl = rate(4900, 25, Some(3000));
+        assert_eq!(
+            wait_after_success(Some(&rl), ACTIVE, at(1_000)),
+            Duration::from_secs(60)
+        );
+    }
+
+    #[test]
+    fn knappes_kontingent_wird_bis_zum_reset_verteilt() {
+        // 1100 übrig, 1000 Reserve → 100 Punkte für 1800 s, 5 je Poll → alle 90 s.
+        let rl = rate(1100, 5, Some(1800));
+        assert_eq!(
+            wait_after_success(Some(&rl), ACTIVE, at(1_000)),
+            Duration::from_secs(90)
+        );
+        // Ohne bekannten Reset bleibt nur die Dauerbegrenzung (5 × 3600 / 1500 = 12 s).
+        let rl = rate(1100, 5, None);
+        assert_eq!(
+            wait_after_success(Some(&rl), ACTIVE, at(1_000)),
+            Duration::from_secs(12)
+        );
+        // Unbekanntes Limit → normales Intervall
+        let rl = RateLimit { limit: 0, ..rl };
+        assert_eq!(wait_after_success(Some(&rl), NORMAL, at(1_000)), NORMAL);
     }
 
     fn snapshot(auto: Option<AutoMerge>) -> Snapshot {

@@ -55,6 +55,8 @@ pub struct RateLimit {
     pub remaining: u64,
     pub limit: u64,
     pub reset_at: Option<DateTime<Utc>>,
+    /// Punkte, die der letzte Poll gekostet hat (Summe über alle Requests)
+    pub cost: u64,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -361,6 +363,8 @@ pub struct GitHub {
     /// bis zur nächsten Anmeldung nicht wieder eingelesen.
     stale: Mutex<Option<String>>,
     rules: Mutex<RulesCache>,
+    /// Zuletzt gesehene Zahl offener PRs je Repo – bestimmt die Seitengröße der nächsten Abfrage.
+    open_counts: Mutex<HashMap<String, usize>>,
     /// Frist je Request samt Body (`REQUEST_TIMEOUT`, in Tests kürzer).
     timeout: Duration,
 }
@@ -372,30 +376,67 @@ const RULES_TTL: Duration = Duration::from_secs(600);
 /// damit nicht still wieder alle Merge-Methoden angeboten werden.
 #[derive(Default)]
 struct RulesCache {
-    entries: HashMap<(String, String), (Instant, Value)>,
+    entries: HashMap<(String, String), RulesEntry>,
+}
+
+struct RulesEntry {
+    at: Instant,
+    rules: Value,
+    /// `ETag` der letzten Antwort: Eine Nachfrage mit `If-None-Match` beantwortet GitHub mit 304,
+    /// und die zählt nicht gegen das Kontingent.
+    etag: Option<String>,
+}
+
+/// Ergebnis eines Abrufs der Branch-Regeln.
+#[derive(Debug, PartialEq)]
+enum RulesFetch {
+    Fresh {
+        rules: Value,
+        etag: Option<String>,
+    },
+    /// 304: Der zwischengespeicherte Stand gilt weiter.
+    NotModified,
+    Failed,
 }
 
 impl RulesCache {
     fn fresh(&self, key: &(String, String), now: Instant) -> Option<Value> {
         self.entries
             .get(key)
-            .filter(|(at, _)| now.duration_since(*at) < RULES_TTL)
-            .map(|(_, v)| v.clone())
+            .filter(|e| now.duration_since(e.at) < RULES_TTL)
+            .map(|e| e.rules.clone())
     }
 
-    /// Übernimmt ein Abrufergebnis; ohne Ergebnis bleibt der alte Eintrag gültig.
+    fn etag(&self, key: &(String, String)) -> Option<String> {
+        self.entries.get(key)?.etag.clone()
+    }
+
+    /// Übernimmt ein Abrufergebnis; bei 304 gilt der alte Eintrag wieder `RULES_TTL` lang, bei
+    /// einem Fehler bleibt er gültig, wird aber beim nächsten Mal erneut angefragt.
     fn update(
         &mut self,
         key: (String, String),
         now: Instant,
-        fetched: Option<Value>,
+        fetched: RulesFetch,
     ) -> Option<Value> {
         match fetched {
-            Some(v) => {
-                self.entries.insert(key, (now, v.clone()));
-                Some(v)
+            RulesFetch::Fresh { rules, etag } => {
+                self.entries.insert(
+                    key,
+                    RulesEntry {
+                        at: now,
+                        rules: rules.clone(),
+                        etag,
+                    },
+                );
+                Some(rules)
             }
-            None => self.entries.get(&key).map(|(_, v)| v.clone()),
+            RulesFetch::NotModified => {
+                let e = self.entries.get_mut(&key)?;
+                e.at = now;
+                Some(e.rules.clone())
+            }
+            RulesFetch::Failed => self.entries.get(&key).map(|e| e.rules.clone()),
         }
     }
 }
@@ -407,6 +448,7 @@ impl GitHub {
             token: Mutex::new(None),
             stale: Mutex::new(None),
             rules: Mutex::new(RulesCache::default()),
+            open_counts: Mutex::new(HashMap::new()),
             timeout: REQUEST_TIMEOUT,
         }
     }
@@ -697,78 +739,44 @@ impl GitHub {
 
     /// Lädt alle Repos (in Blöcken zu je `CHUNK`) und baut daraus einen Snapshot.
     pub async fn fetch(&self, repos: &[String]) -> Result<Fetched> {
-        let mut snapshot = Snapshot::default();
-        let mut rate_limit = None;
-        let chunks: Vec<&[String]> = repos.chunks(CHUNK).collect();
-        let results =
-            futures::future::join_all(chunks.iter().map(|c| self.request_dashboard(c))).await;
-        // Ein Rate-Limit in irgendeinem Chunk zählt vor anderen Fehlern, damit der
-        // Backoff bis zum Reset wartet statt zu früh erneut anzufragen.
-        if let Some(limited) = longest_rate_limit(&results, Utc::now()) {
-            return Err(limited.into());
-        }
-
-        for (chunk, res) in chunks.into_iter().zip(results) {
-            let res = res?;
-            let Some(data) = res.data else {
-                let msg = res
-                    .errors
-                    .iter()
-                    .map(|e| e.message.as_str())
-                    .collect::<Vec<_>>()
-                    .join("; ");
-                bail!(
-                    "{}",
-                    if msg.is_empty() {
-                        tr!("Empty response from GitHub", "Leere Antwort von GitHub").into()
-                    } else {
-                        msg
-                    }
-                );
-            };
-            if snapshot.viewer.is_none() {
-                snapshot.viewer = data
-                    .get("viewer")
-                    .and_then(|v| v["login"].as_str())
-                    .map(String::from);
-            }
-            if let Some(rl) = data.get("rateLimit") {
-                rate_limit = Some(RateLimit {
-                    remaining: rl["remaining"].as_u64().unwrap_or(0),
-                    limit: rl["limit"].as_u64().unwrap_or(0),
-                    reset_at: rl["resetAt"].as_str().and_then(|s| s.parse().ok()),
-                });
-            }
-            for (i, full) in chunk.iter().enumerate() {
-                let alias = format!("r{i}");
-                let raw = data.get(&alias).filter(|v| !v.is_null()).cloned();
-                match raw.map(serde_json::from_value::<RawRepo>) {
-                    Some(Ok(raw)) => normalize::push_repo(&mut snapshot, &raw),
-                    Some(Err(e)) => snapshot.repos.push(RepoInfo::unavailable(
-                        full,
-                        trf!("Unreadable response: {e}", "Antwort nicht lesbar: {e}"),
-                    )),
-                    None => {
-                        let err = res.errors.iter().find(|e| {
-                            e.path.first().and_then(Value::as_str) == Some(alias.as_str())
-                        });
-                        let msg = err
-                            .map(|e| {
-                                explain_oauth_restriction(&e.message)
-                                    .unwrap_or_else(|| e.message.clone())
-                            })
-                            .unwrap_or_else(|| {
-                                tr!(
-                                    "Repository not found or no access",
-                                    "Repository nicht gefunden oder kein Zugriff"
-                                )
-                                .into()
-                            });
-                        snapshot.repos.push(RepoInfo::unavailable(full, msg));
-                    }
+        let sized = self.page_sizes(repos);
+        let mut round = self.fetch_round(&sized).await?;
+        // Mehr offene PRs als die verkleinerte Seite fasst: genau diese Repos sofort mit
+        // passender Seite nachladen, damit kein PR auch nur für einen Poll fehlt.
+        let truncated: Vec<(String, usize)> = round
+            .repos
+            .iter()
+            .zip(&sized)
+            .filter_map(|((full, raw), (_, page))| {
+                let total = raw.as_ref().ok()?.open.total_count?;
+                (total > *page && *page < queries::MAX_OPEN_PAGE)
+                    .then(|| (full.clone(), queries::open_page_size(Some(total))))
+            })
+            .collect();
+        if !truncated.is_empty() {
+            let again = self.fetch_round(&truncated).await?;
+            round.rate_limit = merge_rate_limits(round.rate_limit, again.rate_limit);
+            for (full, raw) in again.repos {
+                if let Some(slot) = round.repos.iter_mut().find(|(f, _)| *f == full) {
+                    slot.1 = raw;
                 }
             }
         }
+        self.remember_open_counts(&round.repos);
+
+        let mut snapshot = Snapshot {
+            viewer: round.viewer,
+            ..Snapshot::default()
+        };
+        for (full, raw) in &round.repos {
+            match raw {
+                Ok(raw) => normalize::push_repo(&mut snapshot, raw),
+                Err(msg) => snapshot
+                    .repos
+                    .push(RepoInfo::unavailable(full, msg.clone())),
+            }
+        }
+        let rate_limit = round.rate_limit;
 
         self.apply_rulesets(&mut snapshot).await;
         snapshot
@@ -822,43 +830,196 @@ impl GitHub {
     /// Effektive Regeln eines Branches (inkl. Org-Rulesets); `None`, wenn nicht abrufbar.
     async fn branch_rules(&self, repo: &str, branch: &str) -> Option<Value> {
         let key = (repo.to_string(), branch.to_string());
-        if let Some(v) = self.rules.lock().ok()?.fresh(&key, Instant::now()) {
-            return Some(v);
-        }
-        let fetched = self.fetch_branch_rules(repo, branch).await;
+        let etag = {
+            let cache = self.rules.lock().ok()?;
+            if let Some(v) = cache.fresh(&key, Instant::now()) {
+                return Some(v);
+            }
+            cache.etag(&key)
+        };
+        let fetched = self.fetch_branch_rules(repo, branch, etag.as_deref()).await;
         self.rules.lock().ok()?.update(key, Instant::now(), fetched)
     }
 
-    async fn fetch_branch_rules(&self, repo: &str, branch: &str) -> Option<Value> {
-        let token = self.token().ok()?;
-        let req = Request::builder()
+    async fn fetch_branch_rules(&self, repo: &str, branch: &str, etag: Option<&str>) -> RulesFetch {
+        let Ok(token) = self.token() else {
+            return RulesFetch::Failed;
+        };
+        let mut req = Request::builder()
             .uri(format!(
                 "https://api.github.com/repos/{repo}/rules/branches/{}",
                 encode_path(branch)
             ))
             .header("Authorization", format!("bearer {}", token.value))
             .header("Accept", "application/vnd.github+json")
-            .header("User-Agent", "pr-radar-native")
-            .body(AsyncBody::empty())
-            .ok()?;
+            .header("User-Agent", "pr-radar-native");
+        if let Some(etag) = etag {
+            req = req.header("If-None-Match", etag);
+        }
+        let Ok(req) = req.body(AsyncBody::empty()) else {
+            return RulesFetch::Failed;
+        };
         // Bei Zeitüberschreitung gilt wie bei jedem Abruffehler der letzte bekannte Stand.
-        let text = within(self.timeout, async {
+        let res = within(self.timeout, async {
             let mut res = self.http.send(req).await?;
+            if res.status().as_u16() == 304 {
+                return Ok(None);
+            }
             if !res.status().is_success() {
                 bail!("HTTP {}", res.status());
             }
+            let etag = res
+                .headers()
+                .get("etag")
+                .and_then(|v| v.to_str().ok())
+                .map(String::from);
             let mut text = String::new();
             res.body_mut().read_to_string(&mut text).await?;
-            Ok(text)
+            Ok(Some((text, etag)))
         })
-        .await
-        .ok()?;
-        serde_json::from_str(&text).ok()
+        .await;
+        match res {
+            Ok(None) => RulesFetch::NotModified,
+            Ok(Some((text, etag))) => match serde_json::from_str(&text) {
+                Ok(rules) => RulesFetch::Fresh { rules, etag },
+                Err(_) => RulesFetch::Failed,
+            },
+            Err(_) => RulesFetch::Failed,
+        }
     }
 
-    async fn request_dashboard(&self, chunk: &[String]) -> Result<GqlResponse> {
+    async fn request_dashboard(&self, chunk: &[(String, usize)]) -> Result<GqlResponse> {
         self.request(&queries::dashboard_query(chunk), json!({}))
             .await
+    }
+
+    /// Seitengröße für die offenen PRs je Repo, nach der zuletzt gesehenen Anzahl.
+    fn page_sizes(&self, repos: &[String]) -> Vec<(String, usize)> {
+        let counts = self.open_counts.lock().ok();
+        repos
+            .iter()
+            .map(|r| {
+                let known = counts.as_ref().and_then(|c| c.get(r).copied());
+                (r.clone(), queries::open_page_size(known))
+            })
+            .collect()
+    }
+
+    fn remember_open_counts(&self, repos: &[(String, Result<RawRepo, String>)]) {
+        let Ok(mut counts) = self.open_counts.lock() else {
+            return;
+        };
+        for (full, raw) in repos {
+            match raw.as_ref().ok().and_then(|r| r.open.total_count) {
+                Some(n) => {
+                    counts.insert(full.clone(), n);
+                }
+                // Unbekannt (Fehler, kein Zugriff): beim nächsten Mal wieder die volle Seite.
+                None => {
+                    counts.remove(full);
+                }
+            }
+        }
+    }
+
+    /// Ein Durchgang über alle übergebenen Repos (in Blöcken zu je `CHUNK`, parallel).
+    async fn fetch_round(&self, sized: &[(String, usize)]) -> Result<Round> {
+        let chunks: Vec<&[(String, usize)]> = sized.chunks(CHUNK).collect();
+        let results =
+            futures::future::join_all(chunks.iter().map(|c| self.request_dashboard(c))).await;
+        // Ein Rate-Limit in irgendeinem Chunk zählt vor anderen Fehlern, damit der
+        // Backoff bis zum Reset wartet statt zu früh erneut anzufragen.
+        if let Some(limited) = longest_rate_limit(&results, Utc::now()) {
+            return Err(limited.into());
+        }
+
+        let mut round = Round::default();
+        for (chunk, res) in chunks.into_iter().zip(results) {
+            let res = res?;
+            let Some(data) = res.data else {
+                let msg = res
+                    .errors
+                    .iter()
+                    .map(|e| e.message.as_str())
+                    .collect::<Vec<_>>()
+                    .join("; ");
+                bail!(
+                    "{}",
+                    if msg.is_empty() {
+                        tr!("Empty response from GitHub", "Leere Antwort von GitHub").into()
+                    } else {
+                        msg
+                    }
+                );
+            };
+            if round.viewer.is_none() {
+                round.viewer = data
+                    .get("viewer")
+                    .and_then(|v| v["login"].as_str())
+                    .map(String::from);
+            }
+            if let Some(rl) = data.get("rateLimit") {
+                let rl = RateLimit {
+                    remaining: rl["remaining"].as_u64().unwrap_or(0),
+                    limit: rl["limit"].as_u64().unwrap_or(0),
+                    reset_at: rl["resetAt"].as_str().and_then(|s| s.parse().ok()),
+                    cost: rl["cost"].as_u64().unwrap_or(1),
+                };
+                round.rate_limit = merge_rate_limits(round.rate_limit, Some(rl));
+            }
+            for (i, (full, _)) in chunk.iter().enumerate() {
+                let alias = format!("r{i}");
+                let raw = data.get(&alias).filter(|v| !v.is_null()).cloned();
+                let entry = match raw.map(serde_json::from_value::<RawRepo>) {
+                    Some(Ok(raw)) => Ok(raw),
+                    Some(Err(e)) => Err(trf!(
+                        "Unreadable response: {e}",
+                        "Antwort nicht lesbar: {e}"
+                    )),
+                    None => {
+                        let err = res.errors.iter().find(|e| {
+                            e.path.first().and_then(Value::as_str) == Some(alias.as_str())
+                        });
+                        Err(err
+                            .map(|e| {
+                                explain_oauth_restriction(&e.message)
+                                    .unwrap_or_else(|| e.message.clone())
+                            })
+                            .unwrap_or_else(|| {
+                                tr!(
+                                    "Repository not found or no access",
+                                    "Repository nicht gefunden oder kein Zugriff"
+                                )
+                                .into()
+                            }))
+                    }
+                };
+                round.repos.push((full.clone(), entry));
+            }
+        }
+        Ok(round)
+    }
+}
+
+/// Rohdaten eines Abrufdurchgangs, je Repo in Abfragereihenfolge.
+#[derive(Default)]
+struct Round {
+    viewer: Option<String>,
+    repos: Vec<(String, std::result::Result<RawRepo, String>)>,
+    rate_limit: Option<RateLimit>,
+}
+
+/// Fasst die Kontingent-Angaben mehrerer Requests eines Polls zusammen: Kosten addieren sich,
+/// beim Rest zählt die knappste (jüngste) Angabe.
+fn merge_rate_limits(a: Option<RateLimit>, b: Option<RateLimit>) -> Option<RateLimit> {
+    match (a, b) {
+        (Some(a), Some(b)) => {
+            let cost = a.cost + b.cost;
+            let mut lower = if b.remaining <= a.remaining { b } else { a };
+            lower.cost = cost;
+            Some(lower)
+        }
+        (a, b) => a.or(b),
     }
 }
 
@@ -1068,8 +1229,8 @@ mod tests {
         // (siehe `regeln_bleiben_bei_abruffehler_erhalten`).
         for hang_in_body in [false, true] {
             let gh = hanging_github(hang_in_body);
-            let got = futures::executor::block_on(gh.fetch_branch_rules("a/b", "main"));
-            assert_eq!(got, None);
+            let got = futures::executor::block_on(gh.fetch_branch_rules("a/b", "main", None));
+            assert_eq!(got, RulesFetch::Failed);
         }
     }
 
@@ -1356,19 +1517,211 @@ mod tests {
         let key = ("a/b".to_string(), "main".to_string());
         let t0 = Instant::now();
         let rules = json!([{ "type": "pull_request", "parameters": { "allowed_merge_methods": ["merge"] } }]);
+        let fresh = |etag: Option<&str>| RulesFetch::Fresh {
+            rules: rules.clone(),
+            etag: etag.map(String::from),
+        };
         assert_eq!(
-            cache.update(key.clone(), t0, Some(rules.clone())),
+            cache.update(key.clone(), t0, fresh(Some("\"e1\""))),
             Some(rules.clone())
         );
         assert_eq!(cache.fresh(&key, t0), Some(rules.clone()));
+        assert_eq!(cache.etag(&key).as_deref(), Some("\"e1\""));
         // abgelaufen → neu abrufen; Abruf scheitert → alter Stand gilt weiter
         let later = t0 + RULES_TTL + Duration::from_secs(1);
         assert_eq!(cache.fresh(&key, later), None);
-        assert_eq!(cache.update(key.clone(), later, None), Some(rules));
-        // nie erfolgreich geladen → keine Regeln bekannt
         assert_eq!(
-            cache.update(("x/y".into(), "main".into()), later, None),
-            None
+            cache.update(key.clone(), later, RulesFetch::Failed),
+            Some(rules.clone())
         );
+        assert_eq!(cache.fresh(&key, later), None);
+        // 304 → alter Stand gilt wieder eine volle TTL lang
+        assert_eq!(
+            cache.update(key.clone(), later, RulesFetch::NotModified),
+            Some(rules.clone())
+        );
+        assert_eq!(cache.fresh(&key, later), Some(rules));
+        // nie erfolgreich geladen → keine Regeln bekannt
+        let other = ("x/y".to_string(), "main".to_string());
+        assert_eq!(cache.update(other.clone(), later, RulesFetch::Failed), None);
+        assert_eq!(cache.update(other, later, RulesFetch::NotModified), None);
+    }
+
+    /// Antwort je Request (URI, Body) → Status, Header, Body.
+    type Responder = fn(&str, &str) -> (u16, Vec<(&'static str, &'static str)>, String);
+
+    /// Mitgeschriebene Requests: URI, `If-None-Match`, Body.
+    type SentLog = Arc<Mutex<Vec<(String, Option<String>, String)>>>;
+
+    /// Fake-Client, der Requests mitschreibt und je Request eine Antwort aus `respond` liefert.
+    struct ScriptedClient {
+        requests: SentLog,
+        respond: Responder,
+    }
+
+    impl HttpClient for ScriptedClient {
+        fn user_agent(&self) -> Option<&HeaderValue> {
+            None
+        }
+
+        fn proxy(&self) -> Option<&Url> {
+            None
+        }
+
+        fn send(
+            &self,
+            mut req: Request<AsyncBody>,
+        ) -> BoxFuture<'static, Result<Response<AsyncBody>>> {
+            let uri = req.uri().to_string();
+            let if_none_match = req
+                .headers()
+                .get("If-None-Match")
+                .and_then(|v| v.to_str().ok())
+                .map(String::from);
+            let (requests, respond) = (self.requests.clone(), self.respond);
+            Box::pin(async move {
+                let mut body = String::new();
+                req.body_mut().read_to_string(&mut body).await?;
+                let (status, headers, text) = respond(&uri, &body);
+                requests.lock().unwrap().push((uri, if_none_match, body));
+                let mut res = Response::builder().status(status);
+                for (k, v) in headers {
+                    res = res.header(k, v);
+                }
+                Ok(res.body(AsyncBody::from(text.into_bytes()))?)
+            })
+        }
+    }
+
+    fn scripted(respond: Responder) -> (GitHub, SentLog) {
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let gh = GitHub::new(Arc::new(ScriptedClient {
+            requests: requests.clone(),
+            respond,
+        }));
+        *gh.token.lock().unwrap() = Some(Token {
+            value: "test".into(),
+            source: TokenSource::Env,
+        });
+        (gh, requests)
+    }
+
+    /// Antwort für ein Repo mit `total` offenen PRs, von denen `page` geliefert werden.
+    fn repo_json(total: usize, page: usize) -> Value {
+        let nodes: Vec<Value> = (0..total.min(page))
+            .map(|i| {
+                json!({
+                    "id": format!("PR_{i}"), "number": i + 1, "title": "t", "url": "u",
+                    "isDraft": false, "createdAt": "2026-01-01T00:00:00Z",
+                    "updatedAt": "2026-01-01T00:00:00Z", "headRefName": "h", "headRefOid": "o",
+                    "baseRefName": "main", "additions": 1, "deletions": 1
+                })
+            })
+            .collect();
+        json!({
+            "nameWithOwner": "a/b", "url": "https://github.com/a/b",
+            "open": { "totalCount": total, "nodes": nodes },
+            "merged": { "nodes": [] }, "releases": { "nodes": [] }
+        })
+    }
+
+    /// Seitengröße der offenen PRs aus einem Dashboard-Request lesen.
+    fn page_in(body: &str) -> usize {
+        let query: Value = serde_json::from_str(body).unwrap();
+        let q = query["query"].as_str().unwrap();
+        let rest = q.split("states: OPEN, first: ").nth(1).unwrap();
+        rest.split(',').next().unwrap().parse().unwrap()
+    }
+
+    #[test]
+    fn seite_schrumpft_nach_dem_ersten_abruf_und_waechst_bei_bedarf() {
+        // Das Repo hat 12 offene PRs, ab dem dritten Poll 30.
+        static TOTAL: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(12);
+        let (gh, requests) = scripted(|uri, body| {
+            if uri.contains("/rules/") {
+                return (404, vec![], String::new());
+            }
+            let page = page_in(body);
+            let total = TOTAL.load(std::sync::atomic::Ordering::SeqCst);
+            let data = json!({ "data": {
+                "viewer": { "login": "me" },
+                "rateLimit": { "remaining": 4000, "limit": 5000, "resetAt": null, "cost": 2 },
+                "r0": repo_json(total, page)
+            }});
+            (200, vec![], data.to_string())
+        });
+        let repos = vec!["a/b".to_string()];
+        let pages = |requests: &SentLog| -> Vec<usize> {
+            requests
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(uri, _, _)| uri.ends_with("/graphql"))
+                .map(|(_, _, b)| page_in(b))
+                .collect()
+        };
+
+        let f = futures::executor::block_on(gh.fetch(&repos)).unwrap();
+        assert_eq!(f.snapshot.open.len(), 12);
+        assert_eq!(pages(&requests), [40]);
+
+        let f = futures::executor::block_on(gh.fetch(&repos)).unwrap();
+        assert_eq!(f.snapshot.open.len(), 12);
+        assert_eq!(pages(&requests), [40, 15]);
+
+        // Mehr PRs als die Seite fasst → sofort mit größerer Seite nachladen, nichts fehlt.
+        TOTAL.store(30, std::sync::atomic::Ordering::SeqCst);
+        requests.lock().unwrap().clear();
+        let f = futures::executor::block_on(gh.fetch(&repos)).unwrap();
+        assert_eq!(f.snapshot.open.len(), 30);
+        assert_eq!(pages(&requests), [15, 35]);
+        // Kosten beider Requests zählen für diesen Poll.
+        assert_eq!(f.rate_limit.map(|r| r.cost), Some(4));
+    }
+
+    #[test]
+    fn kontingent_mehrerer_requests_wird_zusammengefasst() {
+        let rl = |remaining, cost| RateLimit {
+            remaining,
+            limit: 5000,
+            reset_at: None,
+            cost,
+        };
+        let merged = merge_rate_limits(Some(rl(4000, 3)), Some(rl(3990, 2))).unwrap();
+        assert_eq!((merged.remaining, merged.cost), (3990, 5));
+        let merged = merge_rate_limits(Some(rl(3990, 3)), Some(rl(4000, 2))).unwrap();
+        assert_eq!((merged.remaining, merged.cost), (3990, 5));
+        assert_eq!(merge_rate_limits(None, Some(rl(1, 1))), Some(rl(1, 1)));
+        assert_eq!(merge_rate_limits(None, None), None);
+    }
+
+    #[test]
+    fn branch_regeln_fragen_mit_etag_nach() {
+        let (gh, requests) = scripted(|_, _| {
+            (
+                200,
+                vec![("etag", "\"abc\"")],
+                r#"[{"type":"deletion"}]"#.to_string(),
+            )
+        });
+        let got = futures::executor::block_on(gh.fetch_branch_rules("a/b", "main", None));
+        assert_eq!(
+            got,
+            RulesFetch::Fresh {
+                rules: json!([{ "type": "deletion" }]),
+                etag: Some("\"abc\"".into())
+            }
+        );
+        let (gh304, requests304) = scripted(|_, _| (304, vec![], String::new()));
+        let got = futures::executor::block_on(gh304.fetch_branch_rules(
+            "a/b",
+            "feature/x",
+            Some("\"abc\""),
+        ));
+        assert_eq!(got, RulesFetch::NotModified);
+        let sent = requests304.lock().unwrap();
+        assert_eq!(sent[0].1.as_deref(), Some("\"abc\""));
+        assert!(sent[0].0.ends_with("/rules/branches/feature%2Fx"));
+        assert_eq!(requests.lock().unwrap()[0].1, None);
     }
 }
