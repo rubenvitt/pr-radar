@@ -243,7 +243,7 @@ impl Workspace {
             // Klicks auf Steuerelemente sollen die Zeile nicht auf-/zuklappen.
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .children(review)
-            .child(self.merge_control(pr, snapshot, true, cx));
+            .child(self.merge_control(pr, snapshot, true, false, cx));
         // Schmal: Steuerung unter die Metadaten, damit der Titel Platz behält.
         let (inline_actions, side_actions) = if compact {
             (Some(actions.flex_wrap().gap_y_1().pt_1()), None)
@@ -372,24 +372,27 @@ impl Workspace {
             }))
     }
 
-    /// Merge-Button: Auto-Merge an/aus oder direkt mergen – nur mit im Repo erlaubten Methoden.
+    /// Merge-Button für den Flow-Knoten: nur Symbol, die Beschriftung steht im Tooltip (PRR-56).
     pub(super) fn render_merge_control(
         &self,
         pr: &OpenPr,
         snapshot: &Snapshot,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        self.merge_control(pr, snapshot, false, cx)
+        self.merge_control(pr, snapshot, false, true, cx)
     }
 
+    /// Merge-Button: Auto-Merge an/aus oder direkt mergen – nur mit im Repo erlaubten Methoden.
     /// `quiet`: Voll (Rahmen, Farbe, Beschriftung) nur, wo eine Aktion ansteht oder läuft –
     /// „Mergen“ und aktives Auto-Merge. Auto-Merge aktivieren und nicht Mögliches erscheinen
     /// als schlichtes Symbol mit Tooltip, damit die Liste keine Spalte gleicher Buttons trägt.
+    /// `icon_only`: nie beschriftet (Flow-Knoten); was der Button tut, sagt der Tooltip.
     fn merge_control(
         &self,
         pr: &OpenPr,
         snapshot: &Snapshot,
         quiet: bool,
+        icon_only: bool,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let busy = self.radar.read(cx).is_pending(&pr.id);
@@ -404,7 +407,9 @@ impl Workspace {
                 .primary()
                 .outline()
                 .icon(Lucide::Zap)
-                .label(format!("Auto · {}", method.label()))
+                .when(!icon_only, |b| {
+                    b.label(format!("Auto · {}", method.label()))
+                })
                 .loading(busy)
                 .tooltip(if busy {
                     tr!("Changing auto-merge…", "Auto-Merge wird geändert …").to_string()
@@ -434,11 +439,12 @@ impl Workspace {
                     .when(now, |b| {
                         b.success()
                             .icon(Lucide::GitMerge)
-                            .label(tr!("Merge", "Mergen"))
+                            .when(!icon_only, |b| b.label(tr!("Merge", "Mergen")))
                     })
                     .when(!now, |b| {
-                        b.icon(Lucide::Zap)
-                            .when(full, |b| b.label(tr!("Auto-merge", "Auto-Merge")))
+                        b.icon(Lucide::Zap).when(full && !icon_only, |b| {
+                            b.label(tr!("Auto-merge", "Auto-Merge"))
+                        })
                     });
 
                 // Läuft: gleiche Optik, Spinner statt Symbol, keine weiteren Klicks.
@@ -514,7 +520,8 @@ impl Workspace {
                 .small()
                 .when(quiet, |b| b.ghost())
                 .when(!quiet, |b| {
-                    b.outline().label(tr!("Auto-merge", "Auto-Merge"))
+                    b.outline()
+                        .when(!icon_only, |b| b.label(tr!("Auto-merge", "Auto-Merge")))
                 })
                 .icon(Lucide::Zap)
                 .disabled(true)
