@@ -7,6 +7,10 @@
 //!   4,5:1 auf jeder Fläche; volle Flächen (Tags) bekommen eine passende Schrift
 //! - „Gemergt“ in Lila (`base.magenta`, siehe [`merged`])
 //! - Dunkel: Seitenleiste, Hintergrund, Karte und Hover in vier Stufen
+//! - Outline-Buttons („Mergen“, „Auto · Squash“) bleiben auch auf der gehoverten Zeile
+//!   und im eigenen Hover lesbar (PRR-66): `*.hover.background` ist 75 % deckend, weil
+//!   gpui-kit es mit 20 % über die Zeile legt; gefüllte Primär-Buttons nehmen
+//!   `button.primary.hover.background`
 
 use std::rc::Rc;
 
@@ -79,6 +83,34 @@ mod tests {
         [0, 1, 2].map(|i| fg[i] * alpha + bg[i] * (1.0 - alpha))
     }
 
+    /// Farbe mit Deckkraft aus `#rrggbb` oder `#rrggbbaa`.
+    fn rgba(hex: &str) -> ([f64; 3], f64) {
+        let hex = hex.trim_start_matches('#');
+        match hex.len() {
+            6 => (rgb(hex), 1.0),
+            8 => (
+                rgb(&hex[..6]),
+                f64::from(u8::from_str_radix(&hex[6..], 16).unwrap()) / 255.0,
+            ),
+            _ => panic!("unbekanntes Farbformat: #{hex}"),
+        }
+    }
+
+    /// Farbton in Grad (0–360) nach HSL.
+    fn hue([r, g, b]: [f64; 3]) -> f64 {
+        let max = r.max(g).max(b);
+        let d = max - r.min(g).min(b);
+        assert!(d > 0.0, "Farbe ist grau");
+        let h = if max == r {
+            ((g - b) / d).rem_euclid(6.0)
+        } else if max == g {
+            (b - r) / d + 2.0
+        } else {
+            (r - g) / d + 4.0
+        };
+        h * 60.0
+    }
+
     fn themes() -> Vec<(String, serde_json::Map<String, Value>)> {
         let set: Value = serde_json::from_str(THEMES).unwrap();
         set["themes"]
@@ -135,6 +167,76 @@ mod tests {
                         "{name}: {key} auf getönter {surface} nur {ratio:.2}:1"
                     );
                 }
+            }
+        }
+    }
+
+    /// Deckkraft, mit der gpui-kit Outline-Buttons tönt (`outline_background`).
+    const OUTLINE_NORMAL: f64 = 0.1;
+    const OUTLINE_HOVER: f64 = 0.2;
+
+    /// PRR-66: Getönte Outline-Buttons liegen in der PR-Zeile, die beim Hovern selbst
+    /// `list.hover` bekommt. Die Schrift (= Statusfarbe) bleibt 4,5:1 – ohne Hover, auf
+    /// gehoverter Zeile und im Button-Hover auf gehoverter Zeile.
+    #[test]
+    fn outline_buttons_auf_gehoverter_zeile_lesbar() {
+        for (name, colors) in themes() {
+            for tone in ["success", "warning", "danger", "primary"] {
+                let fg = color(&colors, &format!("{tone}.background"));
+                let hover_key = format!("{tone}.hover.background");
+                let (hover, alpha) = rgba(
+                    colors
+                        .get(&hover_key)
+                        .and_then(Value::as_str)
+                        .unwrap_or_else(|| panic!("{name}: {hover_key} fehlt")),
+                );
+                let hover_alpha = OUTLINE_HOVER * alpha;
+                assert!(
+                    hover_alpha > OUTLINE_NORMAL,
+                    "{name}: {tone}-Hover ist nicht kräftiger als der Normalzustand"
+                );
+                for surface in SURFACES {
+                    let bg = color(&colors, surface);
+                    for (state, face) in [
+                        ("normal", tint(fg, bg, OUTLINE_NORMAL)),
+                        ("Hover", tint(hover, bg, hover_alpha)),
+                    ] {
+                        let ratio = contrast(fg, face);
+                        assert!(
+                            ratio >= 4.5,
+                            "{name}: {tone}-Button ({state}) auf {surface} nur {ratio:.2}:1"
+                        );
+                    }
+                }
+            }
+            // `primary.hover` ist durchscheinend; gefüllte Primär-Buttons brauchen ihren
+            // eigenen, deckenden Hover, sonst scheint die Zeile durch.
+            let (_, alpha) = rgba(colors["button.primary.hover.background"].as_str().unwrap());
+            assert!(
+                (alpha - 1.0).abs() < f64::EPSILON,
+                "{name}: button.primary.hover nicht deckend"
+            );
+        }
+    }
+
+    /// Nachschärfen darf die Bedeutung nicht verwischen: Grün, Amber, Rot, Blau.
+    #[test]
+    fn statusfarben_behalten_ihren_ton() {
+        for (name, colors) in themes() {
+            for (tone, from, to) in [
+                ("success", 100.0, 160.0),
+                ("warning", 30.0, 50.0),
+                ("danger", 340.0, 380.0),
+                ("primary", 200.0, 225.0),
+            ] {
+                let mut h = hue(color(&colors, &format!("{tone}.background")));
+                if h < from {
+                    h += 360.0;
+                }
+                assert!(
+                    (from..=to).contains(&h),
+                    "{name}: {tone} hat Farbton {h:.0}°"
+                );
             }
         }
     }
