@@ -17,7 +17,8 @@ use std::time::Duration;
 
 use gpui_kit::assets::IconName as Lucide;
 use gpui_kit::component::{
-    ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _, TitleBar, WindowExt as _,
+    ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _, StyledExt as _, TitleBar,
+    WindowExt as _,
     button::{Button, ButtonGroup, ButtonVariants as _},
     h_flex,
     input::{self, Input, InputEvent, InputState},
@@ -280,18 +281,68 @@ pub fn show_error(title: &'static str, message: String, cx: &mut App) {
     });
 }
 
+/// Vibrancy wie in macOS-Seitenleisten: Das Fenster ist durchscheinend mit unscharfem
+/// Hintergrund, nur die Seitenleiste lässt ihn (leicht getönt) durch; Titelleiste und
+/// Inhalt bleiben deckend. Andere Systeme behalten das deckende Fenster.
+const VIBRANCY: bool = cfg!(target_os = "macos");
+
+/// Schnellfilter mit Akzenttext: nur der aktive, nur in „Offen“ (dort wirkt er) und nicht
+/// die Vorgabe „Alle“, die gar nicht filtert.
+fn quick_marked(prefs: &Prefs, quick: Quick) -> bool {
+    prefs.tab == Tab::Open && prefs.quick == quick && quick != Quick::All
+}
+
+/// Zähler in der Seitenleiste: dezenter Text rechts.
+fn count_text(n: usize, cx: &App) -> Div {
+    div()
+        .text_small()
+        .text_color(cx.theme().muted_foreground)
+        .child(n.to_string())
+}
+
+/// Zähler als Suffix einer Seitenleisten-Zeile; 0 erscheint gar nicht.
+fn count_badge(n: usize) -> Option<impl Fn(&mut Window, &mut App) -> Div + 'static> {
+    (n > 0).then_some(move |_: &mut Window, cx: &mut App| count_text(n, cx))
+}
+
+/// Repo-Status in fester Breite, damit Punkt und Warnsymbol bündig stehen: Punkt in der
+/// Pipeline-Farbe des Standard-Branches, Warnsymbol bei einem Abruffehler.
+fn repo_status(failed: bool, state: PipelineState, cx: &App) -> Div {
+    h_flex()
+        .flex_none()
+        .w_3()
+        .justify_center()
+        .child(if failed {
+            Icon::new(Lucide::TriangleAlert)
+                .xsmall()
+                .text_color(cx.theme().danger)
+                .into_any_element()
+        } else {
+            div()
+                .size_2()
+                .rounded_full()
+                .bg(state_color(state, cx))
+                .into_any_element()
+        })
+}
+
 /// Öffnet das Hauptfenster.
 pub fn open_main_window(radar: Entity<Radar>, cx: &mut App) -> anyhow::Result<()> {
     let options = WindowOptions {
         window_bounds: Some(WindowBounds::centered(size(px(1240.), px(820.)), cx)),
         window_min_size: Some(size(px(360.), px(480.))),
+        window_background: if VIBRANCY {
+            WindowBackgroundAppearance::Blurred
+        } else {
+            WindowBackgroundAppearance::Opaque
+        },
         ..TitleBar::window_options()
     };
     // Demo mit --dark/--light: Erscheinungsbild bleibt fest, statt dem System zu folgen.
     let forced = cx
         .try_global::<crate::demo::Options>()
         .is_some_and(|d| d.appearance.is_some());
-    gpui_kit::open_window(options, cx, move |window, cx| {
+    let (handle, _) = gpui_kit::open_window(options, cx, move |window, cx| {
         if !forced {
             window
                 .observe_window_appearance(|window, cx| {
@@ -301,6 +352,15 @@ pub fn open_main_window(radar: Entity<Radar>, cx: &mut App) -> anyhow::Result<()
         }
         cx.new(|cx| Workspace::new(radar, window, cx))
     })?;
+    if VIBRANCY {
+        // Die Wurzel von gpui-kit malt sonst den Theme-Hintergrund übers ganze Fenster.
+        handle.update(cx, |_, window, cx| {
+            gpui_kit::base::Root::update(window, cx, |root, _, cx| {
+                root.style().background = Some(transparent_black().into());
+                cx.notify();
+            })
+        })?;
+    }
     Ok(())
 }
 
@@ -963,18 +1023,30 @@ impl Workspace {
 
     /* ---------- Seitenleiste ---------- */
 
-    fn render_sidebar(&self, d: Option<&Derived>, cx: &mut Context<Self>) -> impl IntoElement {
+    /// Seitenleiste. Genau eine Zeile ist flächig hervorgehoben: die aktuelle Ansicht.
+    /// Aktive Schnell- und Repo-Filter tragen nur Akzenttext; die Vorgaben („Alle“,
+    /// „Alle Repositories“) bleiben schlicht, solange nichts gefiltert ist (PRR-54).
+    ///
+    /// `floating`: Die Leiste liegt im schmalen Fenster über dem Inhalt und braucht dann
+    /// einen deckenden Hintergrund, sonst schiene der Inhalt durch.
+    fn render_sidebar(
+        &self,
+        d: Option<&Derived>,
+        floating: bool,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let prefs = self.radar.read(cx).prefs().clone();
         // Ohne Repos gibt es nichts zu zählen oder zu filtern: Zähler und Filter weglassen.
         let no_repos = self.radar.read(cx).repos().is_empty();
         let collapsed = self.sidebar_collapsed(&prefs);
-        let count = |n: usize| {
-            move |_: &mut Window, cx: &mut App| {
-                div()
-                    .text_small()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(n.to_string())
-            }
+        let accent = cx.theme().primary;
+        // Aktiver Filter: Akzenttext statt Fläche; der Screenreader hört „ausgewählt“.
+        let filter_selected = move |item: SidebarMenuItem, label: &str, selected: bool| {
+            item.when(selected, |item| {
+                item.font_medium()
+                    .text_color(accent)
+                    .accessibility_label(trf!("{}, selected", "{}, ausgewählt", label))
+            })
         };
 
         let tab_item = |label: &'static str, icon: Icon, tab: Tab, n: usize| {
@@ -982,7 +1054,9 @@ impl Workspace {
                 .text_body()
                 .icon(icon)
                 .active(prefs.tab == tab)
-                .when(!no_repos, |item| item.suffix(count(n)))
+                .when(!no_repos, |item| {
+                    item.when_some(count_badge(n), |i, b| i.suffix(b))
+                })
                 .on_click(cx.listener(move |this, _, _, cx| this.show_tab(tab, cx)))
         };
         let views = SidebarMenu::new().children([
@@ -1007,18 +1081,23 @@ impl Workspace {
         ]);
 
         let quick_item = |icon: Icon, quick: Quick| {
-            SidebarMenuItem::new(quick_label(quick))
-                .text_body()
-                .icon(icon)
-                .active(prefs.tab == Tab::Open && prefs.quick == quick)
-                .suffix(count(d.map_or(0, |d| d.count(quick))))
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.sidebar_overlay = false;
-                    this.update_prefs(cx, |p| {
-                        p.tab = Tab::Open;
-                        p.quick = quick;
-                    })
-                }))
+            let label = quick_label(quick);
+            let selected = quick_marked(&prefs, quick);
+            filter_selected(
+                SidebarMenuItem::new(label).text_body().icon(icon),
+                label,
+                selected,
+            )
+            .when_some(count_badge(d.map_or(0, |d| d.count(quick))), |i, b| {
+                i.suffix(b)
+            })
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.sidebar_overlay = false;
+                this.update_prefs(cx, |p| {
+                    p.tab = Tab::Open;
+                    p.quick = quick;
+                })
+            }))
         };
         let filters = SidebarMenu::new().children([
             quick_item(Lucide::Layers.into(), Quick::All),
@@ -1044,7 +1123,6 @@ impl Workspace {
                 SidebarMenuItem::new(tr!("All Repositories", "Alle Repositories"))
                     .text_body()
                     .icon(Lucide::LayoutDashboard)
-                    .active(prefs.repo_filter.is_empty())
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.update_prefs(cx, |p| p.repo_filter.clear())
                     }))
@@ -1063,49 +1141,43 @@ impl Workspace {
                 .map_or(PipelineState::None, |i| i.default_branch_pipeline);
             let failed = info.as_ref().is_some_and(|i| i.error.is_some());
             let key = full.clone();
+            let selected = prefs.repo_filter.contains(&full);
             repos.push(
-                SidebarMenuItem::new(name)
-                    .text_body()
-                    .icon(Lucide::BookMarked)
-                    .active(prefs.repo_filter.contains(&full))
-                    .suffix(move |_, cx: &mut App| {
-                        h_flex()
-                            .gap_2()
-                            .child(
-                                div()
-                                    .text_small()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child(open.to_string()),
-                            )
-                            .child(if failed {
-                                Icon::new(Lucide::TriangleAlert)
-                                    .xsmall()
-                                    .text_color(cx.theme().danger)
-                                    .into_any_element()
-                            } else {
-                                div()
-                                    .size_2()
-                                    .rounded_full()
-                                    .bg(state_color(state, cx))
-                                    .into_any_element()
-                            })
+                filter_selected(
+                    SidebarMenuItem::new(name.clone())
+                        .text_body()
+                        .icon(Lucide::BookMarked),
+                    &name,
+                    selected,
+                )
+                .suffix(move |_, cx: &mut App| {
+                    h_flex()
+                        .gap_2()
+                        .when(open > 0, |this| this.child(count_text(open, cx)))
+                        .child(repo_status(failed, state, cx))
+                })
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    let key = key.clone();
+                    this.update_prefs(cx, |p| {
+                        if let Some(i) = p.repo_filter.iter().position(|r| *r == key) {
+                            p.repo_filter.remove(i);
+                        } else {
+                            p.repo_filter.push(key);
+                        }
                     })
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        let key = key.clone();
-                        this.update_prefs(cx, |p| {
-                            if let Some(i) = p.repo_filter.iter().position(|r| *r == key) {
-                                p.repo_filter.remove(i);
-                            } else {
-                                p.repo_filter.push(key);
-                            }
-                        })
-                    })),
+                })),
             );
         }
 
         let viewer = snapshot.as_ref().and_then(|s| s.viewer.clone());
         Sidebar::new("nav")
             .w(SIDEBAR_W)
+            .when(VIBRANCY, |this| {
+                // Durchscheinend über dem unscharfen Fensterhintergrund, leicht getönt.
+                // Schwebend (schmales Fenster) deckend, sonst schiene der Inhalt durch.
+                let bg = cx.theme().sidebar;
+                this.bg(if floating { bg } else { bg.opacity(0.6) })
+            })
             .collapsible(SidebarCollapsible::Offcanvas)
             .collapsed(collapsed)
             .child(SidebarSection::new(tr!("View", "Ansicht"), views))
@@ -1368,7 +1440,7 @@ impl Render for Workspace {
             .on_action(
                 cx.listener(|this, _: &ShowReleases, _, cx| this.show_tab(Tab::Releases, cx)),
             )
-            .bg(cx.theme().background)
+            .when(!VIBRANCY, |this| this.bg(cx.theme().background))
             .text_color(cx.theme().foreground)
             .child(self.render_title_bar(cx))
             .child(
@@ -1378,12 +1450,13 @@ impl Render for Workspace {
                     .relative()
                     .items_stretch()
                     .when(!self.narrow, |this| {
-                        this.child(self.render_sidebar(derived.as_ref(), cx))
+                        this.child(self.render_sidebar(derived.as_ref(), false, cx))
                     })
                     .child(
                         v_flex()
                             .flex_1()
                             .min_w_0()
+                            .bg(cx.theme().background)
                             .child(self.render_toolbar(&prefs, derived.as_ref(), cx))
                             .when_some(error, |this, e| {
                                 this.child(
@@ -1433,7 +1506,7 @@ impl Render for Workspace {
                                 // Klicks in der Seitenleiste erreichen den Hintergrund nicht.
                                 .occlude()
                                 .when(self.sidebar_overlay, |d| d.shadow_lg())
-                                .child(self.render_sidebar(derived.as_ref(), cx)),
+                                .child(self.render_sidebar(derived.as_ref(), true, cx)),
                         )
                     }),
             )
@@ -1581,6 +1654,42 @@ mod tests {
         assert_eq!(tab(cx, &radar), Tab::Releases);
         press(cx, handle, "cmd-1");
         assert_eq!(tab(cx, &radar), Tab::Open);
+    }
+
+    /// PRR-54: Nur die Ansicht ist flächig hervorgehoben (`active`); ein Schnellfilter
+    /// bekommt Akzenttext nur, wenn er tatsächlich filtert.
+    #[test]
+    fn schnellfilter_markierung() {
+        use super::quick_marked;
+        use crate::config::{Prefs, Quick};
+        let mut prefs = Prefs::default();
+        assert!(!quick_marked(&prefs, Quick::All), "Vorgabe bleibt schlicht");
+        prefs.quick = Quick::Failed;
+        assert!(quick_marked(&prefs, Quick::Failed));
+        assert!(!quick_marked(&prefs, Quick::Passed));
+        prefs.tab = Tab::Merged;
+        assert!(
+            !quick_marked(&prefs, Quick::Failed),
+            "Schnellfilter gelten nur für „Offen“"
+        );
+    }
+
+    /// PRR-54: Zeilenraster 28 px wie in macOS-Seitenleisten.
+    #[gpui_kit::test]
+    async fn seitenleiste_hat_28_px_zeilen(cx: &mut TestAppContext) {
+        let (handle, _, _) = open(cx);
+        let (first, second) = cx
+            .update_window(handle, |_, window, cx| {
+                window.render_frame(cx);
+                let nav = window.within("nav");
+                (nav.find("0-0-0").bounds(), nav.find("0-0-1").bounds())
+            })
+            .unwrap();
+        let pitch = second.origin.y - first.origin.y;
+        assert!(
+            (pitch - px(28.)).abs() < px(0.5),
+            "Abstand von Zeile zu Zeile {pitch:?} statt 28 px"
+        );
     }
 
     #[gpui_kit::test]

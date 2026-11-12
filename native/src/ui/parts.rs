@@ -184,6 +184,17 @@ pub fn card_segment(first: bool, last: bool, cx: &App) -> Div {
         .when(last, |d| d.rounded_bl(r).rounded_br(r))
 }
 
+/// Zeilenraster der Seitenleiste wie in macOS-Apps (PRR-54): 28 px von Zeile zu Zeile.
+/// gpui-component setzt die Zeile selbst fest auf `h_7` (1,75 rem ≈ 22,75 px bei 13 px
+/// Grundschrift); der Rest ist Abstand, gerechnet mit der rem-Größe des Fensters. Die Hervorhebung bleibt so wie bei macOS etwas
+/// niedriger als das Raster.
+const SIDEBAR_ROW: Pixels = px(28.);
+fn sidebar_row_gap(window: &Window) -> Pixels {
+    SIDEBAR_ROW - window.rem_size() * 1.75
+}
+/// Luft vor jedem Gruppenkopf, damit „Filter“ nicht an „Releases“ klebt.
+const SIDEBAR_SECTION_GAP: Pixels = px(12.);
+
 /// Abschnitt der Seitenleiste mit Kopf in der Stufe „Gruppenkopf“. Ersetzt `SidebarGroup`,
 /// dessen Kopf fest `text_xs` setzt (bei 13 px Grundschrift 9,75 px).
 #[derive(Clone)]
@@ -224,14 +235,17 @@ impl SidebarItem for SidebarSection {
         let id = id.into();
         v_flex()
             .relative()
+            .pb(SIDEBAR_SECTION_GAP)
             .when(!self.collapsed, |this| {
                 this.child(
                     h_flex()
                         .flex_shrink_0()
                         .px_2()
-                        .h_8()
+                        .h(px(24.))
+                        .items_end()
+                        .pb_1()
                         .text_heading()
-                        .text_color(cx.theme().sidebar_foreground.opacity(0.7))
+                        .text_color(cx.theme().muted_foreground)
                         .child(self.label),
                 )
             })
@@ -239,6 +253,7 @@ impl SidebarItem for SidebarSection {
             // weiter unter `0-0-1` usw. erreichbar sind (UI-Tests).
             .child(
                 self.menu
+                    .gap(sidebar_row_gap(window))
                     .collapsed(self.collapsed)
                     .render(format!("{id}-0"), window, cx),
             )
