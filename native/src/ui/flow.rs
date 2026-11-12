@@ -20,6 +20,22 @@ const ROW_PAD: f32 = 1.0;
 const MIN_H: f32 = 6.5;
 const MAX_CHECK_NODES: usize = 4;
 
+/// Spaltenbreiten in rem. Der PR-Knoten hat Vorrang (PRR-56): Er bekommt mindestens
+/// `PR_MIN_W` und allen Rest; die Stufen rechts davon sind schmal und zeigen nur Symbol und
+/// Kurztext, der Rest steht im Tooltip.
+pub(super) const PR_MIN_W: f32 = 18.;
+const CHECK_W: f32 = 9.5;
+const REVIEW_W: f32 = 9.;
+const MERGE_W: f32 = 12.;
+const BASE_W: f32 = 7.5;
+/// Breite einer Kantenspalte (`w_8`).
+const EDGE_W: f32 = 2.;
+/// Innenabstand der Zeile links und rechts (`px_4`).
+const ROW_PAD_X: f32 = 2.;
+/// Mindestbreite der ganzen Flow-Zeile; darunter scrollt der Flow waagerecht.
+pub(super) const FLOW_MIN_W: f32 =
+    PR_MIN_W + CHECK_W + REVIEW_W + MERGE_W + BASE_W + 4. * EDGE_W + ROW_PAD_X;
+
 #[derive(Clone, Copy, PartialEq)]
 enum Tone {
     Pass,
@@ -149,7 +165,7 @@ fn review_stage(pr: &OpenPr, viewer: Option<&str>) -> Stage {
             Tone::Accent,
             Lucide::UserCheck,
             tr!("Your review", "Dein Review"),
-            tr!("awaiting you", "angefragt"),
+            tr!("requested", "angefragt"),
         );
     }
     match pr.review_decision {
@@ -182,7 +198,7 @@ fn review_stage(pr: &OpenPr, viewer: Option<&str>) -> Stage {
             Tone::Idle,
             Lucide::Eye,
             tr!("Review", "Review"),
-            tr!("not required", "nicht erforderlich"),
+            tr!("optional", "optional"),
         ),
     }
 }
@@ -206,35 +222,35 @@ fn merge_stage(pr: &OpenPr) -> Stage {
             Tone::Idle,
             Lucide::GitPullRequestDraft,
             tr!("Draft", "Draft"),
-            tr!("not ready yet", "noch nicht bereit").into(),
+            tr!("not ready", "nicht bereit").into(),
         )
     } else if let Some(am) = &pr.auto_merge {
         stage(
             Tone::Accent,
             Lucide::Zap,
             tr!("Auto-merge", "Auto-Merge"),
-            trf!("{} · when green", "{} · wenn grün", am.method.label()),
+            am.method.label().to_string(),
         )
     } else if pr.ready_to_merge() {
         stage(
             Tone::Pass,
             Lucide::GitMerge,
             tr!("Ready", "Bereit"),
-            tr!("can be merged", "kann gemergt werden").into(),
+            tr!("mergeable", "mergebar").into(),
         )
     } else if pr.merge_state_status == "BEHIND" {
         stage(
             Tone::Run,
             Lucide::GitMerge,
             tr!("Behind", "Veraltet"),
-            tr!("base has moved on", "Base ist weiter").into(),
+            tr!("base moved on", "Base ist weiter").into(),
         )
     } else if pr.merge_state_status == "BLOCKED" {
         stage(
             Tone::Idle,
             Lucide::GitMerge,
             tr!("Blocked", "Blockiert"),
-            tr!("waiting for rules", "wartet auf Regeln").into(),
+            tr!("rules pending", "Regeln offen").into(),
         )
     } else {
         stage(
@@ -246,8 +262,29 @@ fn merge_stage(pr: &OpenPr) -> Stage {
     }
 }
 
+/// Knotengröße: der PR-Knoten mit großer Kachel und zweizeiligem Titel, alle Stufen danach
+/// kompakt (kleine Kachel, eine Zeile, Rest im Tooltip).
+#[derive(Clone, Copy, PartialEq)]
+enum Size {
+    Main,
+    Compact,
+}
+
+/// Tooltip mit vollem Titel und Untertitel für kompakte Knoten.
+fn with_tip<E: StatefulInteractiveElement>(el: E, title: &str, sub: &str) -> E {
+    let text: SharedString = if sub.is_empty() {
+        title.to_string().into()
+    } else {
+        format!("{title} · {sub}").into()
+    };
+    el.tooltip(move |window, cx| {
+        gpui_kit::component::tooltip::Tooltip::new(text.clone()).build(window, cx)
+    })
+}
+
 /// Knoten: Symbol-Kachel, Titel, Untertitel, Anschlusspunkte links/rechts.
 fn node(
+    size: Size,
     tone: Tone,
     icon: impl IntoElement,
     title: impl IntoElement,
@@ -255,6 +292,7 @@ fn node(
     ports: (bool, bool),
     cx: &App,
 ) -> Stateful<Div> {
+    let main = size == Size::Main;
     let color = tone.color(cx);
     let port = |left: bool| {
         div()
@@ -272,8 +310,13 @@ fn node(
     h_flex()
         .id(ElementId::Name("node".into()))
         .relative()
-        .gap_2p5()
-        .px_2p5()
+        .map(|d| {
+            if main {
+                d.gap_2p5().px_2p5()
+            } else {
+                d.gap_2().px_2()
+            }
+        })
         .py_2()
         .rounded(cx.theme().radius_lg)
         .border_1()
@@ -292,7 +335,7 @@ fn node(
                 .flex_shrink_0()
                 .items_center()
                 .justify_center()
-                .size_8()
+                .map(|d| if main { d.size_8() } else { d.size_6() })
                 .rounded(cx.theme().radius)
                 .bg(color.opacity(0.12))
                 .text_color(color)
@@ -302,7 +345,19 @@ fn node(
             v_flex()
                 .flex_1()
                 .min_w_0()
-                .child(div().text_small().font_medium().truncate().child(title))
+                .child(
+                    div()
+                        .text_small()
+                        .font_medium()
+                        .map(|d| {
+                            if main {
+                                d.line_clamp(2).text_ellipsis()
+                            } else {
+                                d.truncate()
+                            }
+                        })
+                        .child(title),
+                )
                 .child(
                     div()
                         .text_small()
@@ -373,7 +428,7 @@ fn edges(links: Vec<(f32, f32, Tone)>, beat: Option<i64>, cx: &App) -> AnyElemen
             running: tone == Tone::Run,
         })
         .collect();
-    let frame = || div().w_8().h_full().flex_shrink_0();
+    let frame = || div().w(rems(EDGE_W)).h_full().flex_shrink_0();
 
     let beat = beat.filter(|_| edges.iter().any(|e| e.running) && super::motion::enabled(cx));
     let Some(beat) = beat else {
@@ -446,6 +501,7 @@ impl Workspace {
         let mono = cx.theme().mono_font_family.clone();
 
         let pr_node = node(
+            Size::Main,
             if pr.is_by(viewer) {
                 Tone::Accent
             } else {
@@ -471,19 +527,20 @@ impl Workspace {
         )
         .id(SharedString::from(format!("flow-pr-{}", pr.id)))
         .flex_1()
-        .min_w_48()
+        .min_w(rems(PR_MIN_W))
         .cursor_pointer()
         .hover(|s| s.border_color(cx.theme().primary))
         .on_click(move |_, _, cx| cx.open_url(&url));
 
         let check_column = v_flex()
-            .w(rems(11.))
+            .w(rems(CHECK_W))
             .flex_shrink_0()
             .justify_center()
             .gap_2()
             .children(checks.iter().map(|c| {
                 let url = c.url.clone();
-                node(
+                let el = node(
+                    Size::Compact,
                     Tone::of(c.state),
                     pipeline_icon(c.state, cx),
                     c.label.clone(),
@@ -495,34 +552,95 @@ impl Workspace {
                     "flow-check-{}-{}",
                     pr.id, c.key
                 )))
-                .h(rems(CHECK_H))
-                .when_some(url, |this, url| {
+                .h(rems(CHECK_H));
+                with_tip(el, &c.label, &c.sub).when_some(url, |this, url| {
                     this.cursor_pointer()
                         .hover(|s| s.border_color(cx.theme().primary))
                         .on_click(move |_, _, cx| cx.open_url(&url))
                 })
             }));
 
+        // Merge-Steuerung als Symbol-Button rechts im Knoten; Beschriftung steht im Tooltip.
+        // Der Tooltip des Knotens sitzt am Textblock, damit er den des Buttons nicht überdeckt.
         let merge_tone = merge.tone;
+        let merge_tip = (merge.title.clone(), merge.sub.clone());
+        let merge_text = |text: String, id: &str| {
+            with_tip(
+                div().id(SharedString::from(format!("flow-merge-{id}-{}", pr.id))),
+                &merge_tip.0,
+                &merge_tip.1,
+            )
+            .min_w_0()
+            .truncate()
+            .child(text)
+        };
         let merge_node = node(
+            Size::Compact,
             merge.tone,
             merge.icon.small(),
-            merge.title,
-            v_flex().gap_1p5().child(merge.sub).child(
-                div()
-                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                    .child(self.render_merge_control(pr, snapshot, cx)),
-            ),
+            merge_text(merge.title, "title"),
+            merge_text(merge.sub, "sub"),
             (true, true),
             cx,
         )
         .id(SharedString::from(format!("flow-merge-{}", pr.id)))
-        .w(rems(11.))
-        .flex_shrink_0();
+        .w(rems(MERGE_W))
+        .flex_shrink_0()
+        .child(
+            div()
+                .flex_shrink_0()
+                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .child(self.render_merge_control(pr, snapshot, cx)),
+        );
+
+        let review_node = with_tip(
+            node(
+                Size::Compact,
+                review.tone,
+                review.icon.small(),
+                review.title.clone(),
+                review.sub.clone(),
+                (true, true),
+                cx,
+            )
+            .id(SharedString::from(format!("flow-review-{}", pr.id)))
+            .w(rems(REVIEW_W))
+            .flex_shrink_0(),
+            &review.title,
+            &review.sub,
+        );
+
+        let (base_sub, base_tip) = if on_default {
+            (
+                base_state.label().to_string(),
+                trf!("Pipeline {}", "Pipeline {}", base_state.label()),
+            )
+        } else {
+            (
+                tr!("target", "Ziel").to_string(),
+                tr!("Target branch", "Ziel-Branch").to_string(),
+            )
+        };
+        let base_node = with_tip(
+            node(
+                Size::Compact,
+                Tone::of(base_state),
+                Icon::new(Lucide::GitBranch).small(),
+                div().font_family(mono).child(pr.base_ref.clone()),
+                base_sub,
+                (true, false),
+                cx,
+            )
+            .id(SharedString::from(format!("flow-base-{}", pr.id)))
+            .w(rems(BASE_W))
+            .flex_shrink_0(),
+            &pr.base_ref,
+            &base_tip,
+        );
 
         card_segment(first, last, cx).child(
             div()
-                .px_4()
+                .px(rems(ROW_PAD_X / 2.))
                 .when(pr.has_conflict(), |this| {
                     this.bg(cx.theme().danger.opacity(0.05))
                 })
@@ -550,39 +668,11 @@ impl Workspace {
                             beat,
                             cx,
                         ))
-                        .child(
-                            node(
-                                review.tone,
-                                review.icon.small(),
-                                review.title,
-                                review.sub,
-                                (true, true),
-                                cx,
-                            )
-                            .id(SharedString::from(format!("flow-review-{}", pr.id)))
-                            .w(rems(9.))
-                            .flex_shrink_0(),
-                        )
+                        .child(review_node)
                         .child(edges(vec![(mid, mid, review.tone)], beat, cx))
                         .child(merge_node)
                         .child(edges(vec![(mid, mid, merge_tone)], beat, cx))
-                        .child(
-                            node(
-                                Tone::of(base_state),
-                                Icon::new(Lucide::GitBranch).small(),
-                                div().font_family(mono).child(pr.base_ref.clone()),
-                                if on_default {
-                                    trf!("Pipeline {}", "Pipeline {}", base_state.label())
-                                } else {
-                                    tr!("Target branch", "Ziel-Branch").into()
-                                },
-                                (true, false),
-                                cx,
-                            )
-                            .id(SharedString::from(format!("flow-base-{}", pr.id)))
-                            .w_32()
-                            .flex_shrink_0(),
-                        ),
+                        .child(base_node),
                 ),
         )
     }

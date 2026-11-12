@@ -380,7 +380,13 @@ impl Workspace {
                 .id("flow-hscroll")
                 .size_full()
                 .overflow_x_scroll()
-                .child(div().h_full().w_full().min_w(rems(60.)).child(items))
+                .child(
+                    div()
+                        .h_full()
+                        .w_full()
+                        .min_w(rems(super::flow::FLOW_MIN_W))
+                        .child(items),
+                )
                 .into_any_element()
         } else {
             items.into_any_element()
