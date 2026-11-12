@@ -2,7 +2,7 @@ name: Release macOS
 
 # Aufgerufen von release.yml: baut die App als Universal-Binary, signiert sie mit der Developer ID,
 # lässt App und Disk-Image von Apple beglaubigen und legt Tag „macos-vX.Y.Z“ samt GitHub-Release mit
-# dem DMG an. Ablauf und Secrets: docs/RELEASING.md
+# dem DMG und dem Sparkle-Appcast (Auto-Updates) an. Ablauf und Secrets: docs/RELEASING.md
 on:
   workflow_call:
     inputs:
@@ -37,6 +37,8 @@ jobs:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          SPARKLE_PUBLIC_KEY: ${{ vars.SPARKLE_PUBLIC_KEY }}
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
         run: |
           missing=()
           for name in MACOS_CERTIFICATE_P12 MACOS_CERTIFICATE_PASSWORD ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8; do
@@ -45,6 +47,16 @@ jobs:
           if [ ${#missing[@]} -gt 0 ]; then
             echo "::error::Fehlende Secrets: ${missing[*]} (siehe docs/RELEASING.md)"
             exit 1
+          fi
+          # Sparkle: beide oder keins. Ohne beide gibt es ein Release ohne Auto-Updates.
+          if [ -n "$SPARKLE_PUBLIC_KEY" ] && [ -z "$SPARKLE_ED_PRIVATE_KEY" ]; then
+            echo "::error::Variable SPARKLE_PUBLIC_KEY ist gesetzt, Secret SPARKLE_ED_PRIVATE_KEY fehlt"
+            exit 1
+          elif [ -z "$SPARKLE_PUBLIC_KEY" ] && [ -n "$SPARKLE_ED_PRIVATE_KEY" ]; then
+            echo "::error::Secret SPARKLE_ED_PRIVATE_KEY ist gesetzt, Variable SPARKLE_PUBLIC_KEY fehlt"
+            exit 1
+          elif [ -z "$SPARKLE_PUBLIC_KEY" ]; then
+            echo "::warning::Ohne SPARKLE_PUBLIC_KEY/SPARKLE_ED_PRIVATE_KEY: Release ohne Auto-Updates (siehe docs/RELEASING.md)"
           fi
 
       # Die Version im Repo bleibt stehen; maßgeblich ist der Tag. Erste Zeile „version =“ ist die des Pakets.
@@ -83,6 +95,8 @@ jobs:
           echo "CODESIGN_IDENTITY=$identity" >> "$GITHUB_ENV"
 
       - name: App bauen und signieren (Apple Silicon und Intel)
+        env:
+          SPARKLE_PUBLIC_KEY: ${{ vars.SPARKLE_PUBLIC_KEY }}
         run: scripts/bundle.sh --universal
 
       - name: App-Store-Connect-Schlüssel ablegen
@@ -113,15 +127,64 @@ jobs:
           (cd dist && shasum -a 256 "$(basename "$asset")" > "$(basename "$asset").sha256")
           echo "ASSET=$asset" >> "$GITHUB_ENV"
 
+      - name: Release Notes erzeugen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Notes ab dem vorigen macOS-Release; dieselben stehen im Release und im Update-Fenster.
+          args=(-f tag_name="$TAG" -f target_commitish="$GITHUB_SHA")
+          previous=$(git tag --list 'macos-v*' --sort=-v:refname | grep -E '^macos-v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)
+          [ -n "$previous" ] && args+=(-f previous_tag_name="$previous")
+          gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" "${args[@]}" --jq .body > "$RUNNER_TEMP/notes.md"
+          cat "$RUNNER_TEMP/notes.md"
+
+      - name: Appcast für Sparkle
+        if: vars.SPARKLE_PUBLIC_KEY != ''
+        env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+        run: |
+          sign_update=$(ls target/sparkle-*/bin/sign_update | head -1)
+          # Ausgabe: sparkle:edSignature="…" length="…"
+          signature=$(printf '%s' "$SPARKLE_ED_PRIVATE_KEY" | "$sign_update" --ed-key-file - "$ASSET")
+          build=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "dist/PR Radar.app/Contents/Info.plist")
+          url="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$(basename "$ASSET")"
+          page="https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG"
+          # Markdown-Notes (Sparkle ≥ 2.9); „]]>“ würde den CDATA-Block beenden.
+          notes=$(sed 's/]]>/]]]]><![CDATA[>/g' "$RUNNER_TEMP/notes.md")
+          cat > dist/appcast.xml <<XML
+          <?xml version="1.0" encoding="utf-8"?>
+          <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+            <channel>
+              <title>PR Radar</title>
+              <link>https://github.com/$GITHUB_REPOSITORY/releases</link>
+              <item>
+                <title>$VERSION</title>
+                <link>$page</link>
+                <pubDate>$(LC_ALL=C date -u '+%a, %d %b %Y %H:%M:%S +0000')</pubDate>
+                <sparkle:version>$build</sparkle:version>
+                <sparkle:shortVersionString>$VERSION</sparkle:shortVersionString>
+                <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+                <sparkle:fullReleaseNotesLink>https://github.com/$GITHUB_REPOSITORY/releases</sparkle:fullReleaseNotesLink>
+                <description sparkle:format="markdown"><![CDATA[$notes]]></description>
+                <enclosure url="$url" type="application/octet-stream" $signature />
+              </item>
+            </channel>
+          </rss>
+          XML
+          xmllint --noout dist/appcast.xml
+          cat dist/appcast.xml
+          echo "APPCAST=dist/appcast.xml" >> "$GITHUB_ENV"
+
       - name: Tag und GitHub-Release anlegen
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Der Tag entsteht erst hier, auf dem gebauten Commit; Notes ab dem vorigen macOS-Release.
-          args=(--repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "PR Radar für macOS $VERSION" --generate-notes --latest)
-          previous=$(git tag --list 'macos-v*' --sort=-v:refname | grep -E '^macos-v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)
-          [ -n "$previous" ] && args+=(--notes-start-tag "$previous")
-          gh release create "$TAG" "${args[@]}" "$ASSET" "$ASSET.sha256"
+          # Der Tag entsteht erst hier, auf dem gebauten Commit. --latest: Der Appcast-Feed
+          # (releases/latest/download/appcast.xml) und der Download-Link zeigen auf dieses Release.
+          assets=("$ASSET" "$ASSET.sha256")
+          [ -n "${APPCAST:-}" ] && assets+=("$APPCAST")
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "PR Radar für macOS $VERSION" --notes-file "$RUNNER_TEMP/notes.md" --latest "${assets[@]}"
 
       - name: Aufräumen
         if: always()

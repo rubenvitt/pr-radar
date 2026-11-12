@@ -73,7 +73,8 @@ actions!(
         OpenImprint,
         OpenThirdPartyNotices,
         RevealLog,
-        ToggleLoginItem
+        ToggleLoginItem,
+        CheckForUpdates
     ]
 );
 
@@ -151,6 +152,7 @@ pub fn init(radar: Entity<Radar>, cx: &mut App) {
         with_active_window(cx, |window, _| window.toggle_fullscreen())
     });
     cx.on_action(|_: &About, cx| with_active_window(cx, open_about));
+    cx.on_action(|_: &CheckForUpdates, _| crate::updater::check_for_updates());
     // Systembenachrichtigungen auch ohne offenes Fenster (nach ⌘W).
     alerts::init(radar.clone(), cx);
     cx.set_global(MainRadar(radar));
@@ -166,6 +168,11 @@ pub fn refresh_menus(cx: &mut App) {
     cx.set_menus(vec![
         Menu::new("PR Radar").items([
             MenuItem::action(tr!("About PR Radar", "Über PR Radar"), About),
+            MenuItem::action(
+                tr!("Check for Updates…", "Nach Updates suchen …"),
+                CheckForUpdates,
+            )
+            .disabled(!crate::updater::available()),
             MenuItem::separator(),
             MenuItem::action(tr!("Repositories…", "Repositories…"), OpenSettings),
             login_menu_item(),
