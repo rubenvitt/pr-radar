@@ -14,7 +14,7 @@ import Testing
             }
         }
         #expect(Site.url(.privacy, german: true).absoluteString == "https://pr-radar.rubeen.dev/de/datenschutz/")
-        #expect(Site.url(.imprint, german: false) == Site.url(.imprint, german: true))
+        #expect(Site.reportIssueURL.absoluteString == "https://github.com/rubenvitt/pr-radar/issues/new/choose")
     }
 
     /// Jeder Link der App zeigt auf eine Seite, die es in `site/public` gibt.

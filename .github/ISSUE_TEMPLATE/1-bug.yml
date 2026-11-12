@@ -1,0 +1,54 @@
+name: Bug report
+description: Something in PR Radar does not work as expected.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! English or German, both are fine.
+        **Issues are public.** Never post your GitHub token, and check logs before you attach them.
+  - type: dropdown
+    id: app
+    attributes:
+      label: App
+      options:
+        - Mac
+        - iPhone
+        - iPad
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: PR Radar version
+      description: "Mac: PR Radar → About PR Radar. iPhone/iPad: Settings → About."
+      placeholder: "1.2.0"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: macOS / iOS / iPadOS version
+      placeholder: "macOS 26.1"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. …
+        2. …
+  - type: textarea
+    id: log
+    attributes:
+      label: Log (Mac, optional)
+      description: "Help → Show Log in Finder. The log contains no tokens, but may contain repository names."
+      render: text

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Support – PR Radar</title>
-  <meta name="description" content="Hilfe zu PR Radar: Kontakt, Token-Rechte, Auto-Merge, Benachrichtigungen und Erstattungen.">
+  <meta name="description" content="Hilfe zu PR Radar: GitHub-Issues, Token-Rechte, Auto-Merge und Benachrichtigungen.">
   <link rel="alternate" hreflang="en" href="/support/">
   <link rel="alternate" hreflang="de" href="/de/support/">
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
@@ -27,12 +27,12 @@
 
   <main id="main" class="prose">
     <h1>Support</h1>
-    <p class="meta">Fragen, Fehler, Ideen – schreib uns. Wir antworten meist innerhalb weniger Werktage, auf Deutsch oder Englisch.</p>
+    <p class="meta">Fragen, Fehler, Ideen – leg ein Issue auf GitHub an. PR Radar ist ein kostenloses Nebenprojekt, Antworten können also ein paar Tage dauern. Deutsch oder Englisch, beides ist in Ordnung.</p>
 
     <div class="callout">
       <h3>Kontakt</h3>
-      <p>E-Mail: <a href="mailto:pr-radar@rubeen.dev?subject=PR%20Radar%20Support">pr-radar@rubeen.dev</a></p>
-      <p class="note">Fehler und Wünsche kannst du auch als <a href="https://github.com/rubenvitt/pr-radar/issues">GitHub-Issue</a> melden. Issues dort sind öffentlich.</p>
+      <p><a class="button primary" href="https://github.com/rubenvitt/pr-radar/issues/new/choose">Issue auf GitHub anlegen</a></p>
+      <p class="note">Wähl eine Vorlage: Fehler, Frage oder Wunsch. Du brauchst ein GitHub-Konto, und Issues sind öffentlich, lass also weg, was du nicht teilen möchtest. Bestehende Issues: <a href="https://github.com/rubenvitt/pr-radar/issues">alle Issues</a>. In den Apps: <em>Hilfe → Problem melden …</em> auf dem Mac, <em>Einstellungen → Info → Problem melden</em> auf iPhone und iPad.</p>
     </div>
 
     <h2>Was uns beim Helfen hilft</h2>
@@ -42,7 +42,7 @@
       <li>Was du getan hast, was du erwartet hast und was stattdessen passiert ist</li>
       <li>Auf dem Mac: die Protokolldatei über <em>Hilfe → Protokoll im Finder zeigen</em>. Sie enthält keine Tokens, kann aber Repository-Namen enthalten.</li>
     </ul>
-    <p><strong>Schick uns niemals deinen GitHub-Token.</strong> Wir fragen nie danach.</p>
+    <p><strong>Veröffentliche niemals deinen GitHub-Token.</strong> Wir fragen nie danach. Hängst du ein Protokoll an, prüfe es vorher.</p>
 
     <h2>Häufige Fragen</h2>
 
@@ -85,13 +85,9 @@
       <summary>Wie entferne ich alle meine Daten?</summary>
       <p><strong>iPhone und iPad:</strong> Entferne den Token in der App und lösche die App.</p>
       <p><strong>Mac:</strong> Lösche die App und die Ordner <code>~/Library/Application Support/pr-radar/</code> und <code>~/Library/Logs/PR Radar/</code>. Hat die App einmal ein Ausweich-Protokoll benutzt, lösche auch den Ordner, den <code>open "$TMPDIR/pr-radar"</code> im Terminal öffnet. Die Mac-App liest den Token aus <code>GITHUB_TOKEN</code>, <code>GH_TOKEN</code> oder der GitHub CLI und speichert ihn nicht selbst. Entferne ihn also dort (zum Beispiel mit <code>gh auth logout</code>).</p>
-      <p>Brauchst du den Token gar nicht mehr, widerrufe ihn auf GitHub unter <a href="https://github.com/settings/tokens">Settings → Developer settings → Tokens</a>. Die Apps senden uns nichts. Wir haben nur, was du uns selbst schickst (Support-Mails), und bei Direktkäufen die Bestelldaten vom Wiederverkäufer. Möchtest du die gelöscht haben, schreib uns, siehe <a href="/de/datenschutz/#rechte">Datenschutzerklärung</a>.</p>
+      <p>Brauchst du den Token gar nicht mehr, widerrufe ihn auf GitHub unter <a href="https://github.com/settings/tokens">Settings → Developer settings → Tokens</a>. Die Apps senden uns nichts, bei uns gibt es also nichts weiter zu löschen. Issues, die du auf GitHub angelegt hast, kannst du dort selbst bearbeiten oder löschen, siehe <a href="/de/datenschutz/#rechte">Datenschutzerklärung</a>.</p>
     </details>
 
-    <details>
-      <summary>Wie bekomme ich mein Geld zurück?</summary>
-      <p>Bei Käufen im App Store beantragst du die Erstattung bei Apple unter <a href="https://reportaproblem.apple.com">reportaproblem.apple.com</a>. Bei direkt gekauften Mac-Lizenzen kümmert sich der Wiederverkäufer, der auf deiner Rechnung steht. Schreib uns, wenn du unsicher bist, wir helfen.</p>
-    </details>
   </main>
 
   <footer class="site-footer">
@@ -100,8 +96,6 @@
       <nav aria-label="Rechtliches">
         <a href="/de/support/" aria-current="page">Support</a>
         <a href="/de/datenschutz/">Datenschutz</a>
-        <a href="/de/eula/">Lizenzvereinbarung (EULA)</a>
-        <a href="/imprint/">Impressum</a>
         <a href="https://github.com/rubenvitt/pr-radar">GitHub</a>
       </nav>
     </div>

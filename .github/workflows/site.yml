@@ -19,8 +19,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      # Ohne --strict: die Anschrift fehlt hier absichtlich (sie kommt nur als
-      # Build-Variable bei Cloudflare), dist/ bekommt einen Hinweis statt Wert.
       - run: sh site/build.sh
       # Prüft wrangler.jsonc und site/dist, ohne zu veröffentlichen.
       - uses: actions/setup-node@v4

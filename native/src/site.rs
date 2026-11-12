@@ -1,4 +1,4 @@
-//! Links auf die Produktseite (`site/` im Repo, ausgeliefert über Cloudflare Pages).
+//! Links auf die Produktseite (`site/` im Repo, ausgeliefert über Cloudflare).
 //!
 //! Die Links folgen der Sprache der Oberfläche (`l10n`): Englisch oder Deutsch.
 
@@ -11,21 +11,13 @@ pub enum Page {
     Home,
     Support,
     Privacy,
-    Terms,
-    Imprint,
 }
 
 impl Page {
     #[cfg(test)]
-    const ALL: [Page; 5] = [
-        Page::Home,
-        Page::Support,
-        Page::Privacy,
-        Page::Terms,
-        Page::Imprint,
-    ];
+    const ALL: [Page; 3] = [Page::Home, Page::Support, Page::Privacy];
 
-    /// Pfad der Seite; das Impressum ist zweisprachig und hat nur einen Pfad.
+    /// Pfad der Seite in der jeweiligen Sprache.
     pub fn path(self, german: bool) -> &'static str {
         match (self, german) {
             (Page::Home, false) => "/",
@@ -34,9 +26,6 @@ impl Page {
             (Page::Support, true) => "/de/support/",
             (Page::Privacy, false) => "/privacy/",
             (Page::Privacy, true) => "/de/datenschutz/",
-            (Page::Terms, false) => "/terms/",
-            (Page::Terms, true) => "/de/eula/",
-            (Page::Imprint, _) => "/imprint/",
         }
     }
 }

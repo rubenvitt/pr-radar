@@ -69,8 +69,7 @@ actions!(
         OpenWebsite,
         OpenSupport,
         OpenPrivacy,
-        OpenTerms,
-        OpenImprint,
+        ReportIssue,
         OpenThirdPartyNotices,
         RevealLog,
         ToggleLoginItem
@@ -131,8 +130,8 @@ pub fn init(radar: Entity<Radar>, cx: &mut App) {
     cx.on_action(|_: &OpenWebsite, cx| cx.open_url(&site::url(site::Page::Home)));
     cx.on_action(|_: &OpenSupport, cx| cx.open_url(&site::url(site::Page::Support)));
     cx.on_action(|_: &OpenPrivacy, cx| cx.open_url(&site::url(site::Page::Privacy)));
-    cx.on_action(|_: &OpenTerms, cx| cx.open_url(&site::url(site::Page::Terms)));
-    cx.on_action(|_: &OpenImprint, cx| cx.open_url(&site::url(site::Page::Imprint)));
+    // Support läuft über GitHub Issues; die Vorlagen-Auswahl fragt App und Version ab.
+    cx.on_action(|_: &ReportIssue, cx| cx.open_url(&format!("{REPO_URL}/issues/new/choose")));
     cx.on_action(|_: &OpenThirdPartyNotices, cx| open_third_party_notices(cx));
     cx.on_action(|_: &RevealLog, cx| cx.reveal_path(crate::logging::log_path()));
     cx.on_action(|_: &CloseWindow, cx| {
@@ -228,13 +227,9 @@ pub fn refresh_menus(cx: &mut App) {
         Menu::new(tr!("Help", "Hilfe")).items([
             MenuItem::action(tr!("PR Radar Website", "PR-Radar-Website"), OpenWebsite),
             MenuItem::action(tr!("Support", "Support"), OpenSupport),
+            MenuItem::action(tr!("Report a Problem…", "Problem melden …"), ReportIssue),
             MenuItem::separator(),
             MenuItem::action(tr!("Privacy Policy", "Datenschutz"), OpenPrivacy),
-            MenuItem::action(
-                tr!("License Agreement (EULA)", "Lizenzvereinbarung (EULA)"),
-                OpenTerms,
-            ),
-            MenuItem::action(tr!("Legal Notice", "Impressum"), OpenImprint),
             MenuItem::separator(),
             MenuItem::action(tr!("PR Radar on GitHub", "PR Radar auf GitHub"), OpenHelp),
             MenuItem::action(
