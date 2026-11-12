@@ -12,7 +12,7 @@ use crate::config::{Config, Loaded, Prefs};
 use crate::demo;
 use crate::github::oauth::{self, PollStep};
 use crate::github::{
-    GitHub, RateLimit, RateLimited, TokenSource, Transient, UNKNOWN_RATE_LIMIT_WAIT,
+    GitHub, RateLimit, RateLimited, RepoChoice, TokenSource, Transient, UNKNOWN_RATE_LIMIT_WAIT,
 };
 use crate::model::{AutoMerge, MergeMethod, Snapshot, Transition, diff_snapshots};
 
@@ -101,6 +101,20 @@ pub enum Login {
     Failed(String),
 }
 
+/// Repos des Kontos für die Auswahl beim Einrichten (Repositories-Sheet, erster Start).
+#[derive(Clone, Debug, PartialEq)]
+pub enum RepoChoices {
+    /// Noch nicht geladen (oder nach dem Abmelden verworfen).
+    Idle,
+    Loading,
+    Loaded(Arc<Vec<RepoChoice>>),
+    Failed(String),
+}
+
+/// Wartezeit nach dem Anhaken in der Repo-Auswahl, bevor neu geladen wird: Wer mehrere Repos
+/// hintereinander anhakt, löst so einen Abruf aus statt einem je Klick.
+const SELECTION_SETTLE: Duration = Duration::from_millis(800);
+
 pub enum RadarEvent {
     /// Pipeline rot/grün oder PR gemergt – für Desktop-Benachrichtigungen.
     Transitions(Vec<Transition>),
@@ -140,6 +154,10 @@ pub struct Radar {
     demo: bool,
     login: Login,
     login_task: Option<Task<()>>,
+    repo_choices: RepoChoices,
+    choices_task: Option<Task<()>>,
+    /// Verzögertes Neuladen nach Änderungen in der Repo-Auswahl
+    settle_task: Option<Task<()>>,
 }
 
 impl EventEmitter<RadarEvent> for Radar {}
@@ -178,6 +196,9 @@ impl Radar {
             demo: demo.enabled,
             login: Login::Idle,
             login_task: None,
+            repo_choices: RepoChoices::Idle,
+            choices_task: None,
+            settle_task: None,
         };
         this.refresh(cx);
         this
@@ -187,6 +208,20 @@ impl Radar {
     #[cfg(test)]
     pub fn set_repos_for_tests(&mut self, repos: Vec<String>, cx: &mut Context<Self>) {
         self.config.repos = repos;
+        cx.notify();
+    }
+
+    /// Für UI-Tests: Repo-Auswahl und Anmeldestand setzen, ohne GitHub zu fragen.
+    #[cfg(test)]
+    pub fn set_repo_choices_for_tests(
+        &mut self,
+        choices: RepoChoices,
+        token_source: Option<TokenSource>,
+        cx: &mut Context<Self>,
+    ) {
+        self.choices_task = None;
+        self.repo_choices = choices;
+        self.status.token_source = token_source;
         cx.notify();
     }
 
@@ -219,6 +254,9 @@ impl Radar {
             demo: false,
             login: Login::Idle,
             login_task: None,
+            repo_choices: RepoChoices::Idle,
+            choices_task: None,
+            settle_task: None,
         }
     }
 
@@ -251,6 +289,100 @@ impl Radar {
         &self.login
     }
 
+    pub fn repo_choices(&self) -> &RepoChoices {
+        &self.repo_choices
+    }
+
+    /// Lädt die Repos des Kontos für die Auswahl, falls noch nicht geschehen (oder fehlgeschlagen).
+    pub fn ensure_repo_choices(&mut self, cx: &mut Context<Self>) {
+        if matches!(
+            self.repo_choices,
+            RepoChoices::Idle | RepoChoices::Failed(_)
+        ) {
+            self.load_repo_choices(cx);
+        }
+    }
+
+    /// Repos des Kontos (neu) laden. Im Demo-Modus die beobachteten Beispiel-Repos.
+    pub fn load_repo_choices(&mut self, cx: &mut Context<Self>) {
+        if self.demo {
+            let choices = self
+                .config
+                .repos
+                .iter()
+                .map(|full| RepoChoice {
+                    full: full.clone(),
+                    private: false,
+                    description: None,
+                })
+                .collect();
+            self.repo_choices = RepoChoices::Loaded(Arc::new(choices));
+            cx.notify();
+            return;
+        }
+        self.repo_choices = RepoChoices::Loading;
+        let github = self.github.clone();
+        self.choices_task = Some(cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_spawn({
+                    let github = github.clone();
+                    async move { github.list_repos().await }
+                })
+                .await;
+            this.update(cx, |this, cx| {
+                // Das Laden klärt nebenbei, ob und woher es einen Token gibt.
+                this.status.token_source = this.github.token_source();
+                this.repo_choices = match result {
+                    Ok(choices) => RepoChoices::Loaded(Arc::new(choices)),
+                    Err(e) => {
+                        log::warn!("Repo-Auswahl nicht geladen: {e:#}");
+                        RepoChoices::Failed(format!("{e:#}"))
+                    }
+                };
+                cx.notify();
+            })
+            .ok();
+        }));
+        cx.notify();
+    }
+
+    /// Anhaken in der Repo-Auswahl: sofort speichern, aber erst kurz danach neu laden.
+    pub fn set_watched(&mut self, full: &str, watched: bool, cx: &mut Context<Self>) -> Result<()> {
+        if self.demo_only(tr!("Changing repositories", "Repositories ändern"), cx) {
+            bail!(tr!(
+                "Repositories can’t be changed in demo mode.",
+                "Im Demo-Modus lassen sich keine Repositories ändern."
+            ));
+        }
+        let present = self
+            .config
+            .repos
+            .iter()
+            .any(|r| r.eq_ignore_ascii_case(full));
+        match (watched, present) {
+            (true, false) => {
+                self.config.add_repo(full)?;
+            }
+            (false, true) => {
+                let key = self
+                    .config
+                    .repos
+                    .iter()
+                    .find(|r| r.eq_ignore_ascii_case(full))
+                    .cloned()
+                    .unwrap_or_else(|| full.to_string());
+                self.config.remove_repo(&key)?;
+            }
+            _ => return Ok(()),
+        }
+        self.settle_task = Some(cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(SELECTION_SETTLE).await;
+            this.update(cx, |this, cx| this.refresh(cx)).ok();
+        }));
+        cx.notify();
+        Ok(())
+    }
+
     /// „Abmelden“: gespeicherte Anmeldung löschen und neu laden. Danach gelten wieder
     /// `GITHUB_TOKEN` bzw. die GitHub-CLI, falls vorhanden.
     pub fn sign_out(&mut self, cx: &mut Context<Self>) {
@@ -261,6 +393,9 @@ impl Radar {
             Ok(()) => {
                 self.login = Login::Idle;
                 self.status.token_source = None;
+                // Die Auswahl gehörte zum alten Konto.
+                self.choices_task = None;
+                self.repo_choices = RepoChoices::Idle;
                 log::info!("Von GitHub abgemeldet");
                 self.refresh(cx);
             }
@@ -269,6 +404,18 @@ impl Radar {
                 self.login = Login::Failed(format!("{e:#}"));
                 cx.notify();
             }
+        }
+    }
+
+    /// „Konto wechseln“: abmelden und gleich neu anmelden. Welches Konto GitHub anbietet,
+    /// entscheidet die Anmeldung im Browser; die Oberfläche weist darauf hin.
+    pub fn switch_account(&mut self, cx: &mut Context<Self>) {
+        if self.demo_only(tr!("Switching accounts", "Konto wechseln"), cx) {
+            return;
+        }
+        self.sign_out(cx);
+        if self.login == Login::Idle {
+            self.start_login(cx);
         }
     }
 
@@ -306,6 +453,8 @@ impl Radar {
                             None => Login::Idle,
                         };
                         this.refresh(cx);
+                        // Gleich die Repos des (neuen) Kontos zur Auswahl laden.
+                        this.load_repo_choices(cx);
                     }
                     Err(e) => {
                         log::warn!("Anmeldung fehlgeschlagen: {e:#}");
@@ -410,6 +559,11 @@ impl Radar {
     ) -> Duration {
         self.status.token_source = self.github.token_source();
         self.status.needs_login = fetched.is_err() && self.status.token_source.is_none();
+        // Erster Start (noch keine Repos): gleich die Auswahl laden. Das zeigt auch, ob es
+        // überhaupt eine Anmeldung gibt, denn ohne Repos fragt der Abruf GitHub nicht.
+        if self.config.repos.is_empty() && self.repo_choices == RepoChoices::Idle {
+            self.load_repo_choices(cx);
+        }
         let now = Utc::now();
         let error = match fetched {
             Ok(f) => {

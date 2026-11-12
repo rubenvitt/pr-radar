@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use gpui_kit::assets::IconName as Lucide;
 use gpui_kit::component::{
-    ActiveTheme as _, IconName, Sizable as _,
+    ActiveTheme as _, Disableable as _, IconName, Sizable as _,
     button::{Button, ButtonVariants as _},
     h_flex,
     scroll::ScrollableElement as _,
@@ -20,7 +20,7 @@ use super::typography::TypeScale as _;
 use super::{Derived, OpenSettings, Refresh, Workspace, quick_label};
 use crate::config::{Prefs, Quick, Tab, View};
 use crate::model::Snapshot;
-use crate::radar::PollState;
+use crate::radar::{Login, PollState, RepoChoices};
 use crate::time::day_label;
 
 /// Ein Eintrag der Inhaltsliste. Zeilen einer Karte tragen `first`/`last`, damit sie
@@ -217,6 +217,92 @@ impl Workspace {
         }
     }
 
+    /// Erster Start (noch keine Repos): erst bei GitHub anmelden, dann Repos auswählen.
+    /// Beides passiert im Repositories-Sheet; hier steht, welcher Schritt dran ist.
+    fn render_first_start(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let radar = self.radar.read(cx);
+        let choices = radar.repo_choices().clone();
+        let signed_in = radar.status().token_source.is_some();
+        let logging_in = !matches!(radar.login(), Login::Idle | Login::Failed(_));
+        let intro = tr!(
+            "PR Radar shows open pull requests, pipelines, merges and releases \
+             from your GitHub repositories in one place.",
+            "PR Radar zeigt offene Pull Requests, Pipelines, Merges und Releases \
+             aus deinen GitHub-Repositories an einem Ort."
+        );
+        let choose = || {
+            Button::new("add-repos")
+                .primary()
+                .icon(IconName::Plus)
+                .label(tr!("Choose Repositories…", "Repositories auswählen …"))
+        };
+        match choices {
+            RepoChoices::Loaded(_) => EmptyState::new(
+                Lucide::GitPullRequest,
+                tr!("Choose your repositories", "Wähle deine Repositories"),
+            )
+            .hint(format!(
+                "{intro} {}",
+                tr!(
+                    "Step 2 of 2: pick the ones to watch.",
+                    "Schritt 2 von 2: Hake an, welche du beobachten willst."
+                )
+            ))
+            .action(choose().on_click(
+                cx.listener(|this, _, window, cx| this.open_settings(&OpenSettings, window, cx)),
+            ))
+            .into_any_element(),
+            RepoChoices::Failed(e) if signed_in && !logging_in => EmptyState::new(
+                Lucide::CircleX,
+                tr!(
+                    "Couldn’t load your repositories",
+                    "Deine Repositories ließen sich nicht laden"
+                ),
+            )
+            .color(cx.theme().danger)
+            .hint(e)
+            .action(
+                Button::new("retry-choices")
+                    .primary()
+                    .icon(IconName::RefreshCw)
+                    .label(tr!("Try Again", "Erneut versuchen"))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.radar.update(cx, |r, cx| r.load_repo_choices(cx));
+                    })),
+            )
+            .into_any_element(),
+            RepoChoices::Failed(_) => EmptyState::new(
+                Lucide::CircleUser,
+                tr!("Welcome to PR Radar", "Willkommen bei PR Radar"),
+            )
+            .hint(format!(
+                "{intro} {}",
+                tr!(
+                    "Step 1 of 2: sign in with GitHub. Your token stays in your keychain.",
+                    "Schritt 1 von 2: Melde dich mit GitHub an. Der Zugang bleibt in deinem Schlüsselbund."
+                )
+            ))
+            .action(
+                Button::new("sign-in")
+                    .primary()
+                    .label(tr!("Sign In with GitHub…", "Mit GitHub anmelden …"))
+                    .loading(logging_in)
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.open_settings(&OpenSettings, window, cx);
+                        this.radar.update(cx, |r, cx| r.start_login(cx));
+                    })),
+            )
+            .into_any_element(),
+            RepoChoices::Idle | RepoChoices::Loading => EmptyState::new(
+                Lucide::GitPullRequest,
+                tr!("Welcome to PR Radar", "Willkommen bei PR Radar"),
+            )
+            .hint(intro)
+            .action(choose().loading(true).disabled(true))
+            .into_any_element(),
+        }
+    }
+
     pub(super) fn render_content(
         &mut self,
         d: Option<&Derived>,
@@ -224,26 +310,7 @@ impl Workspace {
     ) -> AnyElement {
         let radar = self.radar.read(cx);
         if radar.repos().is_empty() {
-            return EmptyState::new(
-                Lucide::GitPullRequest,
-                tr!("No repositories yet", "Noch keine Repositories"),
-            )
-            .hint(tr!(
-                "PR Radar shows open pull requests, pipelines, merges and releases \
-                 from your GitHub repositories in one place. Choose which ones to watch.",
-                "PR Radar zeigt offene Pull Requests, Pipelines, Merges und Releases \
-                 aus deinen GitHub-Repositories an einem Ort. Wähle aus, welche du beobachten willst."
-            ))
-                .action(
-                    Button::new("add-repos")
-                        .primary()
-                        .icon(IconName::Plus)
-                        .label(tr!("Add Repositories…", "Repositories hinzufügen…"))
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.open_settings(&OpenSettings, window, cx)
-                        })),
-                )
-                .into_any_element();
+            return self.render_first_start(cx);
         }
         let Some(d) = d else {
             if radar.status().needs_login {

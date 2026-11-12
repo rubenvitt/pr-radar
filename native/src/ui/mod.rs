@@ -1533,6 +1533,54 @@ mod tests {
     }
 
     #[gpui_kit::test]
+    async fn erster_start_und_repo_auswahl_rendern(cx: &mut TestAppContext) {
+        use crate::github::{RepoChoice, TokenSource};
+        use crate::radar::RepoChoices;
+        let (handle, _, radar) = open(cx);
+        // Schritt 1: nicht angemeldet; Schritt 2: angemeldet, Liste geladen.
+        for (choices, source) in [
+            (RepoChoices::Failed("nicht angemeldet".into()), None),
+            (RepoChoices::Loading, Some(TokenSource::OAuth)),
+            (
+                RepoChoices::Loaded(Arc::new(vec![
+                    RepoChoice {
+                        full: "me/app".into(),
+                        private: true,
+                        description: Some("Die App".into()),
+                    },
+                    RepoChoice {
+                        full: "org/lib".into(),
+                        private: false,
+                        description: None,
+                    },
+                ])),
+                Some(TokenSource::OAuth),
+            ),
+        ] {
+            cx.update(|cx| {
+                radar.update(cx, |r, cx| {
+                    r.set_repo_choices_for_tests(choices, source, cx)
+                })
+            });
+            cx.update_window(handle, |_, window, cx| window.render_frame(cx))
+                .unwrap();
+        }
+        // Im Sheet: Liste mit Suchfeld; die Auswahl bleibt geladen und wird nicht neu geholt.
+        press(cx, handle, "cmd-,");
+        cx.wait_for(handle, WAIT, |window, cx| window.has_active_sheet(cx))
+            .await;
+        cx.update_window(handle, |_, window, cx| window.render_frame(cx))
+            .unwrap();
+        let loaded = cx.update(|cx| {
+            matches!(radar.read(cx).repo_choices(), RepoChoices::Loaded(list) if list.len() == 2)
+        });
+        assert!(
+            loaded,
+            "geöffnetes Sheet darf eine geladene Auswahl nicht verwerfen"
+        );
+    }
+
+    #[gpui_kit::test]
     async fn sheet_fokussiert_das_eingabefeld(cx: &mut TestAppContext) {
         let (handle, workspace, _) = open(cx);
         press(cx, handle, "cmd-,");
