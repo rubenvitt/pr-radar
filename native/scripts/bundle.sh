@@ -5,6 +5,8 @@
 #   scripts/bundle.sh --universal  → Universal-Binary für Apple Silicon und Intel (wie die CI)
 #   scripts/bundle.sh --install    → zusätzlich nach /Applications kopieren
 #   CODESIGN_IDENTITY=… scripts/bundle.sh → mit Developer ID statt ad hoc signieren
+#   SPARKLE_PUBLIC_KEY=… scripts/bundle.sh → Sparkle für Auto-Updates einbetten (wie die CI)
+#   BUILD_NUMBER=…        → CFBundleVersion (Standard: Zahl der Commits, steigt mit jedem Merge)
 # Danach: scripts/dmg.sh (Disk-Image) und scripts/notarize.sh (Beglaubigung), siehe docs/RELEASING.md.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -45,6 +47,9 @@ else
   binary="$target_dir/release/pr-radar"
 fi
 version=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
+# Sparkle vergleicht CFBundleVersion, nicht die Marketing-Version: Sie muss bei jedem Release
+# steigen. Die Commit-Zahl auf main tut das (Squash-Merges), ohne dass jemand sie pflegt.
+build=${BUILD_NUMBER:-$(git rev-list --count HEAD 2>/dev/null || echo 1)}
 
 app="dist/PR Radar.app"
 rm -rf "$app"
@@ -71,7 +76,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>${version}</string>
-  <key>CFBundleVersion</key><string>${version}</string>
+  <key>CFBundleVersion</key><string>${build}</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>LSApplicationCategoryType</key><string>public.app-category.developer-tools</string>
@@ -79,19 +84,62 @@ cat > "$app/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
+# Sparkle (Auto-Updates, src/updater.rs): nur mit öffentlichem EdDSA-Schlüssel, sonst würde Sparkle
+# beim Start mit einer Fehlermeldung abbrechen. Version und Prüfsumme fest, Download einmal je Version.
+sparkle_version=2.9.0
+sparkle_sha256=01e0f0ebf6614061ea816d414de50f937d64ffa6822ad572243031ca3676fe19
+feed_url="https://github.com/rubenvitt/pr-radar/releases/latest/download/appcast.xml"
+if [ -n "${SPARKLE_PUBLIC_KEY:-}" ]; then
+  cache="$target_dir/sparkle-$sparkle_version"
+  if [ ! -d "$cache/Sparkle.framework" ]; then
+    rm -rf "$cache" && mkdir -p "$cache"
+    curl -fsSL -o "$cache/sparkle.tar.xz" \
+      "https://github.com/sparkle-project/Sparkle/releases/download/$sparkle_version/Sparkle-$sparkle_version.tar.xz"
+    echo "$sparkle_sha256  $cache/sparkle.tar.xz" | shasum -a 256 -c - >/dev/null
+    tar -xf "$cache/sparkle.tar.xz" -C "$cache" ./Sparkle.framework ./bin ./LICENSE
+  fi
+  mkdir -p "$app/Contents/Frameworks"
+  ditto "$cache/Sparkle.framework" "$app/Contents/Frameworks/Sparkle.framework"
+  plist="$app/Contents/Info.plist"
+  /usr/libexec/PlistBuddy -c "Add :SUFeedURL string $feed_url" "$plist"
+  /usr/libexec/PlistBuddy -c "Add :SUPublicEDKey string $SPARKLE_PUBLIC_KEY" "$plist"
+  # Sparkle steht unter MIT (mit eigenen Fremdlizenzen): in die Drittanbieter-Hinweise übernehmen.
+  python3 - "$app/Contents/Resources/ThirdPartyNotices.html" "$cache/LICENSE" "$sparkle_version" <<'PY'
+import html, sys
+notices, license_file, version = sys.argv[1:]
+text = open(license_file, encoding="utf-8").read()
+section = (f'<h3 id="sparkle">Sparkle {version}</h3>\n'
+           '<p class="muted">Auto-Updates, <a href="https://sparkle-project.org">sparkle-project.org</a></p>\n'
+           f'<pre>{html.escape(text)}</pre>\n')
+page = open(notices, encoding="utf-8").read()
+assert "</body>" in page
+open(notices, "w", encoding="utf-8").write(page.replace("</body>", section + "</body>", 1))
+PY
+  echo "→ Sparkle $sparkle_version eingebettet (Feed: $feed_url)"
+fi
+
 # Gehärtete Laufzeit mit den Entitlements aus PRRadar.entitlements, in beiden Fällen gleich, damit
-# lokal auffällt, was in der signierten Fassung scheitern würde. Kein --deep: Verschachtelter Code
-# (Frameworks) wird einzeln und von innen nach außen signiert, sobald es welchen gibt.
-sign=(codesign --force --options runtime --entitlements PRRadar.entitlements)
+# lokal auffällt, was in der signierten Fassung scheitern würde. Kein --deep beim Signieren:
+# Verschachtelter Code (Sparkle) wird einzeln und von innen nach außen signiert; geprüft wird alles.
 if [ -n "${CODESIGN_IDENTITY:-}" ]; then
   # Developer ID mit Zeitstempel: Voraussetzung für die Beglaubigung (Notarisierung) durch Apple.
   # So signiert der Release-Workflow (.github/workflows/release-macos.yml).
-  "${sign[@]}" --timestamp --sign "$CODESIGN_IDENTITY" "$app"
+  sign=(codesign --force --options runtime --timestamp --sign "$CODESIGN_IDENTITY")
 else
   # Lokal ohne Zertifikat: Ad-hoc-Signatur, reicht für den eigenen Mac.
-  "${sign[@]}" --sign - "$app"
+  sign=(codesign --force --options runtime --sign -)
 fi
-codesign --verify --strict --verbose=2 "$app"
+sparkle="$app/Contents/Frameworks/Sparkle.framework"
+if [ -d "$sparkle" ]; then
+  # Reihenfolge nach https://sparkle-project.org/documentation/sandboxing/#code-signing
+  "${sign[@]}" "$sparkle/Versions/B/XPCServices/Installer.xpc"
+  "${sign[@]}" --preserve-metadata=entitlements "$sparkle/Versions/B/XPCServices/Downloader.xpc"
+  "${sign[@]}" "$sparkle/Versions/B/Autoupdate"
+  "${sign[@]}" "$sparkle/Versions/B/Updater.app"
+  "${sign[@]}" "$sparkle"
+fi
+"${sign[@]}" --entitlements PRRadar.entitlements "$app"
+codesign --verify --deep --strict --verbose=2 "$app"
 echo "→ $app"
 
 if $install; then

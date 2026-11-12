@@ -72,7 +72,7 @@ jobs:
   # Wie der Release-Workflow, nur ohne Zertifikat (ad hoc signiert) und ohne Beglaubigung: So fällt
   # ein kaputtes Bündeln, Universal-Binary oder Disk-Image schon im PR auf und nicht erst auf main.
   bundle:
-    name: App-Bündel und DMG (Universal, ad hoc)
+    name: App-Bündel und DMG (Universal, Sparkle, ad hoc)
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
@@ -88,12 +88,18 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-about
-      - name: Bündeln (arm64 + x86_64)
+      - name: Bündeln (arm64 + x86_64, mit Sparkle)
+        env:
+          # Platzhalter (32 Null-Bytes): prüft Download, Einbetten und Signierreihenfolge von Sparkle.
+          SPARKLE_PUBLIC_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
         run: scripts/bundle.sh --universal
       - name: Bündel prüfen
         run: |
           lipo "dist/PR Radar.app/Contents/MacOS/pr-radar" -verify_arch arm64 x86_64
           codesign --display --verbose=2 "dist/PR Radar.app" 2>&1 | grep -E 'flags=.*runtime'
           plutil -lint "dist/PR Radar.app/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "dist/PR Radar.app/Contents/Info.plist"
+          test -x "dist/PR Radar.app/Contents/Frameworks/Sparkle.framework/Versions/B/Autoupdate"
+          grep -q 'id="sparkle"' "dist/PR Radar.app/Contents/Resources/ThirdPartyNotices.html"
       - name: Disk-Image
         run: scripts/dmg.sh
