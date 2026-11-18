@@ -16,7 +16,8 @@ permissions:
 jobs:
   release:
     name: Bauen, signieren, beglaubigen, veröffentlichen
-    runs-on: macos-15
+    # Gleiches Xcode-Image wie native.yml und die iOS-Workflows (.github/actions/xcode).
+    runs-on: xcode-27
     defaults:
       run:
         working-directory: native
@@ -29,6 +30,9 @@ jobs:
           persist-credentials: false
           # Alle Tags, damit die Release Notes beim vorigen macOS-Release ansetzen.
           fetch-depth: 0
+
+      - name: Xcode
+        uses: ./.github/actions/xcode
 
       - name: Secrets vorhanden?
         env:
