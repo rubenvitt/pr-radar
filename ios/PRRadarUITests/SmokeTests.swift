@@ -19,11 +19,23 @@ final class SmokeTests: XCTestCase {
         return app
     }
 
+    /// Knopf eines Tabs. Ab iOS 26 (Liquid Glass) steht die Tab-Leiste je nach Version nicht mehr als
+    /// `TabBar` im Accessibility-Baum, deshalb über die Beschriftung suchen und die Leiste nur bevorzugen.
+    /// Fehlt der Knopf, landet der Baum im Log, damit die CI zeigt, was stattdessen da ist.
+    @MainActor
+    private func tabButton(_ name: String, in app: XCUIApplication) -> XCUIElement? {
+        let button = app.buttons.matching(NSPredicate(format: "label == %@", name)).firstMatch
+        guard button.waitForExistence(timeout: 15) else {
+            XCTFail("Tab „\(name)“ fehlt\n\(app.debugDescription)")
+            return nil
+        }
+        let inBar = app.tabBars.buttons[name]
+        return inBar.exists ? inBar : button
+    }
+
     @MainActor
     private func openTab(_ name: String, in app: XCUIApplication) {
-        let tabBar = app.tabBars.firstMatch
-        XCTAssertTrue(tabBar.waitForExistence(timeout: 15), "Tab-Leiste fehlt")
-        tabBar.buttons[name].tap()
+        tabButton(name, in: app)?.tap()
     }
 
     @MainActor
@@ -76,9 +88,7 @@ final class SmokeTests: XCTestCase {
         let app = launch(["--demo"])
 
         // App-Text (Catalog der App)
-        let tabBar = app.tabBars.firstMatch
-        XCTAssertTrue(tabBar.waitForExistence(timeout: 15), "Tab-Leiste fehlt")
-        XCTAssertTrue(tabBar.buttons["Einstellungen"].exists, "App-Text „Einstellungen“ fehlt")
+        XCTAssertNotNil(tabButton("Einstellungen", in: app), "App-Text „Einstellungen“ fehlt")
 
         // Kern-Text: Schnellfilter `Quick.failed` heißt deutsch „Rot“, englisch „Failed“
         let rot = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Rot")).firstMatch
