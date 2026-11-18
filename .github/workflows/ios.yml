@@ -45,7 +45,7 @@ jobs:
             -scheme PRRadar \
             -destination 'generic/platform=iOS Simulator' \
             CODE_SIGNING_ALLOWED=NO
-      - name: App- und UI-Tests (iOS-Simulator)
+      - name: Simulator vorbereiten
         working-directory: ios
         run: |
           # Neuestes verfügbares iOS mit einem iPhone, statt einen Gerätenamen fest zu verdrahten
@@ -57,9 +57,34 @@ jobs:
           print(next(d["udid"] for k in runtimes for d in devices[k] if d["name"].startswith("iPhone")))
           ')
           echo "Simulator: $udid"
-          xcodebuild test \
+          echo "SIM_UDID=$udid" >> "$GITHUB_ENV"
+          # Vorab fertig hochfahren, damit der erste Test nicht in einen halb gebooteten Simulator startet
+          xcrun simctl boot "$udid" || true
+          xcrun simctl bootstatus "$udid" -b
+          xcodebuild build-for-testing \
             -project PRRadar.xcodeproj \
             -scheme PRRadar \
-            -destination "id=$udid" \
-            -only-testing:PRRadarTests \
-            -only-testing:PRRadarUITests
+            -destination "id=$udid"
+      # App-Tests und UI-Tests getrennt: In einem gemeinsamen Lauf lief die App als Test-Host der
+      # App-Tests noch, als die UI-Tests starteten. Mit Xcode 27 scheiterte das sporadisch
+      # („Failed to get background assertion“ bzw. UI-Test-Runner stürzt beim Start ab), PRR-79.
+      - name: App-Tests (iOS-Simulator)
+        working-directory: ios
+        run: |
+          xcodebuild test-without-building \
+            -project PRRadar.xcodeproj \
+            -scheme PRRadar \
+            -destination "id=$SIM_UDID" \
+            -only-testing:PRRadarTests
+      - name: UI-Tests (iOS-Simulator)
+        working-directory: ios
+        run: |
+          xcrun simctl terminate "$SIM_UDID" dev.rubeen.prradar || true
+          # Ein fehlgeschlagener UI-Test läuft einmal neu; scheitert er wieder, bleibt der Lauf rot.
+          xcodebuild test-without-building \
+            -project PRRadar.xcodeproj \
+            -scheme PRRadar \
+            -destination "id=$SIM_UDID" \
+            -only-testing:PRRadarUITests \
+            -retry-tests-on-failure \
+            -test-iterations 2
