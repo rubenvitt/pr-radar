@@ -8,8 +8,10 @@ public enum PipelineState: String, Sendable, Codable, Hashable, CaseIterable {
     public var label: String {
         switch self {
         case .running: L10n.tr("running")
-        case .failed: L10n.tr("failed")
-        case .passed: L10n.tr("passed")
+        // Kleingeschrieben aus „Failed“/„Passed“: eigene Schlüssel „failed“/„passed“ würden ab Xcode 26
+        // dasselbe String-Catalog-Symbol erzeugen wie die großgeschriebenen, und das bricht den Build.
+        case .failed: L10n.tr("Failed").lowercased(with: L10n.locale)
+        case .passed: L10n.tr("Passed").lowercased(with: L10n.locale)
         case .none: L10n.tr("no result")
         }
     }
