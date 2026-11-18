@@ -262,8 +262,6 @@ mod mac {
 
 #[cfg(test)]
 mod tests {
-    use chrono::{TimeZone, Utc};
-
     use super::*;
     use crate::model::{Mergeable, Pipeline, PipelineState};
 
@@ -276,7 +274,10 @@ mod tests {
             url: format!("https://github.com/acme/app/pull/{number}"),
             author: None,
             is_draft: false,
-            updated_at: Utc.with_ymd_and_hms(2026, 11, 8, 12, minute, 0).unwrap(),
+            updated_at: jiff::civil::datetime(2026, 11, 8, 12, minute as i8, 0, 0)
+                .to_zoned_datetime(jiff::tz::TimeZone::UTC)
+                .unwrap()
+                .timestamp(),
             head_ref: "feature".into(),
             head_oid: "abc".into(),
             base_ref: "main".into(),

@@ -11,8 +11,8 @@
 //! - `--view list|flow` bzw. `PR_RADAR_VIEW`: Liste oder Flow
 //! - `--quick all|running|failed|passed|auto|conflict|review|mine` bzw. `PR_RADAR_QUICK`: Schnellfilter
 
-use chrono::{DateTime, Duration, Utc};
 use gpui_kit::component::ThemeMode;
+use jiff::{SignedDuration, Timestamp};
 use serde::de::DeserializeOwned;
 
 use crate::config::{Config, Prefs};
@@ -206,7 +206,7 @@ struct Pr<'a> {
 }
 
 impl Pr<'_> {
-    fn build(self, now: DateTime<Utc>) -> OpenPr {
+    fn build(self, now: Timestamp) -> OpenPr {
         OpenPr {
             id: format!("demo-{}-{}", self.repo, self.number),
             repo: self.repo.into(),
@@ -215,7 +215,7 @@ impl Pr<'_> {
             url: format!("https://github.com/{}/pull/{}", self.repo, self.number),
             author: Some(person(self.author)),
             is_draft: false,
-            updated_at: now - Duration::minutes(self.minutes_ago),
+            updated_at: now - SignedDuration::from_mins(self.minutes_ago),
             head_ref: self.head_ref.into(),
             head_oid: format!("{:040x}", self.number),
             base_ref: "main".into(),
@@ -236,7 +236,7 @@ impl Pr<'_> {
 /// Fester Beispielstand relativ zu `now`: 7 offene PRs in 4 Repos (Konflikt, Auto-Merge,
 /// Draft, Review-Anfrage, rot/läuft/grün), ein nicht erreichbares Repo, 7 gemergte PRs
 /// über drei Tage und 2 Releases.
-pub fn snapshot(now: DateTime<Utc>) -> Snapshot {
+pub fn snapshot(now: Timestamp) -> Snapshot {
     use CheckState::{Failed as F, Passed as P, Running as R, Skipped as S};
 
     let repos = REPOS
@@ -485,7 +485,7 @@ pub fn snapshot(now: DateTime<Utc>) -> Snapshot {
         title: title.into(),
         url: format!("https://github.com/{repo}/pull/{number}"),
         author: Some(person(author)),
-        merged_at: now - Duration::minutes(minutes_ago),
+        merged_at: now - SignedDuration::from_mins(minutes_ago),
         merged_by: Some(
             if author.ends_with("[bot]") {
                 VIEWER
@@ -505,7 +505,7 @@ pub fn snapshot(now: DateTime<Utc>) -> Snapshot {
             name: "v2.14.0".into(),
             tag_name: "v2.14.0".into(),
             url: "https://github.com/acme/api/releases/tag/v2.14.0".into(),
-            published_at: Some(now - Duration::hours(20)),
+            published_at: Some(now - SignedDuration::from_hours(20)),
             is_prerelease: false,
             is_latest: true,
             author: Some("jo".into()),
@@ -525,7 +525,7 @@ pub fn snapshot(now: DateTime<Utc>) -> Snapshot {
             name: "3.0 Beta 2".into(),
             tag_name: "v3.0.0-beta.2".into(),
             url: "https://github.com/acme/mobile/releases/tag/v3.0.0-beta.2".into(),
-            published_at: Some(now - Duration::days(3)),
+            published_at: Some(now - SignedDuration::from_hours(24 * 3)),
             is_prerelease: true,
             is_latest: false,
             author: Some("lee".into()),
@@ -618,7 +618,7 @@ mod tests {
 
     #[test]
     fn beispielstand_deckt_alle_zustaende_ab() {
-        let s = snapshot(Utc::now());
+        let s = snapshot(Timestamp::now());
         assert_eq!(s.open.len(), 7);
         assert_eq!(s.merged.len(), 7);
         assert_eq!(s.releases.len(), 2);

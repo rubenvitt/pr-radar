@@ -5,8 +5,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::{Result, anyhow, bail};
-use chrono::{DateTime, Utc};
 use gpui_kit::{AppContext as _, AsyncApp, Context, EventEmitter, Task, WeakEntity};
+use jiff::Timestamp;
 
 use crate::config::{Config, Loaded, Prefs};
 use crate::demo;
@@ -78,7 +78,7 @@ pub enum PollState {
 #[derive(Clone, Debug)]
 pub struct Status {
     pub state: PollState,
-    pub last_success: Option<DateTime<Utc>>,
+    pub last_success: Option<Timestamp>,
     pub interval: Duration,
     pub error: Option<String>,
     pub rate_limit: Option<RateLimit>,
@@ -528,7 +528,7 @@ impl Radar {
 
     /// Demo-Modus: Beispielstand statt GitHub, ohne Poll-Zyklus.
     fn load_demo(&mut self, cx: &mut Context<Self>) {
-        let now = Utc::now();
+        let now = Timestamp::now();
         self.poll_task = None;
         self.snapshot = Some(Arc::new(demo::snapshot(now)));
         self.awaiting_refresh.clear();
@@ -566,7 +566,7 @@ impl Radar {
         if self.config.repos.is_empty() && self.repo_choices == RepoChoices::Idle {
             self.load_repo_choices(cx);
         }
-        let now = Utc::now();
+        let now = Timestamp::now();
         let error = match fetched {
             Ok(f) => {
                 if let Some(prev) = &self.snapshot {
@@ -1188,7 +1188,7 @@ fn wait_after_error(
     error: &anyhow::Error,
     failures: u32,
     base: Duration,
-    now: DateTime<Utc>,
+    now: Timestamp,
 ) -> Duration {
     let factor = 1u32 << failures.saturating_sub(1).min(8);
     if let Some(limited) = error.downcast_ref::<RateLimited>() {
@@ -1207,11 +1207,7 @@ fn wait_after_error(
 ///   letzten Polls),
 /// - wird es knapp, den Rest oberhalb der Reserve gleichmäßig bis zum Reset verteilen,
 /// - reicht der Rest nicht mehr für einen Poll, bis zum Reset pausieren.
-fn wait_after_success(
-    rate_limit: Option<&RateLimit>,
-    base: Duration,
-    now: DateTime<Utc>,
-) -> Duration {
+fn wait_after_success(rate_limit: Option<&RateLimit>, base: Duration, now: Timestamp) -> Duration {
     let Some(rl) = rate_limit.filter(|rl| rl.limit > 0) else {
         return base;
     };
@@ -1227,8 +1223,8 @@ fn wait_after_success(
     base.max(steady).max(pace).min(MAX_RATE_LIMIT_WAIT)
 }
 
-fn until(at: DateTime<Utc>, now: DateTime<Utc>) -> Duration {
-    (at - now).to_std().unwrap_or_default()
+fn until(at: Timestamp, now: Timestamp) -> Duration {
+    Duration::try_from(at.duration_since(now)).unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -1236,8 +1232,8 @@ mod tests {
     use super::*;
     use crate::model::{Mergeable, OpenPr, Pipeline, PipelineState};
 
-    fn at(secs: i64) -> DateTime<Utc> {
-        DateTime::from_timestamp(secs, 0).unwrap()
+    fn at(secs: i64) -> Timestamp {
+        Timestamp::from_second(secs).ok().unwrap()
     }
 
     #[test]
@@ -1365,7 +1361,7 @@ mod tests {
                 url: "u".into(),
                 author: None,
                 is_draft: false,
-                updated_at: Utc::now(),
+                updated_at: Timestamp::now(),
                 head_ref: "h".into(),
                 head_oid: "abc".into(),
                 base_ref: "main".into(),

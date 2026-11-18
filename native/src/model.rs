@@ -1,6 +1,6 @@
 //! Domänenmodell: der normalisierte Stand aller beobachteten Repos.
 
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum PipelineState {
@@ -157,7 +157,7 @@ pub struct OpenPr {
     pub url: String,
     pub author: Option<Person>,
     pub is_draft: bool,
-    pub updated_at: DateTime<Utc>,
+    pub updated_at: Timestamp,
     pub head_ref: String,
     /// Commit, auf dem der Branch gerade steht – Merges werden daran gebunden
     pub head_oid: String,
@@ -206,7 +206,7 @@ pub struct MergedPr {
     pub title: String,
     pub url: String,
     pub author: Option<Person>,
-    pub merged_at: DateTime<Utc>,
+    pub merged_at: Timestamp,
     pub merged_by: Option<String>,
     pub base_ref: String,
 }
@@ -218,7 +218,7 @@ pub struct Release {
     pub name: String,
     pub tag_name: String,
     pub url: String,
-    pub published_at: Option<DateTime<Utc>>,
+    pub published_at: Option<Timestamp>,
     pub is_prerelease: bool,
     pub is_latest: bool,
     pub author: Option<String>,
@@ -347,7 +347,7 @@ mod tests {
             url: "u".into(),
             author: None,
             is_draft: false,
-            updated_at: Utc::now(),
+            updated_at: Timestamp::now(),
             head_ref: "h".into(),
             head_oid: String::new(),
             base_ref: "main".into(),
@@ -393,7 +393,7 @@ mod tests {
                 title: "t".into(),
                 url: "u".into(),
                 author: None,
-                merged_at: Utc::now(),
+                merged_at: Timestamp::now(),
                 merged_by: None,
                 base_ref: "main".into(),
             }],

@@ -11,9 +11,9 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context as _, Result, anyhow, bail};
-use chrono::{DateTime, Utc};
 use futures::AsyncReadExt as _;
 use gpui_kit::http_client::{AsyncBody, HttpClient, Method, Request};
+use jiff::Timestamp;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -54,7 +54,7 @@ struct Token {
 pub struct RateLimit {
     pub remaining: u64,
     pub limit: u64,
-    pub reset_at: Option<DateTime<Utc>>,
+    pub reset_at: Option<Timestamp>,
     /// Punkte, die der letzte Poll gekostet hat (Summe über alle Requests)
     pub cost: u64,
 }
@@ -80,25 +80,25 @@ struct GqlResponse {
 #[derive(Debug, Clone, PartialEq)]
 pub struct RateLimited {
     /// Ab hier ist das Kontingent wieder frei (`x-ratelimit-reset` bzw. `rateLimit.resetAt`).
-    pub reset_at: Option<DateTime<Utc>>,
+    pub reset_at: Option<Timestamp>,
     /// Von GitHub verlangte Wartezeit (`Retry-After`).
     pub retry_after: Option<Duration>,
 }
 
 impl RateLimited {
     /// Wie lange bis zum nächsten sinnvollen Versuch; ohne Zeitangabe `UNKNOWN_RATE_LIMIT_WAIT`.
-    pub fn wait(&self, now: DateTime<Utc>) -> Duration {
+    pub fn wait(&self, now: Timestamp) -> Duration {
         self.retry_at(now).map_or(UNKNOWN_RATE_LIMIT_WAIT, |at| {
-            (at - now).to_std().unwrap_or_default()
+            Duration::try_from(at.duration_since(now)).unwrap_or_default()
         })
     }
 
     /// Zeitpunkt, ab dem ein neuer Versuch sinnvoll ist.
-    pub fn retry_at(&self, now: DateTime<Utc>) -> Option<DateTime<Utc>> {
+    pub fn retry_at(&self, now: Timestamp) -> Option<Timestamp> {
         let after = self
             .retry_after
-            .and_then(|d| chrono::Duration::from_std(d).ok())
-            .map(|d| now + d);
+            .and_then(|d| jiff::SignedDuration::try_from(d).ok())
+            .and_then(|d| now.checked_add(d).ok());
         match (self.reset_at, after) {
             (Some(a), Some(b)) => Some(a.max(b)),
             (a, b) => a.or(b),
@@ -108,7 +108,7 @@ impl RateLimited {
 
 impl std::fmt::Display for RateLimited {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.retry_at(Utc::now()) {
+        match self.retry_at(Timestamp::now()) {
             Some(at) => f.write_str(&trf!(
                 "GitHub API quota used up. Available again at {}.",
                 "GitHub-API-Kontingent aufgebraucht. Wieder frei um {} Uhr.",
@@ -182,7 +182,7 @@ pub const UNKNOWN_RATE_LIMIT_WAIT: Duration = Duration::from_secs(120);
 struct LimitHeaders {
     /// `x-ratelimit-remaining: 0`
     exhausted: bool,
-    reset_at: Option<DateTime<Utc>>,
+    reset_at: Option<Timestamp>,
     retry_after: Option<Duration>,
 }
 
@@ -193,7 +193,7 @@ impl LimitHeaders {
             exhausted: header("x-ratelimit-remaining").is_some_and(|v| v.trim() == "0"),
             reset_at: header("x-ratelimit-reset")
                 .and_then(|v| v.trim().parse::<i64>().ok())
-                .and_then(|secs| DateTime::from_timestamp(secs, 0)),
+                .and_then(|secs| Timestamp::from_second(secs).ok()),
             retry_after: header("retry-after")
                 .and_then(|v| v.trim().parse::<u64>().ok())
                 .map(Duration::from_secs),
@@ -950,7 +950,7 @@ impl GitHub {
             futures::future::join_all(chunks.iter().map(|c| self.request_dashboard(c))).await;
         // Ein Rate-Limit in irgendeinem Chunk zählt vor anderen Fehlern, damit der
         // Backoff bis zum Reset wartet statt zu früh erneut anzufragen.
-        if let Some(limited) = longest_rate_limit(&results, Utc::now()) {
+        if let Some(limited) = longest_rate_limit(&results, Timestamp::now()) {
             return Err(limited.into());
         }
 
@@ -1045,7 +1045,7 @@ fn merge_rate_limits(a: Option<RateLimit>, b: Option<RateLimit>) -> Option<RateL
 }
 
 /// Unter allen gedrosselten Chunks der mit der längsten Wartezeit.
-fn longest_rate_limit<T>(results: &[Result<T>], now: DateTime<Utc>) -> Option<RateLimited> {
+fn longest_rate_limit<T>(results: &[Result<T>], now: Timestamp) -> Option<RateLimited> {
     results
         .iter()
         .filter_map(|r| r.as_ref().err()?.downcast_ref::<RateLimited>())
@@ -1344,7 +1344,7 @@ mod tests {
             ("x-ratelimit-reset", "1793988000"),
         ]);
         let limited = rate_limited(403, &h, "").expect("gedrosselt");
-        assert_eq!(limited.reset_at, DateTime::from_timestamp(1_793_988_000, 0));
+        assert_eq!(limited.reset_at, Timestamp::from_second(1_793_988_000).ok());
         assert_eq!(limited.retry_after, None);
     }
 
@@ -1372,7 +1372,7 @@ mod tests {
         assert_eq!(limited.reset_at, None);
         assert_eq!(limited.retry_after, None);
         // Ohne Zeitangabe mindestens eine Minute (GitHub-Vorgabe)
-        let now = DateTime::from_timestamp(1_000, 0).unwrap();
+        let now = Timestamp::from_second(1_000).ok().unwrap();
         assert!(limited.wait(now) >= Duration::from_secs(60));
         // Ältere Formulierung
         let body = r#"{"message":"You have triggered an abuse detection mechanism."}"#;
@@ -1390,7 +1390,7 @@ mod tests {
             ("x-ratelimit-reset", "1793988000"),
         ]);
         let limited = LimitHeaders::read(&h).limited();
-        assert_eq!(limited.reset_at, DateTime::from_timestamp(1_793_988_000, 0));
+        assert_eq!(limited.reset_at, Timestamp::from_second(1_793_988_000).ok());
         // Reset ohne leeres Kontingent ist kein Wartegrund
         let h = headers(&[
             ("x-ratelimit-remaining", "12"),
@@ -1408,10 +1408,10 @@ mod tests {
 
     #[test]
     fn meldet_den_chunk_mit_der_laengsten_wartezeit() {
-        let now = DateTime::from_timestamp(1_000, 0).unwrap();
+        let now = Timestamp::from_second(1_000).ok().unwrap();
         let limit = |reset: Option<i64>, retry: Option<u64>| -> Result<()> {
             Err(RateLimited {
-                reset_at: reset.and_then(|s| DateTime::from_timestamp(s, 0)),
+                reset_at: reset.and_then(|s| Timestamp::from_second(s).ok()),
                 retry_after: retry.map(Duration::from_secs),
             }
             .into())
@@ -1424,7 +1424,7 @@ mod tests {
             limit(None, None),
         ];
         let longest = longest_rate_limit(&results, now).expect("gedrosselt");
-        assert_eq!(longest.reset_at, DateTime::from_timestamp(1_900, 0));
+        assert_eq!(longest.reset_at, Timestamp::from_second(1_900).ok());
         // Ohne Zeitangabe zählt die Standardwartezeit (120 s) – länger als 60 s Retry-After
         let results = vec![limit(None, Some(60)), limit(None, None)];
         let longest = longest_rate_limit(&results, now).unwrap();
@@ -1436,12 +1436,12 @@ mod tests {
 
     #[test]
     fn retry_at_nimmt_den_spaeteren_zeitpunkt() {
-        let now = DateTime::from_timestamp(1_000, 0).unwrap();
+        let now = Timestamp::from_second(1_000).ok().unwrap();
         let limited = RateLimited {
-            reset_at: DateTime::from_timestamp(1_100, 0),
+            reset_at: Timestamp::from_second(1_100).ok(),
             retry_after: Some(Duration::from_secs(300)),
         };
-        assert_eq!(limited.retry_at(now), DateTime::from_timestamp(1_300, 0));
+        assert_eq!(limited.retry_at(now), Timestamp::from_second(1_300).ok());
         let none = RateLimited {
             reset_at: None,
             retry_after: None,

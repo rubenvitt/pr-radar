@@ -1,13 +1,13 @@
 //! Zeitangaben in der Sprache der Oberfläche: relativ („5 min ago“ / „vor 5 Min.“),
 //! Tageslabel („Today“ / „Heute“), Uhrzeit.
 
-use chrono::{DateTime, Datelike, Local, Utc};
+use jiff::{Timestamp, ZonedDateTime, tz::TimeZone};
 
 use crate::l10n::{Lang, lang};
 
-pub fn ago(t: Option<DateTime<Utc>>) -> String {
+pub fn ago(t: Option<Timestamp>) -> String {
     let Some(t) = t else { return "–".into() };
-    let secs = (Utc::now() - t).num_seconds().max(0);
+    let secs = Timestamp::now().duration_since(t).as_secs().max(0);
     let de = lang() == Lang::De;
     // (Anzahl, Einheit Englisch Einzahl/Mehrzahl, Einheit Deutsch Einzahl/Mehrzahl)
     let (n, en_unit, de_unit) = match secs {
@@ -75,17 +75,17 @@ const MONTHS_DE: [&str; 12] = [
     "Dezember",
 ];
 
-pub fn day_label(t: DateTime<Utc>) -> String {
-    let d = t.with_timezone(&Local).date_naive();
-    let today = Local::now().date_naive();
+pub fn day_label(t: Timestamp) -> String {
+    let d = t.to_zoned_datetime(TimeZone::system()).date();
+    let today = ZonedDateTime::now().date();
     if d == today {
         return tr!("Today", "Heute").into();
     }
-    if Some(d) == today.pred_opt() {
+    if today.yesterday().ok() == Some(d) {
         return tr!("Yesterday", "Gestern").into();
     }
-    let weekday = d.weekday().num_days_from_monday() as usize;
-    let month = d.month0() as usize;
+    let weekday = d.weekday().to_monday_zero_offset() as usize;
+    let month = (d.month() - 1) as usize;
     match lang() {
         Lang::En => format!("{}, {} {}", WEEKDAYS_EN[weekday], MONTHS_EN[month], d.day()),
         Lang::De => format!(
@@ -97,69 +97,76 @@ pub fn day_label(t: DateTime<Utc>) -> String {
     }
 }
 
-pub fn clock(t: DateTime<Utc>) -> String {
-    t.with_timezone(&Local).format("%H:%M").to_string()
+pub fn clock(t: Timestamp) -> String {
+    t.to_zoned_datetime(TimeZone::system())
+        .strftime("%H:%M")
+        .to_string()
 }
 
-pub fn full(t: DateTime<Utc>) -> String {
+pub fn full(t: Timestamp) -> String {
     let format = match lang() {
         Lang::En => "%b %-d, %Y, %H:%M",
         Lang::De => "%d.%m.%Y, %H:%M",
     };
-    t.with_timezone(&Local).format(format).to_string()
+    t.to_zoned_datetime(TimeZone::system())
+        .strftime(format)
+        .to_string()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::l10n::with_lang;
-    use chrono::Duration;
+    use jiff::SignedDuration as Duration;
 
     #[test]
     fn relative_angaben_englisch() {
-        let now = Utc::now();
+        let now = Timestamp::now();
         with_lang(Lang::En, || {
             assert_eq!(ago(None), "–");
             assert_eq!(ago(Some(now)), "just now");
-            assert_eq!(ago(Some(now - Duration::minutes(5))), "5 min ago");
-            assert_eq!(ago(Some(now - Duration::hours(3))), "3 hr ago");
-            assert_eq!(ago(Some(now - Duration::hours(30))), "yesterday");
-            assert_eq!(ago(Some(now - Duration::days(4))), "4 days ago");
-            assert_eq!(ago(Some(now - Duration::days(8))), "1 week ago");
-            assert_eq!(ago(Some(now - Duration::days(400))), "1 year ago");
+            assert_eq!(ago(Some(now - Duration::from_mins(5))), "5 min ago");
+            assert_eq!(ago(Some(now - Duration::from_hours(3))), "3 hr ago");
+            assert_eq!(ago(Some(now - Duration::from_hours(30))), "yesterday");
+            assert_eq!(ago(Some(now - Duration::from_hours(24 * 4))), "4 days ago");
+            assert_eq!(ago(Some(now - Duration::from_hours(24 * 8))), "1 week ago");
+            assert_eq!(
+                ago(Some(now - Duration::from_hours(24 * 400))),
+                "1 year ago"
+            );
         });
     }
 
     #[test]
     fn relative_angaben_deutsch() {
-        let now = Utc::now();
+        let now = Timestamp::now();
         with_lang(Lang::De, || {
             assert_eq!(ago(None), "–");
             assert_eq!(ago(Some(now)), "gerade eben");
-            assert_eq!(ago(Some(now - Duration::minutes(5))), "vor 5 Min.");
-            assert_eq!(ago(Some(now - Duration::hours(3))), "vor 3 Std.");
-            assert_eq!(ago(Some(now - Duration::hours(30))), "gestern");
+            assert_eq!(ago(Some(now - Duration::from_mins(5))), "vor 5 Min.");
+            assert_eq!(ago(Some(now - Duration::from_hours(3))), "vor 3 Std.");
+            assert_eq!(ago(Some(now - Duration::from_hours(30))), "gestern");
             assert_eq!(
-                ago(Some(now - Duration::days(1) - Duration::days(3))),
+                ago(Some(
+                    now - Duration::from_hours(24) - Duration::from_hours(24 * 3)
+                )),
                 "vor 4 Tagen"
             );
-            assert_eq!(ago(Some(now - Duration::days(8))), "vor 1 Woche");
+            assert_eq!(ago(Some(now - Duration::from_hours(24 * 8))), "vor 1 Woche");
         });
     }
 
     #[test]
     fn tageslabel_in_beiden_sprachen() {
-        let now = Utc::now();
+        let now = Timestamp::now();
         assert_eq!(with_lang(Lang::En, || day_label(now)), "Today");
         assert_eq!(with_lang(Lang::De, || day_label(now)), "Heute");
         // Mitten im Tag, damit Zeitzonen das Datum nicht verschieben.
-        let t = chrono::NaiveDate::from_ymd_opt(2026, 10, 13)
+        let t = jiff::civil::date(2026, 10, 13)
+            .at(12, 0, 0, 0)
+            .to_zoned_datetime(TimeZone::system())
             .unwrap()
-            .and_hms_opt(12, 0, 0)
-            .unwrap()
-            .and_local_timezone(Local)
-            .unwrap()
-            .with_timezone(&Utc);
+            .timestamp();
         assert_eq!(with_lang(Lang::En, || day_label(t)), "Tuesday, October 13");
         assert_eq!(
             with_lang(Lang::De, || day_label(t)),
