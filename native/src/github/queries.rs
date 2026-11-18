@@ -37,7 +37,19 @@ pub fn open_page_size(known_open: Option<usize>) -> usize {
     }
 }
 
-fn repo_fields(open_page: usize) -> String {
+/// Angefragte Reviewer. Der Team-Slug braucht beim Token `read:org` (bzw. beim Fine-grained PAT
+/// Lesezugriff auf die Mitglieder der Org); ohne diese Rechte lehnt GitHub die ganze Abfrage ab.
+/// Die Anmeldung fordert nur `repo` an, daher fragt der Client ihn nur ab, solange er darf.
+fn review_requests(team_slugs: bool) -> &'static str {
+    if team_slugs {
+        "nodes { requestedReviewer { __typename ... on User { login } ... on Team { slug } } }"
+    } else {
+        "nodes { requestedReviewer { __typename ... on User { login } } }"
+    }
+}
+
+fn repo_fields(open_page: usize, team_slugs: bool) -> String {
+    let review_requests = review_requests(team_slugs);
     format!(
         r#"
   nameWithOwner url
@@ -54,7 +66,7 @@ fn repo_fields(open_page: usize) -> String {
       autoMergeRequest {{ enabledAt mergeMethod enabledBy {{ login }} }}
       labels(first: 6) {{ nodes {{ name color }} }}
       reviewRequests(first: 10) {{
-        nodes {{ requestedReviewer {{ __typename ... on User {{ login }} ... on Team {{ slug }} }} }}
+        {review_requests}
       }}
       commits(last: 1) {{ nodes {{ commit {{ {CHECKS} }} }} }}
     }}
@@ -76,8 +88,8 @@ fn repo_fields(open_page: usize) -> String {
 }
 
 /// Ein Request für mehrere Repos, aliased als `r0`, `r1`, …; je Repo mit eigener Seitengröße
-/// für die offenen PRs.
-pub fn dashboard_query(repos: &[(String, usize)]) -> String {
+/// für die offenen PRs. `team_slugs` steuert, ob angefragte Teams mit Slug kommen (`read:org`).
+pub fn dashboard_query(repos: &[(String, usize)], team_slugs: bool) -> String {
     let parts: Vec<String> = repos
         .iter()
         .enumerate()
@@ -87,7 +99,7 @@ pub fn dashboard_query(repos: &[(String, usize)]) -> String {
                 "r{i}: repository(owner: {}, name: {}) {{ {} }}",
                 serde_json::to_string(owner).unwrap_or_default(),
                 serde_json::to_string(name).unwrap_or_default(),
-                repo_fields(*open_page),
+                repo_fields(*open_page, team_slugs),
             )
         })
         .collect();
@@ -142,17 +154,27 @@ mod tests {
 
     #[test]
     fn aliast_repos_und_escaped_namen() {
-        let q = dashboard_query(&[("a/b".into(), 40), ("c/d".into(), 5)]);
+        let q = dashboard_query(&[("a/b".into(), 40), ("c/d".into(), 5)], true);
         assert!(q.contains(r#"r0: repository(owner: "a", name: "b")"#));
         assert!(q.contains(r#"r1: repository(owner: "c", name: "d")"#));
     }
 
     #[test]
     fn seitengroesse_je_repo() {
-        let q = dashboard_query(&[("a/b".into(), 40), ("c/d".into(), 5)]);
+        let q = dashboard_query(&[("a/b".into(), 40), ("c/d".into(), 5)], true);
         assert!(q.contains("states: OPEN, first: 40,"));
         assert!(q.contains("states: OPEN, first: 5,"));
         assert!(q.contains("totalCount"));
+    }
+
+    #[test]
+    fn team_slug_nur_mit_erlaubnis() {
+        let mit = dashboard_query(&[("a/b".into(), 5)], true);
+        assert!(mit.contains("... on Team { slug }"));
+        let ohne = dashboard_query(&[("a/b".into(), 5)], false);
+        assert!(!ohne.contains("Team"));
+        assert!(!ohne.contains("slug"));
+        assert!(ohne.contains("... on User { login }"));
     }
 
     #[test]

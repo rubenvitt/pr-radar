@@ -37,7 +37,16 @@ enum Queries {
         return min(max(rounded, minOpenPage), maxOpenPage)
     }
 
-    private static func repoFields(openPage: Int) -> String { """
+    /// Angefragte Reviewer. Der Team-Slug braucht beim Token `read:org` (bzw. beim Fine-grained PAT
+    /// Lesezugriff auf die Mitglieder der Org); ohne diese Rechte lehnt GitHub die ganze Abfrage ab.
+    /// Die Anmeldung fordert nur `repo` an, daher fragt der Client ihn nur ab, solange er darf.
+    private static func reviewRequests(teamSlugs: Bool) -> String {
+        teamSlugs
+            ? "nodes { requestedReviewer { __typename ... on User { login } ... on Team { slug } } }"
+            : "nodes { requestedReviewer { __typename ... on User { login } } }"
+    }
+
+    private static func repoFields(openPage: Int, teamSlugs: Bool) -> String { """
           nameWithOwner url
           autoMergeAllowed squashMergeAllowed mergeCommitAllowed rebaseMergeAllowed
           viewerPermission
@@ -52,7 +61,7 @@ enum Queries {
               autoMergeRequest { enabledAt mergeMethod enabledBy { login } }
               labels(first: 6) { nodes { name color } }
               reviewRequests(first: 10) {
-                nodes { requestedReviewer { __typename ... on User { login } ... on Team { slug } } }
+                \(reviewRequests(teamSlugs: teamSlugs))
               }
               commits(last: 1) { nodes { commit { \(checks) } } }
             }
@@ -79,14 +88,14 @@ enum Queries {
     }
 
     /// Ein Request für mehrere Repos, aliased als `r0`, `r1`, …; je Repo mit eigener Seitengröße
-    /// für die offenen PRs.
-    static func dashboard(_ repos: [(String, Int)]) -> String {
+    /// für die offenen PRs. `teamSlugs` steuert, ob angefragte Teams mit Slug kommen (`read:org`).
+    static func dashboard(_ repos: [(String, Int)], teamSlugs: Bool = true) -> String {
         let parts = repos.enumerated().map { i, entry in
             let (full, openPage) = entry
             let split = full.split(separator: "/", maxSplits: 1).map(String.init)
             let owner = split.first ?? full
             let name = split.count > 1 ? split[1] : ""
-            return "r\(i): repository(owner: \(jsonString(owner)), name: \(jsonString(name))) { \(repoFields(openPage: openPage)) }"
+            return "r\(i): repository(owner: \(jsonString(owner)), name: \(jsonString(name))) { \(repoFields(openPage: openPage, teamSlugs: teamSlugs)) }"
         }
         return """
             query Dashboard {
