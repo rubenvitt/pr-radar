@@ -640,7 +640,7 @@ mod tests {
 
     #[test]
     fn alle_auf_auto_merge_nimmt_nur_einschaltbare_prs() {
-        let s = crate::demo::snapshot(chrono::Utc::now());
+        let s = crate::demo::snapshot(jiff::Timestamp::now());
         let all: Vec<usize> = (0..s.open.len()).collect();
         let picked = auto_merge_candidates(&all, &s, |_| false);
         assert!(!picked.is_empty());
@@ -663,7 +663,7 @@ mod tests {
 
     #[test]
     fn alle_auf_auto_merge_ueberspringt_laufende_aktionen() {
-        let s = crate::demo::snapshot(chrono::Utc::now());
+        let s = crate::demo::snapshot(jiff::Timestamp::now());
         let all: Vec<usize> = (0..s.open.len()).collect();
         let picked = auto_merge_candidates(&all, &s, |_| false);
         let (busy, _) = &picked[0];
@@ -674,7 +674,7 @@ mod tests {
 
     #[test]
     fn alle_auf_auto_merge_bleibt_in_der_gruppe() {
-        let s = crate::demo::snapshot(chrono::Utc::now());
+        let s = crate::demo::snapshot(jiff::Timestamp::now());
         let all: Vec<usize> = (0..s.open.len()).collect();
         let (first, _) = &auto_merge_candidates(&all, &s, |_| false)[0];
         let repo = &s.open.iter().find(|p| &p.id == first).unwrap().repo;
