@@ -18,6 +18,7 @@ ignore = [
     { id = "RUSTSEC-2025-0134", reason = "rustls-pemfile: über gpui-pre-reqwest" },
     { id = "RUSTSEC-2026-0192", reason = "ttf-parser: über usvg/fontdb in gpui-pre" },
     { id = "RUSTSEC-2026-0206", reason = "rustybuzz: über usvg in gpui-pre" },
+    { id = "RUSTSEC-2026-0543", reason = "chrono (unmaintained): nur noch über gpui-base/gpui-component/gpui-pre, eigener Code nutzt jiff" },
 ]
 
 [licenses]

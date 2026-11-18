@@ -38,7 +38,7 @@ impl Log for FileLogger {
             return;
         }
         let line = format_line(
-            chrono::Local::now(),
+            jiff::ZonedDateTime::now(),
             record.level(),
             record.target(),
             &record.args().to_string(),
@@ -62,15 +62,10 @@ impl Log for FileLogger {
     }
 }
 
-fn format_line(
-    now: chrono::DateTime<chrono::Local>,
-    level: Level,
-    target: &str,
-    message: &str,
-) -> String {
+fn format_line(now: jiff::ZonedDateTime, level: Level, target: &str, message: &str) -> String {
     format!(
         "{} {level:<5} [{target}] {message}\n",
-        now.format("%Y-%m-%d %H:%M:%S%.3f")
+        now.strftime("%Y-%m-%d %H:%M:%S%.3f")
     )
 }
 
@@ -270,9 +265,10 @@ mod tests {
 
     #[test]
     fn zeile_hat_zeit_stufe_und_ziel() {
-        let now = chrono::DateTime::parse_from_rfc3339("2026-11-06T18:00:00.5+00:00")
+        let now = "2026-11-06T18:00:00.5+00:00"
+            .parse::<jiff::Timestamp>()
             .unwrap()
-            .with_timezone(&chrono::Local);
+            .to_zoned_datetime(jiff::tz::TimeZone::system());
         let line = format_line(now, Level::Warn, "pr_radar::radar", "Hallo");
         assert!(line.ends_with(" WARN  [pr_radar::radar] Hallo\n"), "{line}");
         assert!(line.contains(".500 "), "{line}");

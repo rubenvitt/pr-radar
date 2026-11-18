@@ -475,7 +475,7 @@ impl Workspace {
             .read(cx)
             .status()
             .last_success
-            .map(|t| t.timestamp_millis());
+            .map(|t| t.as_millisecond());
         let checks = check_nodes(pr);
         let n = checks.len() as f32;
         let checks_h = n * CHECK_H + (n - 1.) * CHECK_GAP;

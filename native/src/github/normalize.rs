@@ -1,6 +1,6 @@
 //! GraphQL-Rohdaten → Domänenmodell.
 
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use serde::Deserialize;
 
 use crate::model::*;
@@ -127,7 +127,7 @@ pub struct RawOpen {
     url: String,
     #[serde(default)]
     is_draft: bool,
-    updated_at: DateTime<Utc>,
+    updated_at: Timestamp,
     head_ref_name: String,
     #[serde(default)]
     head_ref_oid: String,
@@ -192,7 +192,7 @@ pub struct RawMerged {
     number: u64,
     title: String,
     url: String,
-    merged_at: Option<DateTime<Utc>>,
+    merged_at: Option<Timestamp>,
     base_ref_name: String,
     author: Option<RawPerson>,
     merged_by: Option<RawPerson>,
@@ -205,7 +205,7 @@ pub struct RawRelease {
     name: Option<String>,
     tag_name: String,
     url: String,
-    published_at: Option<DateTime<Utc>>,
+    published_at: Option<Timestamp>,
     #[serde(default)]
     is_prerelease: bool,
     #[serde(default)]

@@ -951,7 +951,7 @@ impl Workspace {
                 status
                     .last_success
                     .filter(|_| status.state != PollState::Error && !no_repos)
-                    .map(|t| t.timestamp_millis()),
+                    .map(|t| t.as_millisecond()),
                 cx,
             ))
             .child(div().truncate().child(label))

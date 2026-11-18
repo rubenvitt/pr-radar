@@ -97,7 +97,7 @@ impl Config {
     /// speichert aber nichts, damit die Datei erhalten bleibt.
     pub fn load() -> Loaded {
         let env_repos = std::env::var("REPOS").unwrap_or_default();
-        load_from(&path(), &env_repos, chrono::Local::now())
+        load_from(&path(), &env_repos, jiff::ZonedDateTime::now())
     }
 
     pub fn save(&self) -> Result<()> {
@@ -201,7 +201,7 @@ fn first_start(env_repos: &str) -> Config {
     }
 }
 
-fn load_from(path: &Path, env_repos: &str, now: chrono::DateTime<chrono::Local>) -> Loaded {
+fn load_from(path: &Path, env_repos: &str, now: jiff::ZonedDateTime) -> Loaded {
     let (problem, bytes) = match std::fs::read(path) {
         Ok(bytes) => match serde_json::from_slice::<Config>(&bytes) {
             Ok(config) => {
@@ -272,18 +272,14 @@ fn load_from(path: &Path, env_repos: &str, now: chrono::DateTime<chrono::Local>)
 /// Datei zu ersetzen: Ein harter Link bzw. `create_new` schlägt fehl, wenn der Name schon
 /// vergeben ist (etwa durch eine zweite, gleichzeitig startende Instanz), dann geht es mit
 /// dem nächsten Suffix weiter. Das Original bleibt liegen und wird erst danach überschrieben.
-fn backup(
-    path: &Path,
-    now: chrono::DateTime<chrono::Local>,
-    bytes: Option<&[u8]>,
-) -> std::io::Result<PathBuf> {
+fn backup(path: &Path, now: jiff::ZonedDateTime, bytes: Option<&[u8]>) -> std::io::Result<PathBuf> {
     use std::io::{ErrorKind, Write as _};
 
     let name = path
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| "config.json".into());
-    let stamp = now.format("%Y%m%d-%H%M%S");
+    let stamp = now.strftime("%Y%m%d-%H%M%S");
     for n in 1..=100 {
         let candidate = if n == 1 {
             path.with_file_name(format!("{name}.defekt-{stamp}"))
@@ -360,10 +356,11 @@ mod tests {
         dir
     }
 
-    fn now() -> chrono::DateTime<chrono::Local> {
-        chrono::DateTime::parse_from_rfc3339("2026-11-06T18:00:00+01:00")
+    fn now() -> jiff::ZonedDateTime {
+        "2026-11-06T18:00:00+01:00"
+            .parse::<jiff::Timestamp>()
             .unwrap()
-            .with_timezone(&chrono::Local)
+            .to_zoned_datetime(jiff::tz::TimeZone::system())
     }
 
     #[test]
@@ -402,7 +399,7 @@ mod tests {
             "keine Env-Repos nach Defekt"
         );
         assert!(!loaded.config.read_only);
-        let stamp = now().format("%Y%m%d-%H%M%S").to_string();
+        let stamp = now().strftime("%Y%m%d-%H%M%S").to_string();
         let backup = dir.join(format!("config.json.defekt-{stamp}"));
         assert_eq!(std::fs::read_to_string(&backup).unwrap(), broken);
 
