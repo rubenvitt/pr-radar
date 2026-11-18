@@ -19,7 +19,8 @@ Die iPhone-/iPad-App zur macOS-App – gleiche Funktionen, in SwiftUI. Spricht G
 
 ## Start
 
-Xcode 16 oder neuer, iOS 18+.
+Xcode 27 (App Store Connect nimmt nur Builds mit aktuellem iOS-SDK an, ab April 2027 mit dem iOS-27-SDK), läuft ab iOS 18.
+CI und Release laufen auf dem Runner-Image `xcode-27`, `.github/actions/xcode` prüft die Version.
 
 ```bash
 open ios/PRRadar.xcodeproj

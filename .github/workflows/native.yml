@@ -3,7 +3,7 @@ name: macOS
 on:
   push:
     branches: [main]
-    paths: ["native/**", "site/public/**", ".github/workflows/native.yml"]
+    paths: ["native/**", "site/public/**", ".github/workflows/native.yml", ".github/actions/xcode/**"]
   pull_request:
 
 concurrency:
@@ -51,11 +51,14 @@ jobs:
 
   check:
     name: Tests und Clippy (macOS)
-    runs-on: macos-15
+    # Gleiches Xcode-Image wie die iOS-Workflows und release-macos.yml (.github/actions/xcode).
+    runs-on: xcode-27
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Xcode
+        uses: ./.github/actions/xcode
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -73,11 +76,14 @@ jobs:
   # ein kaputtes Bündeln, Universal-Binary oder Disk-Image schon im PR auf und nicht erst auf main.
   bundle:
     name: App-Bündel und DMG (Universal, Sparkle, ad hoc)
-    runs-on: macos-15
+    # Gleiches Xcode-Image wie die iOS-Workflows und release-macos.yml (.github/actions/xcode).
+    runs-on: xcode-27
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Xcode
+        uses: ./.github/actions/xcode
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-darwin,x86_64-apple-darwin

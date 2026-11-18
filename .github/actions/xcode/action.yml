@@ -1,0 +1,31 @@
+name: Xcode prüfen
+description: >
+  Prüft, dass der Runner das verlangte Xcode samt iOS-SDK hat, und bricht sonst vor dem Bauen ab.
+  App Store Connect nimmt nur Builds mit aktuellem SDK an (seit 2026 iOS 26 SDK, ab April 2027 iOS 27 SDK).
+  Die Xcode-Version kommt vom Runner-Image (`runs-on: xcode-NN`, je Image eine Xcode-Hauptversion,
+  Standard ist dort die stabile Version). Beim Wechsel `runs-on` in ios.yml, native.yml,
+  release-ios.yml und release-macos.yml sowie `major` hier gemeinsam anheben.
+inputs:
+  major:
+    description: Erwartete Hauptversion von Xcode und Mindestversion des iOS-SDK
+    required: false
+    default: "27"
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        MAJOR: ${{ inputs.major }}
+      run: |
+        xcodebuild -version
+        xcode=$(xcodebuild -version | awk 'NR==1 {print $2}')
+        sdk=$(xcrun --sdk iphoneos --show-sdk-version)
+        echo "Xcode $xcode, iOS-SDK $sdk ($(xcode-select -p))"
+        if [ "${xcode%%.*}" != "$MAJOR" ]; then
+          echo "::error::Erwartet Xcode $MAJOR, der Runner hat Xcode $xcode (runs-on prüfen)"
+          exit 1
+        fi
+        if [ "${sdk%%.*}" -lt "$MAJOR" ]; then
+          echo "::error::iOS-SDK $sdk ist älter als $MAJOR, App Store Connect würde den Build ablehnen"
+          exit 1
+        fi

@@ -3,7 +3,7 @@ name: iOS
 on:
   push:
     branches: [main]
-    paths: ["ios/**", "site/public/**", ".github/workflows/ios.yml"]
+    paths: ["ios/**", "site/public/**", ".github/workflows/ios.yml", ".github/actions/xcode/**"]
   pull_request:
 
 concurrency:
@@ -26,13 +26,14 @@ jobs:
 
   app-build:
     name: App bauen (iOS-Simulator)
-    runs-on: macos-15
+    # Gleicher Runner und gleiches Xcode wie release-ios.yml, damit SDK-Probleme schon im PR auffallen.
+    runs-on: xcode-27
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
       - name: Xcode
-        run: xcodebuild -version
+        uses: ./.github/actions/xcode
       - name: Core-Tests (macOS)
         working-directory: ios/Packages/PRRadarCore
         run: swift test
