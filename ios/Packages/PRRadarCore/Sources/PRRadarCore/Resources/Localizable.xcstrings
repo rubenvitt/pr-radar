@@ -771,17 +771,6 @@
         }
       }
     },
-    "failed" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "rot"
-          }
-        }
-      }
-    },
     "just now" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -844,17 +833,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "nicht erforderlich"
-          }
-        }
-      }
-    },
-    "passed" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "grün"
           }
         }
       }
