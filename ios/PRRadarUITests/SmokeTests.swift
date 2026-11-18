@@ -24,13 +24,18 @@ final class SmokeTests: XCTestCase {
     /// Fehlt der Knopf, landet der Baum im Log, damit die CI zeigt, was stattdessen da ist.
     @MainActor
     private func tabButton(_ name: String, in app: XCUIApplication) -> XCUIElement? {
-        let button = app.buttons.matching(NSPredicate(format: "label == %@", name)).firstMatch
-        guard button.waitForExistence(timeout: 15) else {
+        let inBar = app.tabBars.buttons[name]
+        if inBar.exists { return inBar }
+        // Gleich beschriftete Knöpfe gibt es mehrfach (z. B. die verborgene Seitenleiste von
+        // `.sidebarAdaptable`), deshalb den nehmen, der auf dem Bildschirm liegt.
+        let matches = app.buttons.matching(NSPredicate(format: "label == %@", name))
+        guard matches.firstMatch.waitForExistence(timeout: 15) else {
             XCTFail("Tab „\(name)“ fehlt\n\(app.debugDescription)")
             return nil
         }
-        let inBar = app.tabBars.buttons[name]
-        return inBar.exists ? inBar : button
+        if let visible = matches.allElementsBoundByIndex.first(where: { $0.isHittable }) { return visible }
+        XCTFail("Tab „\(name)“ ist \(matches.count)× da, aber nicht sichtbar\n\(app.debugDescription)")
+        return nil
     }
 
     @MainActor
