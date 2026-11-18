@@ -747,6 +747,25 @@ impl Workspace {
                 };
                 window.push_notification(notification.title(tr!("Merge all", "Alle mergen")), cx);
             }
+            RadarEvent::AutoMergeAllFinished { enabled, failed } => {
+                let mut parts = Vec::new();
+                if *enabled > 0 {
+                    parts.push(trf!("{enabled} turned on", "{enabled} aktiviert"));
+                }
+                if !failed.is_empty() {
+                    parts.push(trf!("{} failed", "{} fehlgeschlagen", failed.len()));
+                }
+                let summary = parts.join(" · ");
+                let notification = if failed.is_empty() {
+                    Notification::success(summary)
+                } else {
+                    Notification::error(format!("{summary}\n{}", failed.join("\n")))
+                };
+                window.push_notification(
+                    notification.title(tr!("Auto-merge for all", "Alle auf Auto-Merge")),
+                    cx,
+                );
+            }
             RadarEvent::Transitions(transitions) => {
                 if !self.radar.read(cx).prefs().notify {
                     return;

@@ -29,7 +29,8 @@ use crate::time::day_label;
 pub(super) enum Row {
     RepoHeader {
         repo: String,
-        count: usize,
+        /// Sichtbare PRs der Gruppe (Indizes in `Snapshot::open`)
+        prs: Vec<usize>,
     },
     Pr {
         ix: usize,
@@ -108,7 +109,7 @@ fn build_rows(d: &Derived) -> Vec<Row> {
             for (repo, list) in groups {
                 rows.push(Row::RepoHeader {
                     repo,
-                    count: list.len(),
+                    prs: list.clone(),
                 });
                 for (i, first, last) in card_rows(list.len()) {
                     rows.push(Row::Pr {
@@ -503,8 +504,8 @@ impl Workspace {
         };
         let flow = self.radar.read(cx).prefs().view == View::Flow;
         let el = match &row {
-            Row::RepoHeader { repo, count } => self
-                .render_repo_header(repo, *count, &snapshot, cx)
+            Row::RepoHeader { repo, prs } => self
+                .render_repo_header(repo, prs, &snapshot, cx)
                 .into_any_element(),
             Row::Pr {
                 ix,
@@ -559,10 +560,12 @@ impl Workspace {
     fn render_repo_header(
         &self,
         repo: &str,
-        count: usize,
+        prs: &[usize],
         snapshot: &Snapshot,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
+        let count = prs.len();
+        let auto_merge_all = self.render_auto_merge_all(repo, prs, snapshot, cx);
         let info = snapshot.repo(repo);
         let url = info
             .map(|i| i.url.clone())
@@ -586,6 +589,7 @@ impl Workspace {
                     .child(count.to_string()),
             )
             .child(div().flex_1())
+            .children(auto_merge_all)
             .when_some(
                 info.and_then(|i| {
                     i.default_branch

@@ -530,3 +530,164 @@ impl Workspace {
         }
     }
 }
+
+impl Workspace {
+    /// „Alle auf Auto-Merge“ in der Repo-Überschrift: schaltet Auto-Merge für alle sichtbaren
+    /// PRs der Gruppe ein, bei denen das möglich und noch aus ist. Sofort mergebare PRs bleiben
+    /// außen vor (GitHub nimmt für sie kein Auto-Merge an, dafür gibt es „Alle mergen“).
+    /// Mit mehreren erlaubten Methoden wählt das Menü die bevorzugte; PRs, die sie nicht
+    /// erlauben, nehmen ihre erste.
+    pub(super) fn render_auto_merge_all(
+        &self,
+        repo: &str,
+        prs: &[usize],
+        snapshot: &Snapshot,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        let radar = self.radar.read(cx);
+        let candidates = auto_merge_candidates(prs, snapshot, |id| radar.is_pending(id));
+        if candidates.is_empty() {
+            return None;
+        }
+        let count = candidates.len();
+        let mut offered: Vec<MergeMethod> = Vec::new();
+        for (_, methods) in &candidates {
+            for m in methods {
+                if !offered.contains(m) {
+                    offered.push(*m);
+                }
+            }
+        }
+        let choice = candidates.iter().any(|(_, methods)| methods.len() > 1);
+        let radar = self.radar.clone();
+        let run = move |preferred: Option<MergeMethod>, cx: &mut App| {
+            let items = candidates
+                .iter()
+                .map(|(id, methods)| {
+                    let m = preferred
+                        .filter(|p| methods.contains(p))
+                        .unwrap_or(methods[0]);
+                    (id.clone(), m)
+                })
+                .collect();
+            radar.update(cx, |r, cx| r.enable_auto_merge_all(items, cx));
+        };
+
+        let button = Button::new(SharedString::from(format!("auto-merge-all-{repo}")))
+            .xsmall()
+            .ghost()
+            .icon(Lucide::Zap)
+            .label(trf!(
+                "All auto-merge ({count})",
+                "Alle Auto-Merge ({count})"
+            ));
+        if !choice {
+            let method = offered[0];
+            return Some(
+                button
+                    .tooltip(trf!(
+                        "Turn on auto-merge ({}) for {count} PRs in this repo",
+                        "Auto-Merge ({}) für {count} PRs in diesem Repo aktivieren",
+                        method.label()
+                    ))
+                    .on_click(move |_, _, cx| run(None, cx))
+                    .into_any_element(),
+            );
+        }
+        let run = std::rc::Rc::new(run);
+        Some(
+            button
+                .dropdown_caret(true)
+                .tooltip(trf!(
+                    "Turn on auto-merge for {count} PRs in this repo…",
+                    "Auto-Merge für {count} PRs in diesem Repo aktivieren …"
+                ))
+                .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
+                    let menu = menu.label(tr!("Merge method", "Merge-Methode"));
+                    offered.iter().fold(menu, |menu, &m| {
+                        let run = run.clone();
+                        menu.item(
+                            PopupMenuItem::new(m.label())
+                                .on_click(move |_, _, cx| run(Some(m), cx)),
+                        )
+                    })
+                })
+                .into_any_element(),
+        )
+    }
+}
+
+/// PRs aus `prs` (Indizes in `Snapshot::open`), für die sich Auto-Merge jetzt einschalten lässt,
+/// mit ihren erlaubten Methoden. Laufende Aktionen (`busy`) zählen nicht mit.
+fn auto_merge_candidates(
+    prs: &[usize],
+    snapshot: &Snapshot,
+    busy: impl Fn(&str) -> bool,
+) -> Vec<(String, Vec<MergeMethod>)> {
+    prs.iter()
+        .filter_map(|&ix| snapshot.open.get(ix))
+        .filter(|pr| !busy(&pr.id))
+        .filter_map(|pr| match MergeAction::of(pr, snapshot) {
+            MergeAction::Enable(methods) => Some((pr.id.clone(), methods)),
+            _ => None,
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::auto_merge_candidates;
+
+    #[test]
+    fn alle_auf_auto_merge_nimmt_nur_einschaltbare_prs() {
+        let s = crate::demo::snapshot(chrono::Utc::now());
+        let all: Vec<usize> = (0..s.open.len()).collect();
+        let picked = auto_merge_candidates(&all, &s, |_| false);
+        assert!(!picked.is_empty());
+        for (id, methods) in &picked {
+            let pr = s.open.iter().find(|p| &p.id == id).unwrap();
+            assert!(pr.auto_merge.is_none(), "{id}: Auto-Merge schon an");
+            assert!(!pr.ready_to_merge(), "{id}: sofort mergebar");
+            assert!(!pr.is_draft, "{id}: Draft");
+            assert!(!methods.is_empty());
+        }
+        // Weder schon aktive noch sofort mergebare PRs
+        assert!(s.open.iter().any(|p| p.auto_merge.is_some()));
+        assert!(
+            s.open
+                .iter()
+                .filter(|p| p.auto_merge.is_some() || p.ready_to_merge())
+                .all(|p| picked.iter().all(|(id, _)| id != &p.id))
+        );
+    }
+
+    #[test]
+    fn alle_auf_auto_merge_ueberspringt_laufende_aktionen() {
+        let s = crate::demo::snapshot(chrono::Utc::now());
+        let all: Vec<usize> = (0..s.open.len()).collect();
+        let picked = auto_merge_candidates(&all, &s, |_| false);
+        let (busy, _) = &picked[0];
+        let rest = auto_merge_candidates(&all, &s, |id| id == busy);
+        assert_eq!(rest.len(), picked.len() - 1);
+        assert!(rest.iter().all(|(id, _)| id != busy));
+    }
+
+    #[test]
+    fn alle_auf_auto_merge_bleibt_in_der_gruppe() {
+        let s = crate::demo::snapshot(chrono::Utc::now());
+        let all: Vec<usize> = (0..s.open.len()).collect();
+        let (first, _) = &auto_merge_candidates(&all, &s, |_| false)[0];
+        let repo = &s.open.iter().find(|p| &p.id == first).unwrap().repo;
+        let group: Vec<usize> = all
+            .iter()
+            .copied()
+            .filter(|&i| &s.open[i].repo == repo)
+            .collect();
+        let picked = auto_merge_candidates(&group, &s, |_| false);
+        assert!(
+            picked
+                .iter()
+                .all(|(id, _)| { &s.open.iter().find(|p| &p.id == id).unwrap().repo == repo })
+        );
+    }
+}

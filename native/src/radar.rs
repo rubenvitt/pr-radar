@@ -130,6 +130,8 @@ pub enum RadarEvent {
         auto_merge: usize,
         failed: Vec<String>,
     },
+    /// „Alle auf Auto-Merge“ ist durch.
+    AutoMergeAllFinished { enabled: usize, failed: Vec<String> },
 }
 
 pub struct Radar {
@@ -769,6 +771,86 @@ impl Radar {
                     auto_merge,
                     failed,
                 })
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// Schaltet Auto-Merge für mehrere PRs ein (z. B. alle eines Repos). Die Mutationen laufen
+    /// nacheinander – GitHub drosselt viele gleichzeitige Mutationen – und jeder PR zeigt seinen
+    /// neuen Zustand sofort. Ein Fehlschlag stoppt die anderen nicht; neu geladen wird einmal am Ende.
+    pub fn enable_auto_merge_all(
+        &mut self,
+        items: Vec<(String, MergeMethod)>,
+        cx: &mut Context<Self>,
+    ) {
+        if self.demo_only(
+            &trf!(
+                "Turning on auto-merge for {} PRs",
+                "Auto-Merge für {} PRs aktivieren",
+                items.len()
+            ),
+            cx,
+        ) {
+            return;
+        }
+        let Some(snapshot) = self.snapshot.clone() else {
+            return;
+        };
+        // [(PR-ID, „repo#nr“, Methode)]
+        let mut jobs: Vec<(String, String, MergeMethod)> = Vec::new();
+        for (id, method) in items {
+            let Some(pr) = snapshot.open.iter().find(|p| p.id == id) else {
+                continue;
+            };
+            if pr.auto_merge.is_some()
+                || self.check_method(&id, method).is_err()
+                || !self.pending.insert(id.clone())
+            {
+                continue;
+            }
+            jobs.push((id, format!("{}#{}", pr.repo, pr.number), method));
+        }
+        if jobs.is_empty() {
+            return;
+        }
+        cx.notify();
+        let github = self.github.clone();
+        cx.spawn(async move |this, cx| {
+            let mut enabled = 0;
+            let mut failed = Vec::new();
+            for (id, label, method) in jobs {
+                let (gh, pr_id) = (github.clone(), id.clone());
+                let result = cx
+                    .background_spawn(
+                        async move { gh.set_auto_merge(&pr_id, Some(method), None).await },
+                    )
+                    .await;
+                let ok = result.is_ok();
+                if let Err(e) = result {
+                    log::warn!("Alle auf Auto-Merge: {label}: {e:#}");
+                    failed.push(format!("{label}: {e:#}"));
+                } else {
+                    enabled += 1;
+                }
+                let alive = this
+                    .update(cx, |this, cx| {
+                        this.pending.remove(&id);
+                        if ok {
+                            this.apply_auto_merge(&id, Some(method), cx);
+                        } else {
+                            cx.notify();
+                        }
+                    })
+                    .is_ok();
+                if !alive {
+                    return;
+                }
+            }
+            this.update(cx, |this, cx| {
+                this.refresh(cx);
+                cx.emit(RadarEvent::AutoMergeAllFinished { enabled, failed });
             })
             .ok();
         })
