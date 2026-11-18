@@ -40,8 +40,12 @@ if $universal; then
   binary="$target_dir/universal/release/pr-radar"
   lipo -create -output "$binary" \
     "$target_dir/${targets[0]}/release/pr-radar" "$target_dir/${targets[1]}/release/pr-radar"
-  lipo "$binary" -verify_arch arm64 x86_64
-  echo "→ Universal-Binary: $(lipo -archs "$binary")"
+  # Über -archs statt „-verify_arch arm64 x86_64“: lipo aus Xcode 27 nimmt dort nur noch eine Architektur.
+  archs=$(lipo -archs "$binary")
+  for arch in arm64 x86_64; do
+    [[ " $archs " == *" $arch "* ]] || { echo "Universal-Binary ohne $arch (hat: $archs)" >&2; exit 1; }
+  done
+  echo "→ Universal-Binary: $archs"
 else
   cargo build --release
   binary="$target_dir/release/pr-radar"

@@ -101,7 +101,9 @@ jobs:
         run: scripts/bundle.sh --universal
       - name: Bündel prüfen
         run: |
-          lipo "dist/PR Radar.app/Contents/MacOS/pr-radar" -verify_arch arm64 x86_64
+          archs=$(lipo -archs "dist/PR Radar.app/Contents/MacOS/pr-radar")
+          echo "Architekturen: $archs"
+          for arch in arm64 x86_64; do [[ " $archs " == *" $arch "* ]] || exit 1; done
           codesign --display --verbose=2 "dist/PR Radar.app" 2>&1 | grep -E 'flags=.*runtime'
           plutil -lint "dist/PR Radar.app/Contents/Info.plist"
           /usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "dist/PR Radar.app/Contents/Info.plist"
