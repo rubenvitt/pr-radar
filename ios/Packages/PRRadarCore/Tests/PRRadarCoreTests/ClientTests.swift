@@ -85,6 +85,58 @@ import Testing
         #expect(await fetchError(empty) as? GitHubError == .graphQL("Empty response from GitHub"))
     }
 
+    static let slugScope = """
+        Your token has not been granted the required scopes to execute this query. The 'slug' field \
+        requires one of the following scopes: ['read:org', 'read:discussion'], but your token has only \
+        been granted the: ['repo'] scopes. Please modify your token's scopes at: https://github.com/settings/tokens.
+        """
+
+    @Test func gleicheFehlerNurEinmalUndScopeImKlartext() {
+        let scope = GQLError(message: Self.slugScope, path: [], type: "INSUFFICIENT_SCOPES")
+        let other = GQLError(message: "anderer", path: [], type: nil)
+        let msg = describeErrors(Array(repeating: scope, count: 12) + [other, other])
+        #expect(msg.components(separatedBy: "read:org").count == 2, "\(msg)")
+        #expect(msg.contains("https://github.com/settings/tokens"))
+        #expect(!msg.contains("has not been granted"))
+        #expect(msg.hasSuffix("; anderer"))
+        #expect(msg.components(separatedBy: "anderer").count == 2)
+    }
+
+    @Test func teamSlugFaelltOhneReadOrgWeg() async throws {
+        let scopeError = try JSONSerialization.data(withJSONObject: [
+            "errors": [
+                ["type": "INSUFFICIENT_SCOPES", "message": Self.slugScope],
+                ["type": "INSUFFICIENT_SCOPES", "message": Self.slugScope],
+            ]
+        ])
+        let ok = #"""
+            { "data": { "viewer": { "login": "me" },
+              "r0": { "nameWithOwner": "a/b", "url": "https://github.com/a/b",
+                "open": { "totalCount": 0, "nodes": [] },
+                "merged": { "nodes": [] }, "releases": { "nodes": [] } } } }
+            """#
+        let t = ScriptedTransport { req in
+            guard req.isGraphQL else { return (Data(), 404, [:]) }
+            // Wie GitHub: Mit Team-Slug scheitert die ganze Abfrage, ohne kommen die Daten.
+            let query = req.graphQLBody["query"] as? String ?? ""
+            return query.contains("slug") ? (scopeError, 200, [:]) : (Data(ok.utf8), 200, [:])
+        }
+        let token = Locked("t1")
+        let client = GitHubClient(transport: t, token: { token.value })
+        let slugs = { t.requests.filter(\.isGraphQL).map { ($0.graphQLBody["query"] as? String ?? "").contains("slug") } }
+
+        let s = try await client.fetch(repos: ["a/b"]).snapshot
+        #expect(s.repos.first?.error == nil)
+        #expect(slugs() == [true, false])
+        // Danach gleich ohne Slug, kein zweiter Fehlversuch.
+        _ = try await client.fetch(repos: ["a/b"])
+        #expect(slugs() == [true, false, false])
+        // Ein neuer Token (neue Anmeldung) probiert den Slug wieder.
+        token.value = "t2"
+        _ = try await client.fetch(repos: ["a/b"])
+        #expect(slugs() == [true, false, false, true, false])
+    }
+
     @Test func einzelneReposScheiternOhneDenAbrufZuKippen() async throws {
         let body = #"""
             { "data": { "viewer": { "login": "me" }, "r0": null, "r1": 42, "r2": null },

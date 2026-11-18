@@ -628,6 +628,28 @@
         }
       }
     },
+    "The GitHub token lacks a scope for this query. A personal token can be extended at https://github.com/settings/tokens." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dem GitHub-Token fehlt für diese Abfrage ein Scope. Einen persönlichen Token kannst du unter https://github.com/settings/tokens erweitern."
+          }
+        }
+      }
+    },
+    "The GitHub token lacks the “%@” scope for this query. A personal token can be extended at https://github.com/settings/tokens." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dem GitHub-Token fehlt für diese Abfrage der Scope „%@“. Einen persönlichen Token kannst du unter https://github.com/settings/tokens erweitern."
+          }
+        }
+      }
+    },
     "The organization has not approved PR Radar yet. An owner can allow it under Settings → Third-party access → OAuth app policy." : {
       "extractionState" : "manual",
       "localizations" : {

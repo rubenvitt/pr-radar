@@ -7,6 +7,7 @@ mod queries;
 use std::collections::HashMap;
 use std::future::Future;
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -341,13 +342,58 @@ fn describe_mutation_errors(errors: &[GqlError]) -> String {
     errors
         .iter()
         .find_map(|e| explain_access_error(&e.message, e.kind.as_deref()))
-        .unwrap_or_else(|| {
-            errors
-                .iter()
-                .map(|e| e.message.as_str())
-                .collect::<Vec<_>>()
-                .join("; ")
-        })
+        .unwrap_or_else(|| describe_errors(errors))
+}
+
+/// GraphQL-Fehler eines Lesezugriffs als Text: bekannte Fälle im Klartext, jede Meldung nur
+/// einmal. GitHub wiederholt dieselbe Meldung je Fundstelle in der Abfrage, bei vielen Repos
+/// sonst zu einer Textwand.
+fn describe_errors(errors: &[GqlError]) -> String {
+    let mut seen: Vec<String> = Vec::new();
+    for e in errors {
+        let text = explain_scope_error(&e.message, e.kind.as_deref())
+            .or_else(|| explain_oauth_restriction(&e.message))
+            .unwrap_or_else(|| e.message.clone());
+        if !seen.contains(&text) {
+            seen.push(text);
+        }
+    }
+    seen.join("; ")
+}
+
+/// GitHub verweigert dem Token den Team-Slug: klassischer Token ohne `read:org`
+/// (`INSUFFICIENT_SCOPES`) oder Fine-grained PAT ohne Lesezugriff auf die Org (Pfad endet auf `slug`).
+fn is_team_slug_denied(e: &GqlError) -> bool {
+    let scope = e.kind.as_deref() == Some("INSUFFICIENT_SCOPES") && e.message.contains("'slug'");
+    scope || e.path.last().and_then(Value::as_str) == Some("slug")
+}
+
+/// Klartext, wenn dem Token ein Scope fehlt, statt GitHubs langer Rohmeldung.
+fn explain_scope_error(message: &str, kind: Option<&str>) -> Option<String> {
+    if kind != Some("INSUFFICIENT_SCOPES") && !message.contains("required scopes") {
+        return None;
+    }
+    // „… requires one of the following scopes: ['read:org', 'read:discussion'], but …“
+    let scope = message
+        .split("scopes: [")
+        .nth(1)
+        .and_then(|rest| rest.split('\'').nth(1))
+        .filter(|s| !s.is_empty() && !s.contains(' '));
+    Some(match scope {
+        Some(s) => trf!(
+            "The GitHub token lacks the “{s}” scope for this query. A personal token can be \
+             extended at https://github.com/settings/tokens.",
+            "Dem GitHub-Token fehlt für diese Abfrage der Scope „{s}“. Einen persönlichen Token \
+             kannst du unter https://github.com/settings/tokens erweitern."
+        ),
+        None => tr!(
+            "The GitHub token lacks a scope for this query. A personal token can be extended \
+             at https://github.com/settings/tokens.",
+            "Dem GitHub-Token fehlt für diese Abfrage ein Scope. Einen persönlichen Token kannst \
+             du unter https://github.com/settings/tokens erweitern."
+        )
+        .to_string(),
+    })
 }
 
 /// Ergebnis eines Abrufs aller Repos.
@@ -367,6 +413,9 @@ pub struct GitHub {
     open_counts: Mutex<HashMap<String, usize>>,
     /// Frist je Request samt Body (`REQUEST_TIMEOUT`, in Tests kürzer).
     timeout: Duration,
+    /// Angefragte Teams mit Slug abfragen. Fällt weg, sobald GitHub den Token dafür ablehnt
+    /// (kein `read:org`), und gilt nach einer neuen Anmeldung wieder.
+    team_slugs: AtomicBool,
 }
 
 /// Wie lange Branch-Regeln gültig bleiben – sie ändern sich selten, kosten aber REST-Kontingent.
@@ -450,6 +499,7 @@ impl GitHub {
             rules: Mutex::new(RulesCache::default()),
             open_counts: Mutex::new(HashMap::new()),
             timeout: REQUEST_TIMEOUT,
+            team_slugs: AtomicBool::new(true),
         }
     }
 
@@ -525,10 +575,11 @@ impl GitHub {
         if let Ok(mut stale) = self.stale.lock() {
             *stale = None;
         }
-        // Branch-Regeln hängen an den Rechten des Tokens.
+        // Branch-Regeln und Team-Slugs hängen an den Rechten des Tokens.
         if let Ok(mut rules) = self.rules.lock() {
             *rules = RulesCache::default();
         }
+        self.team_slugs.store(true, Ordering::Relaxed);
         saved
     }
 
@@ -547,6 +598,7 @@ impl GitHub {
         if let Ok(mut rules) = self.rules.lock() {
             *rules = RulesCache::default();
         }
+        self.team_slugs.store(true, Ordering::Relaxed);
         Ok(())
     }
 
@@ -909,8 +961,20 @@ impl GitHub {
         }
     }
 
+    /// Dashboard-Abfrage eines Chunks. Lehnt GitHub den Team-Slug ab (Token ohne `read:org`),
+    /// fragt sie ohne ihn erneut und lässt ihn ab dann weg: Angefragte Teams fehlen dann in der
+    /// Reviewer-Liste, alles andere bleibt sichtbar.
     async fn request_dashboard(&self, chunk: &[(String, usize)]) -> Result<GqlResponse> {
-        self.request(&queries::dashboard_query(chunk), json!({}))
+        let team_slugs = self.team_slugs.load(Ordering::Relaxed);
+        let res = self
+            .request(&queries::dashboard_query(chunk, team_slugs), json!({}))
+            .await?;
+        if !team_slugs || !res.errors.iter().any(is_team_slug_denied) {
+            return Ok(res);
+        }
+        log::info!("Token darf keine Team-Slugs lesen (read:org fehlt), frage ohne sie ab");
+        self.team_slugs.store(false, Ordering::Relaxed);
+        self.request(&queries::dashboard_query(chunk, false), json!({}))
             .await
     }
 
@@ -958,12 +1022,7 @@ impl GitHub {
         for (chunk, res) in chunks.into_iter().zip(results) {
             let res = res?;
             let Some(data) = res.data else {
-                let msg = res
-                    .errors
-                    .iter()
-                    .map(|e| e.message.as_str())
-                    .collect::<Vec<_>>()
-                    .join("; ");
+                let msg = describe_errors(&res.errors);
                 bail!(
                     "{}",
                     if msg.is_empty() {
@@ -1002,10 +1061,7 @@ impl GitHub {
                             e.path.first().and_then(Value::as_str) == Some(alias.as_str())
                         });
                         Err(err
-                            .map(|e| {
-                                explain_oauth_restriction(&e.message)
-                                    .unwrap_or_else(|| e.message.clone())
-                            })
+                            .map(|e| describe_errors(std::slice::from_ref(e)))
                             .unwrap_or_else(|| {
                                 tr!(
                                     "Repository not found or no access",
@@ -1126,12 +1182,7 @@ struct RepoPage {
 
 fn parse_repo_page(res: GqlResponse) -> Result<RepoPage> {
     let Some(data) = res.data else {
-        let msg = res
-            .errors
-            .iter()
-            .map(|e| e.message.as_str())
-            .collect::<Vec<_>>()
-            .join("; ");
+        let msg = describe_errors(&res.errors);
         if msg.is_empty() {
             bail!(tr!(
                 "Empty response from GitHub",
@@ -1510,6 +1561,68 @@ mod tests {
             msg,
             "Base branch was modified. Review and try the merge again.; zweiter"
         );
+    }
+
+    const SLUG_SCOPE: &str = "Your token has not been granted the required scopes to execute this query. \
+        The 'slug' field requires one of the following scopes: ['read:org', 'read:discussion'], \
+        but your token has only been granted the: ['repo'] scopes. Please modify your token's \
+        scopes at: https://github.com/settings/tokens.";
+
+    #[test]
+    fn gleiche_fehler_nur_einmal_und_scope_im_klartext() {
+        let errors: Vec<GqlError> = (0..12)
+            .map(|_| gql_error(SLUG_SCOPE, Some("INSUFFICIENT_SCOPES")))
+            .chain([gql_error("anderer", None), gql_error("anderer", None)])
+            .collect();
+        let msg = describe_errors(&errors);
+        assert_eq!(msg.matches("read:org").count(), 1, "{msg}");
+        assert!(msg.contains("https://github.com/settings/tokens"), "{msg}");
+        assert!(!msg.contains("has not been granted"), "{msg}");
+        assert!(msg.ends_with("; anderer"), "{msg}");
+        assert_eq!(msg.matches("anderer").count(), 1, "{msg}");
+    }
+
+    #[test]
+    fn team_slug_faellt_ohne_read_org_weg() {
+        let (gh, requests) = scripted(|uri, body| {
+            if uri.contains("/rules/") {
+                return (404, vec![], String::new());
+            }
+            // Wie GitHub: Mit Team-Slug scheitert die ganze Abfrage, ohne kommen die Daten.
+            if body.contains("slug") {
+                let err = json!({ "type": "INSUFFICIENT_SCOPES", "message": SLUG_SCOPE });
+                return (
+                    200,
+                    vec![],
+                    json!({ "errors": [err.clone(), err] }).to_string(),
+                );
+            }
+            let data = json!({ "data": {
+                "viewer": { "login": "me" },
+                "rateLimit": { "remaining": 4000, "limit": 5000, "resetAt": null, "cost": 1 },
+                "r0": repo_json(2, 40)
+            }});
+            (200, vec![], data.to_string())
+        });
+        let repos = vec!["a/b".to_string()];
+        let slugs = |requests: &SentLog| -> Vec<bool> {
+            requests
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(uri, _, _)| uri.ends_with("/graphql"))
+                .map(|(_, _, b)| b.contains("slug"))
+                .collect()
+        };
+
+        let f = futures::executor::block_on(gh.fetch(&repos)).unwrap();
+        assert_eq!(f.snapshot.open.len(), 2);
+        assert_eq!(slugs(&requests), [true, false]);
+
+        // Danach gleich ohne Slug, kein zweiter Fehlversuch.
+        requests.lock().unwrap().clear();
+        futures::executor::block_on(gh.fetch(&repos)).unwrap();
+        assert_eq!(slugs(&requests), [false]);
     }
 
     #[test]

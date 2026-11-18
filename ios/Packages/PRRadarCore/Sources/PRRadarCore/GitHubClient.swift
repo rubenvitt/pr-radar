@@ -138,7 +138,39 @@ func explainMissingWrite(_ message: String, type: String?) -> String? {
 /// Fehler einer Mutation: Rechtefehler im Klartext, sonst GitHubs Meldungen.
 func describeMutationErrors(_ errors: [GQLError]) -> String {
     errors.lazy.compactMap { explainAccessError($0.message, type: $0.type) }.first
-        ?? errors.map(\.message).joined(separator: "; ")
+        ?? describeErrors(errors)
+}
+
+/// GraphQL-Fehler eines Lesezugriffs als Text: bekannte Fälle im Klartext, jede Meldung nur
+/// einmal. GitHub wiederholt dieselbe Meldung je Fundstelle in der Abfrage, bei vielen Repos
+/// sonst zu einer Textwand.
+func describeErrors(_ errors: [GQLError]) -> String {
+    var seen: [String] = []
+    for e in errors {
+        let text = explainScopeError(e.message, type: e.type) ?? explainOAuthRestriction(e.message) ?? e.message
+        if !seen.contains(text) { seen.append(text) }
+    }
+    return seen.joined(separator: "; ")
+}
+
+/// GitHub verweigert dem Token den Team-Slug: klassischer Token ohne `read:org`
+/// (`INSUFFICIENT_SCOPES`) oder Fine-grained PAT ohne Lesezugriff auf die Org (Pfad endet auf `slug`).
+func isTeamSlugDenied(_ e: GQLError) -> Bool {
+    (e.type == "INSUFFICIENT_SCOPES" && e.message.contains("'slug'")) || e.path.last == "slug"
+}
+
+/// Klartext, wenn dem Token ein Scope fehlt, statt GitHubs langer Rohmeldung.
+func explainScopeError(_ message: String, type: String?) -> String? {
+    guard type == "INSUFFICIENT_SCOPES" || message.contains("required scopes") else { return nil }
+    // „… requires one of the following scopes: ['read:org', 'read:discussion'], but …“
+    let list = message.components(separatedBy: "scopes: [").dropFirst().first ?? ""
+    let quoted = list.split(separator: "'", omittingEmptySubsequences: false)
+    let scope = quoted.count > 2 ? String(quoted[1]) : ""
+    if scope.isEmpty || scope.contains(" ") {
+        return L10n.tr("The GitHub token lacks a scope for this query. A personal token can be extended at https://github.com/settings/tokens.")
+    }
+    return L10n.tr("The GitHub token lacks the “%@” scope for this query. A personal token can be extended at https://github.com/settings/tokens.",
+        scope)
 }
 
 /// GitHubs `message` aus einer Fehlerantwort (`{"message": "…"}`), sonst leer.
@@ -296,6 +328,15 @@ actor OpenCounts {
     }
 }
 
+/// Token, denen GitHub den Team-Slug verweigert hat (kein `read:org`). Für sie lässt die
+/// Dashboard-Abfrage den Slug weg; ein neuer Token probiert es wieder.
+actor TeamSlugs {
+    private var denied: String?
+
+    func allowed(for token: String) -> Bool { denied != token }
+    func deny(_ token: String) { denied = token }
+}
+
 /// Rohdaten eines Abrufdurchgangs, je Repo in Abfragereihenfolge.
 private struct FetchRound {
     enum Entry {
@@ -313,6 +354,7 @@ public final class GitHubClient: GitHubAPI {
     private let token: @Sendable () -> String?
     private let rules = RulesCache()
     private let openCounts = OpenCounts()
+    private let teamSlugs = TeamSlugs()
 
     /// `token` wird bei jedem Request gelesen – ein in den Einstellungen geänderter Token greift sofort.
     public init(transport: HTTPTransport = URLSessionTransport(), token: @escaping @Sendable () -> String?) {
@@ -475,6 +517,18 @@ public final class GitHubClient: GitHubAPI {
         }
     }
 
+    /// Dashboard-Abfrage eines Chunks. Lehnt GitHub den Team-Slug ab (Token ohne `read:org`),
+    /// fragt sie ohne ihn erneut und lässt ihn für diesen Token ab dann weg: Angefragte Teams
+    /// fehlen dann in der Reviewer-Liste, alles andere bleibt sichtbar.
+    private func requestDashboard(_ chunk: [(String, Int)]) async throws -> GQLResponse {
+        let token = try bearer()
+        let slugs = await teamSlugs.allowed(for: token)
+        let res = try await request(Queries.dashboard(chunk, teamSlugs: slugs))
+        guard slugs, res.errors.contains(where: isTeamSlugDenied) else { return res }
+        await teamSlugs.deny(token)
+        return try await request(Queries.dashboard(chunk, teamSlugs: false))
+    }
+
     /// Ein Durchgang über alle übergebenen Repos (in Blöcken zu je `chunkSize`, parallel).
     private func fetchRound(_ sized: [(String, Int)]) async throws -> FetchRound {
         let chunks = stride(from: 0, to: sized.count, by: chunkSize).map {
@@ -483,7 +537,7 @@ public final class GitHubClient: GitHubAPI {
         let results = await withTaskGroup(of: (Int, Result<GQLResponse, Error>).self) { group in
             for (i, chunk) in chunks.enumerated() {
                 group.addTask {
-                    do { return (i, .success(try await self.request(Queries.dashboard(chunk)))) } catch { return (i, .failure(error)) }
+                    do { return (i, .success(try await self.requestDashboard(chunk))) } catch { return (i, .failure(error)) }
                 }
             }
             var out = [Result<GQLResponse, Error>?](repeating: nil, count: chunks.count)
@@ -503,7 +557,7 @@ public final class GitHubClient: GitHubAPI {
         var round = FetchRound()
         for (chunk, res) in zip(chunks, responses) {
             guard let data = res.data else {
-                let msg = res.errors.map(\.message).joined(separator: "; ")
+                let msg = describeErrors(res.errors)
                 throw GitHubError.graphQL(msg.isEmpty ? L10n.tr("Empty response from GitHub") : msg)
             }
             if round.viewer == nil { round.viewer = data.viewer }
@@ -517,7 +571,7 @@ public final class GitHubClient: GitHubAPI {
                     round.repos.append((full, .unavailable(L10n.tr("Unreadable response: %@", message))))
                 case .null?, nil:
                     let err = res.errors.first { $0.path.first == alias }
-                    let message = err.map { explainOAuthRestriction($0.message) ?? $0.message }
+                    let message = err.map { describeErrors([$0]) }
                     round.repos.append((full, .unavailable(message ?? L10n.tr("Repository not found or no access"))))
                 }
             }
@@ -575,6 +629,12 @@ struct GQLError: Decodable, Sendable {
     var type: String?
 
     enum CodingKeys: String, CodingKey { case message, path, type }
+
+    init(message: String, path: [String] = [], type: String? = nil) {
+        self.message = message
+        self.path = path
+        self.type = type
+    }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -741,7 +801,7 @@ struct RepoPage: Sendable, Equatable {
 /// Eine Seite der Repo-Auswahl lesen: archivierte weglassen, leere Beschreibungen als `nil`.
 func parseRepoPage(_ res: GQLEnvelope<ViewerReposData>) throws -> RepoPage {
     guard let repos = res.data?.viewer?.repositories else {
-        let msg = res.errors.map(\.message).joined(separator: "; ")
+        let msg = describeErrors(res.errors)
         throw GitHubError.graphQL(msg.isEmpty ? L10n.tr("Empty response from GitHub") : msg)
     }
     let choices = (repos.nodes ?? []).compactMap { node -> RepoChoice? in
